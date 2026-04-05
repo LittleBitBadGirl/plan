@@ -14,6 +14,7 @@ from app.db.database import init_db, async_session
 from app.db.seed import seed_categories
 from app.api.tasks import router as tasks_router
 from app.api.categories import router as categories_router
+from app.api.ai import router as ai_router
 from app.web.pages import router as web_router
 from app.config import settings
 
@@ -90,6 +91,7 @@ app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 # Роуты
 app.include_router(tasks_router)
 app.include_router(categories_router)
+app.include_router(ai_router)
 app.include_router(web_router)
 
 
