@@ -8,6 +8,8 @@ import os
 import asyncio
 
 from aiogram import Bot, Dispatcher
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from app.bot.handlers import router as bot_router
 from app.bot.sync import sync_missed_messages
 from app.db.database import init_db, async_session
@@ -15,8 +17,11 @@ from app.db.seed import seed_categories
 from app.api.tasks import router as tasks_router
 from app.api.categories import router as categories_router
 from app.api.ai import router as ai_router
+from app.api.screenshot import router as screenshot_router
 from app.web.pages import router as web_router
 from app.config import settings
+from app.services.rollover_service import rollover_overdue_tasks
+from app.services.recurring_service import generate_recurring_tasks
 
 
 @asynccontextmanager
@@ -47,9 +52,32 @@ async def lifespan(app: FastAPI):
     # Запуск polling в фоне
     asyncio.create_task(dp.start_polling(bot))
 
+    # APScheduler — фоновые задачи
+    scheduler = AsyncIOScheduler()
+
+    # Генерация периодических задач ежедневно в 00:05
+    scheduler.add_job(
+        generate_recurring_tasks,
+        CronTrigger(hour=0, minute=5),
+        id="generate_recurring",
+        name="Генерация периодческих задач",
+    )
+
+    # Перенос просроченных задач ежедневно в 00:10
+    scheduler.add_job(
+        rollover_overdue_tasks,
+        CronTrigger(hour=0, minute=10),
+        id="rollover_tasks",
+        name="Перенос просроченных задач",
+    )
+
+    scheduler.start()
+    print("📅 APScheduler запущен")
+
     yield
 
     # Shutdown
+    scheduler.shutdown()
     await bot.session.close()
 
 
@@ -92,6 +120,7 @@ app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 app.include_router(tasks_router)
 app.include_router(categories_router)
 app.include_router(ai_router)
+app.include_router(screenshot_router)
 app.include_router(web_router)
 
 
