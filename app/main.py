@@ -1,12 +1,14 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
 import os
 import asyncio
 
+from app.utils.logger import app_logger
 from aiogram import Bot, Dispatcher
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -27,6 +29,8 @@ from app.services.recurring_service import generate_recurring_tasks
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan: инициализация БД и seed категорий"""
+    app_logger.info("🚀 Запуск планировщика задач...")
+    
     # Startup
     await init_db()
 
@@ -72,11 +76,13 @@ async def lifespan(app: FastAPI):
     )
 
     scheduler.start()
-    print("📅 APScheduler запущен")
+    app_logger.info("📅 APScheduler запущен")
+    app_logger.info("✅ Планировщик запущен")
 
     yield
 
     # Shutdown
+    app_logger.info("🛑 Остановка планировщика...")
     scheduler.shutdown()
     await bot.session.close()
 
@@ -128,3 +134,21 @@ app.include_router(web_router)
 async def health():
     """Проверка здоровья"""
     return {"status": "ok", "version": "0.1.0"}
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Глобальный обработчик ошибок"""
+    app_logger.error(f"Ошибка: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Внутренняя ошибка сервера"},
+    )
+
+
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=404,
+        content={"detail": "Не найдено"},
+    )
