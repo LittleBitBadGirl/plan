@@ -29,4 +29,5 @@ uploads/
 
 # Logs
 *.log
+logs/
 config/feedback_log.md
