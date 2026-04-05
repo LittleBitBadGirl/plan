@@ -5,12 +5,17 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
 import os
+import asyncio
 
+from aiogram import Bot, Dispatcher
+from app.bot.handlers import router as bot_router
+from app.bot.sync import sync_missed_messages
 from app.db.database import init_db, async_session
 from app.db.seed import seed_categories
 from app.api.tasks import router as tasks_router
 from app.api.categories import router as categories_router
 from app.web.pages import router as web_router
+from app.config import settings
 
 
 @asynccontextmanager
@@ -30,9 +35,21 @@ async def lifespan(app: FastAPI):
         await seed_categories(db)
         await db.commit()
 
+    # Запуск Telegram бота
+    bot = Bot(token=settings.telegram_bot_token)
+    dp = Dispatcher()
+    dp.include_router(bot_router)
+
+    # Синхронизация пропущенных
+    await sync_missed_messages(bot)
+
+    # Запуск polling в фоне
+    asyncio.create_task(dp.start_polling(bot))
+
     yield
 
     # Shutdown
+    await bot.session.close()
 
 
 app = FastAPI(
