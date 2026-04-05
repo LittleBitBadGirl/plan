@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Задачи — Task Planner{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-white">Все задачи</h1>
+            <p class="text-gray-400 mt-1">Всего: {{ total }} задач</p>
+        </div>
+        <a href="/tasks/new"
+           class="px-6 py-3 bg-accent hover:bg-blue-600 text-white font-medium rounded-lg transition-colors flex items-center">
+            <span class="mr-2">+</span> Добавить задачу
+        </a>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-dark-800 rounded-xl border border-dark-600 p-6 mb-6">
+        <form method="get" action="/tasks" class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Статус</label>
+                <select name="status"
+                        class="w-full px-4 py-2 bg-dark-700 border border-dark-500 rounded-lg text-white focus:outline-none focus:border-accent">
+                    <option value="">Все статусы</option>
+                    <option value="новая" {% if status_filter == 'новая' %}selected{% endif %}>Новая</option>
+                    <option value="в_работе" {% if status_filter == 'в_работе' %}selected{% endif %}>В работе</option>
+                    <option value="выполнена" {% if status_filter == 'выполнена' %}selected{% endif %}>Выполнена</option>
+                    <option value="отложена" {% if status_filter == 'отложена' %}selected{% endif %}>Отложена</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Категория</label>
+                <select name="category_id"
+                        class="w-full px-4 py-2 bg-dark-700 border border-dark-500 rounded-lg text-white focus:outline-none focus:border-accent">
+                    <option value="">Все категории</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat.id }}" {% if category_id_filter == cat.id %}selected{% endif %}>
+                        {{ cat.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Дата от</label>
+                <input type="date" name="from_date" value="{{ from_date_filter or '' }}"
+                       class="w-full px-4 py-2 bg-dark-700 border border-dark-500 rounded-lg text-white focus:outline-none focus:border-accent">
+            </div>
+
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Дата до</label>
+                <input type="date" name="to_date" value="{{ to_date_filter or '' }}"
+                       class="w-full px-4 py-2 bg-dark-700 border border-dark-500 rounded-lg text-white focus:outline-none focus:border-accent">
+            </div>
+
+            <div class="flex items-end">
+                <button type="submit"
+                        class="w-full px-4 py-2 bg-accent hover:bg-blue-600 text-white rounded-lg transition-colors">
+                    Применить
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Tasks Table -->
+    <div class="bg-dark-800 rounded-xl border border-dark-600 overflow-hidden">
+        {% if tasks %}
+        <table class="w-full">
+            <thead class="bg-dark-700 border-b border-dark-600">
+                <tr>
+                    <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Название</th>
+                    <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Категория</th>
+                    <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Статус</th>
+                    <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Приоритет</th>
+                    <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Дата</th>
+                    <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Действия</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-dark-600">
+                {% for task in tasks %}
+                <tr class="table-row priority-{{ task.priority }} hover:bg-dark-700/50">
+                    <td class="px-6 py-4">
+                        <span class="text-white font-medium">{{ task.title }}</span>
+                        {% if task.description %}
+                        <p class="text-sm text-gray-500 mt-1 truncate max-w-xs">{{ task.description }}</p>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 text-gray-400">
+                        {% if task.category %}{{ task.category.name }}{% else %}—{% endif %}
+                    </td>
+                    <td class="px-6 py-4">
+                        {% set status_class = {
+                            'новая': 'status-new',
+                            'в_работе': 'status-in_progress',
+                            'выполнена': 'status-completed',
+                            'отложена': 'status-postponed'
+                        } %}
+                        {% set status_label = {
+                            'новая': '🆕 Новая',
+                            'в_работе': '🔄 В работе',
+                            'выполнена': '✅ Выполнена',
+                            'отложена': '⏸️ Отложена'
+                        } %}
+                        <span class="px-3 py-1 rounded-full text-xs font-medium {{ status_class.get(task.status, 'status-new') }}">
+                            {{ status_label.get(task.status, task.status) }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4">
+                        {% set priority_colors = {
+                            'высокий': 'text-red-400',
+                            'средний': 'text-yellow-400',
+                            'низкий': 'text-green-400'
+                        } %}
+                        <span class="{{ priority_colors.get(task.priority, 'text-gray-400') }}">
+                            {{ task.priority }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-gray-400">
+                        {% if task.due_date %}{{ task.due_date.strftime('%d.%m.%Y') }}{% else %}—{% endif %}
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="flex items-center space-x-2">
+                            {% if task.status != 'выполнена' %}
+                            <form hx-post="/tasks/{{ task.id }}/complete"
+                                  hx-target="closest tr"
+                                  hx-swap="outerHTML"
+                                  class="inline">
+                                <button type="submit" title="Выполнить"
+                                        class="px-3 py-1 bg-green-500/20 text-green-400 rounded hover:bg-green-500/30 transition-colors text-sm">
+                                    ✅
+                                </button>
+                            </form>
+                            {% endif %}
+                            <a href="/tasks/{{ task.id }}/edit"
+                               class="px-3 py-1 bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500/30 transition-colors text-sm"
+                               title="Редактировать">
+                                ✏️
+                            </a>
+                            <form hx-post="/tasks/{{ task.id }}/delete"
+                                  hx-target="closest tr"
+                                  hx-swap="outerHTML"
+                                  class="inline">
+                                <button type="submit" title="Удалить"
+                                        class="px-3 py-1 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 transition-colors text-sm"
+                                        onclick="return confirm('Удалить задачу?')">
+                                    🗑️
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="text-center py-16 text-gray-500">
+            <span class="text-4xl mb-4 block">📭</span>
+            <p class="text-lg">Задач не найдено</p>
+            <p class="text-sm mt-2">Попробуйте изменить фильтры или создайте новую задачу</p>
+        </div>
+        {% endif %}
+
+        <!-- Pagination -->
+        {% if tasks %}
+        <div class="px-6 py-4 bg-dark-700 border-t border-dark-600 flex items-center justify-between">
+            <span class="text-sm text-gray-400">
+                Показано {{ tasks|length }} из {{ total }}
+            </span>
+            <div class="flex items-center space-x-2">
+                {% if has_prev %}
+                <a href="?offset={{ prev_offset }}&limit={{ limit }}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if category_id_filter %}&category_id={{ category_id_filter }}{% endif %}{% if from_date_filter %}&from_date={{ from_date_filter }}{% endif %}{% if to_date_filter %}&to_date={{ to_date_filter }}{% endif %}"
+                   class="pagination-btn px-4 py-2 rounded-lg text-gray-400 hover:text-white">
+                    ← Назад
+                </a>
+                {% endif %}
+                {% if has_next %}
+                <a href="?offset={{ next_offset }}&limit={{ limit }}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if category_id_filter %}&category_id={{ category_id_filter }}{% endif %}{% if from_date_filter %}&from_date={{ from_date_filter }}{% endif %}{% if to_date_filter %}&to_date={{ to_date_filter }}{% endif %}"
+                   class="pagination-btn px-4 py-2 rounded-lg text-gray-400 hover:text-white">
+                    Далее →
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

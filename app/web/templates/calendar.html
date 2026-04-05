@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Календарь — Task Planner{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-white">Календарь</h1>
+        <p class="text-gray-400 mt-1">Просмотр задач по датам</p>
+    </div>
+
+    <!-- Calendar Navigation -->
+    <div class="bg-dark-800 rounded-xl border border-dark-600 p-6 mb-6">
+        <div class="flex items-center justify-between mb-6">
+            <button id="prev-month" class="px-4 py-2 bg-dark-700 hover:bg-dark-600 rounded-lg text-gray-300 transition-colors">
+                ← Назад
+            </button>
+            <h2 id="month-title" class="text-xl font-semibold text-white">Апрель 2026</h2>
+            <button id="next-month" class="px-4 py-2 bg-dark-700 hover:bg-dark-600 rounded-lg text-gray-300 transition-colors">
+                Далее →
+            </button>
+        </div>
+
+        <!-- Calendar Grid -->
+        <div class="grid grid-cols-7 gap-1">
+            <!-- Weekday headers -->
+            <div class="text-center py-2 text-sm text-gray-500">Пн</div>
+            <div class="text-center py-2 text-sm text-gray-500">Вт</div>
+            <div class="text-center py-2 text-sm text-gray-500">Ср</div>
+            <div class="text-center py-2 text-sm text-gray-500">Чт</div>
+            <div class="text-center py-2 text-sm text-gray-500">Пт</div>
+            <div class="text-center py-2 text-sm text-gray-500">Сб</div>
+            <div class="text-center py-2 text-sm text-gray-500">Вс</div>
+
+            <!-- Calendar days will be rendered here -->
+            <div id="calendar-days" class="contents">
+                <!-- Filled by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Selected Date Tasks -->
+    <div id="selected-date-tasks" class="bg-dark-800 rounded-xl border border-dark-600 p-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Задачи на дату</h2>
+        <div id="date-tasks-list" class="text-gray-400">
+            <p>Выберите дату в календаре</p>
+        </div>
+    </div>
+</div>
+
+{% block extra_scripts %}
+<script>
+// Простой календарь на JS
+let currentDate = new Date();
+
+function renderCalendar() {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+
+    const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+                       'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+
+    document.getElementById('month-title').textContent = `${monthNames[month]} ${year}`;
+
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+
+    // Start from Monday
+    let startDay = firstDay.getDay() || 7;
+    startDay = startDay - 1;
+
+    const container = document.getElementById('calendar-days');
+    container.innerHTML = '';
+
+    // Empty cells before first day
+    for (let i = 0; i < startDay; i++) {
+        container.innerHTML += '<div class="calendar-day p-2 min-h-[80px]"></div>';
+    }
+
+    // Days
+    const today = new Date();
+    for (let day = 1; day <= lastDay.getDate(); day++) {
+        const isToday = (day === today.getDate() && month === today.getMonth() && year === today.getFullYear());
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+        container.innerHTML += `
+            <div class="calendar-day p-2 min-h-[80px] rounded-lg cursor-pointer transition-colors
+                        ${isToday ? 'today' : 'hover:bg-dark-700/50'}"
+                 onclick="loadDateTasks('${dateStr}')">
+                <div class="text-sm font-medium ${isToday ? 'text-accent' : 'text-gray-300'}">${day}</div>
+            </div>
+        `;
+    }
+}
+
+function loadDateTasks(dateStr) {
+    const list = document.getElementById('date-tasks-list');
+    list.innerHTML = '<p class="text-gray-500 animate-pulse-slow">Загрузка...</p>';
+
+    fetch(`/api/tasks/date/${dateStr}`, {
+        headers: { 'X-API-Token': '{{ request.app.state.api_token if request.app.state.api_token else "" }}' }
+    })
+    .then(r => r.json())
+    .then(tasks => {
+        if (tasks.length === 0) {
+            list.innerHTML = '<p class="text-gray-500">Нет задач на эту дату</p>';
+        } else {
+            list.innerHTML = tasks.map(t => `
+                <div class="task-item p-3 rounded-lg mb-2 ${t.status === 'выполнена' ? 'opacity-50' : ''}">
+                    <span class="${t.status === 'выполнена' ? 'line-through' : ''} text-white">${t.title}</span>
+                    <span class="text-sm text-gray-500 ml-2">[${t.status}]</span>
+                </div>
+            `).join('');
+        }
+    })
+    .catch(() => {
+        list.innerHTML = '<p class="text-red-400">Ошибка загрузки</p>';
+    });
+}
+
+document.getElementById('prev-month').addEventListener('click', () => {
+    currentDate.setMonth(currentDate.getMonth() - 1);
+    renderCalendar();
+});
+
+document.getElementById('next-month').addEventListener('click', () => {
+    currentDate.setMonth(currentDate.getMonth() + 1);
+    renderCalendar();
+});
+
+renderCalendar();
+</script>
+{% endblock %}
+{% endblock %}

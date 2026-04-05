@@ -1,0 +1,55 @@
+{% if tasks %}
+<div class="space-y-3 animate-fade-in">
+    {% for task in tasks %}
+    <div class="task-item p-4 bg-dark-700 rounded-lg border border-dark-600 flex items-center justify-between
+                {% if task.status == 'выполнена' %}opacity-50{% endif %}">
+        <div class="flex-1">
+            <div class="flex items-center space-x-3">
+                {% if task.status != 'выполнена' %}
+                <form hx-post="/tasks/{{ task.id }}/complete" hx-target="#tasks-list" hx-swap="innerHTML" class="inline">
+                    <button type="submit"
+                            class="w-6 h-6 rounded-full border-2 border-gray-500 hover:border-green-500 flex items-center justify-center transition-colors"
+                            title="Отметить выполненной">
+                    </button>
+                </form>
+                {% else %}
+                <span class="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center text-white text-xs">✓</span>
+                {% endif %}
+
+                <span class="{% if task.status == 'выполнена' %}line-through text-gray-500{% else %}text-white{% endif %}">
+                    {{ task.title }}
+                </span>
+
+                {% if task.priority == 'высокий' %}
+                <span class="text-xs px-2 py-1 bg-red-500/20 text-red-400 rounded">🔴</span>
+                {% elif task.priority == 'низкий' %}
+                <span class="text-xs px-2 py-1 bg-green-500/20 text-green-400 rounded">🟢</span>
+                {% endif %}
+            </div>
+
+            {% if task.category %}
+            <span class="text-xs text-gray-500 ml-9">📂 {{ task.category.name }}</span>
+            {% endif %}
+        </div>
+
+        <div class="flex items-center space-x-2 ml-4">
+            {% if task.status != 'выполнена' %}
+            <form hx-post="/tasks/{{ task.id }}/delete" hx-target="#tasks-list" hx-swap="innerHTML" class="inline">
+                <button type="submit"
+                        class="px-3 py-1 text-gray-500 hover:text-red-400 transition-colors text-sm"
+                        title="Удалить">
+                    🗑️
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-8 text-gray-500 animate-fade-in">
+    <span class="text-3xl mb-3 block">✨</span>
+    <p>Нет задач на сегодня</p>
+    <p class="text-sm mt-1">Создайте первую задачу выше</p>
+</div>
+{% endif %}

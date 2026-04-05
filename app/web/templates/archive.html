@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Архив — Task Planner{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-white">Архив</h1>
+        <p class="text-gray-400 mt-1">Выполненные и удалённые задачи</p>
+    </div>
+
+    <!-- Archived Tasks -->
+    <div class="bg-dark-800 rounded-xl border border-dark-600 overflow-hidden">
+        {% if tasks %}
+        <table class="w-full">
+            <thead class="bg-dark-700 border-b border-dark-600">
+                <tr>
+                    <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Название</th>
+                    <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Категория</th>
+                    <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Статус</th>
+                    <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Дата выполнения</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-dark-600">
+                {% for task in tasks %}
+                <tr class="table-row hover:bg-dark-700/50 opacity-70">
+                    <td class="px-6 py-4">
+                        <span class="text-gray-400 line-through">{{ task.title }}</span>
+                    </td>
+                    <td class="px-6 py-4 text-gray-500">
+                        {% if task.category %}{{ task.category.name }}{% else %}—{% endif %}
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-xs">
+                            {{ task.status }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-gray-500">
+                        {% if task.completed_at %}{{ task.completed_at.strftime('%d.%m.%Y %H:%M') }}{% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Pagination -->
+        <div class="px-6 py-4 bg-dark-700 border-t border-dark-600 flex items-center justify-between">
+            <span class="text-sm text-gray-400">
+                Показано {{ tasks|length }} из {{ total }}
+            </span>
+            <div class="flex items-center space-x-2">
+                {% if has_prev %}
+                <a href="?offset={{ prev_offset }}&limit={{ limit }}"
+                   class="pagination-btn px-4 py-2 rounded-lg text-gray-400 hover:text-white">
+                    ← Назад
+                </a>
+                {% endif %}
+                {% if has_next %}
+                <a href="?offset={{ next_offset }}&limit={{ limit }}"
+                   class="pagination-btn px-4 py-2 rounded-lg text-gray-400 hover:text-white">
+                    Далее →
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="text-center py-16 text-gray-500">
+            <span class="text-4xl mb-4 block">🗄️</span>
+            <p class="text-lg">Архив пуст</p>
+            <p class="text-sm mt-2">Здесь будут появляться выполненные задачи</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
