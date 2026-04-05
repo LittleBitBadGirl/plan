@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Дашборд — Task Planner{% endblock %}
+{% block title %}Дашборд — Планировщик{% endblock %}
 
 {% block content %}
 <div class="max-w-6xl mx-auto">
@@ -18,97 +18,54 @@
 
     <!-- AI Warning -->
     {% if ai_warning %}
-    <div class="mb-6 p-4 ai-warning rounded-lg animate-fade-in">
-        <p class="text-warning">{{ ai_warning }}</p>
+    <div class="mb-6 p-4 rounded-lg bg-yellow-900/30 border border-yellow-700">
+        <p class="text-yellow-300">{{ ai_warning }}</p>
     </div>
     {% endif %}
 
-    <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div class="bg-dark-800 rounded-xl border border-dark-600 p-6 card">
-            <div class="flex items-center">
-                <div class="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center mr-4">
-                    <span class="text-2xl">📋</span>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="md:col-span-2">
+            <h2 class="text-xl font-bold mb-4">📋 Задачи на сегодня</h2>
+            {% if tasks %}
+            <div class="space-y-3">
+                {% for task in tasks %}
+                <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="font-semibold">{{ task.title }}</h3>
+                            {% if task.category %}
+                            <span class="text-sm text-gray-400">{{ task.category.name }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="flex gap-2">
+                            <button hx-post="/tasks/{{ task.id }}/complete"
+                                    hx-target="closest div"
+                                    hx-swap="outerHTML"
+                                    class="text-green-400 hover:text-green-300">✅</button>
+                            <button hx-post="/tasks/{{ task.id }}/backlog"
+                                    hx-target="closest div"
+                                    hx-swap="outerHTML"
+                                    class="text-yellow-400 hover:text-yellow-300">📥</button>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <p class="text-gray-400 text-sm">Запланировано</p>
-                    <p class="text-2xl font-bold text-white">{{ total_today }}</p>
-                </div>
+                {% endfor %}
             </div>
+            {% else %}
+            <div class="text-center py-10 text-gray-500">
+                <p>Нет задач на сегодня 🎉</p>
+                <a href="/backlog" class="text-purple-400 hover:text-purple-300 mt-2 inline-block">Перейти в бэклог →</a>
+            </div>
+            {% endif %}
         </div>
 
-        <div class="bg-dark-800 rounded-xl border border-dark-600 p-6 card">
-            <div class="flex items-center">
-                <div class="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center mr-4">
-                    <span class="text-2xl">✅</span>
-                </div>
+        <div>
+            <h2 class="text-xl font-bold mb-4">📊 Статистика</h2>
+            <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 space-y-3">
                 <div>
-                    <p class="text-gray-400 text-sm">Выполнено</p>
-                    <p class="text-2xl font-bold text-white">{{ today_completed }}</p>
+                    <span class="text-gray-400">Выполнено сегодня:</span>
+                    <span class="float-right font-bold text-green-400">{{ completed }}/{{ total }}</span>
                 </div>
-            </div>
-        </div>
-
-        <div class="bg-dark-800 rounded-xl border border-dark-600 p-6 card">
-            <div class="flex items-center">
-                <div class="w-12 h-12 bg-yellow-500/20 rounded-lg flex items-center justify-center mr-4">
-                    <span class="text-2xl">⏳</span>
-                </div>
-                <div>
-                    <p class="text-gray-400 text-sm">Осталось</p>
-                    <p class="text-2xl font-bold text-white">{{ total_today - today_completed }}</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Quick Add Task -->
-    <div class="bg-dark-800 rounded-xl border border-dark-600 p-6 mb-8">
-        <h2 class="text-lg font-semibold text-white mb-4">Быстрое добавление задачи</h2>
-        <form hx-post="/tasks/create" hx-target="#tasks-list" hx-swap="innerHTML" class="space-y-4">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="md:col-span-2">
-                    <input type="text" name="title" required
-                           class="w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
-                           placeholder="Название задачи">
-                </div>
-                <div>
-                    <select name="category_id"
-                            class="w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white focus:outline-none focus:border-accent">
-                        <option value="">Без категории</option>
-                        {% for cat in categories %}
-                        <option value="{{ cat.id }}">{{ cat.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <select name="priority"
-                            class="w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white focus:outline-none focus:border-accent">
-                        <option value="низкий">Низкий приоритет</option>
-                        <option value="средний" selected>Средний приоритет</option>
-                        <option value="высокий">Высокий приоритет</option>
-                    </select>
-                </div>
-                <input type="hidden" name="description" value="">
-                <input type="hidden" name="due_date" value="{{ today }}">
-            </div>
-            <button type="submit"
-                    class="px-6 py-3 bg-accent hover:bg-blue-600 text-white font-medium rounded-lg transition-colors">
-                Создать задачу
-            </button>
-        </form>
-    </div>
-
-    <!-- Tasks List (HTMX dynamic) -->
-    <div class="bg-dark-800 rounded-xl border border-dark-600 p-6">
-        <h2 class="text-lg font-semibold text-white mb-4">Задачи на сегодня</h2>
-        <div id="tasks-list"
-             hx-get="/tasks/list"
-             hx-trigger="load, every 30s"
-             hx-swap="innerHTML">
-            <!-- Loading state -->
-            <div class="text-center py-8 text-gray-500">
-                <span class="htmx-indicator animate-pulse-slow">Загрузка...</span>
             </div>
         </div>
     </div>

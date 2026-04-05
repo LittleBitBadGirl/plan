@@ -3,9 +3,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
-from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
-import os
 import asyncio
 
 from app.utils.logger import app_logger
@@ -101,16 +99,6 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
-
-# Session middleware (для аутентификации)
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=os.environ.get("API_TOKEN", "fallback-secret-key-change-in-production"),
-    session_cookie="planner_session",
-    max_age=7 * 24 * 60 * 60,  # 7 дней
-    https_only=False,
-    same_site="lax",
 )
 
 # Статические файлы (веб-интерфейс)
