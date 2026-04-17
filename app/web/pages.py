@@ -874,13 +874,11 @@ async def shopping_page(request: Request):
 async def create_shopping_item(
     request: Request,
     title: str = Form(...),
-    quantity: str = Form(""),
 ):
     """Создать элемент списка покупок"""
     async with async_session() as db:
         item = ShoppingItem(
             title=title,
-            quantity=quantity,
         )
         db.add(item)
         await db.commit()
@@ -895,14 +893,56 @@ async def create_shopping_item(
         purchased = sum(1 for item in items if item.is_purchased)
         remaining = total - purchased
 
-    # Возвращаем обновленный список и статистику
-    return templates.TemplateResponse("shopping.html", {
-        "request": request,
-        "items": items,
-        "total": total,
-        "purchased": purchased,
-        "remaining": remaining,
-    })
+    # Возвращаем только обновленный список элементов и статистику
+    from jinja2 import Template
+    list_template = Template('''
+        {% if items %}
+            {% for item in items %}
+            <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition flex items-center gap-3 {{ 'opacity-50' if item.is_purchased else '' }}" 
+                 id="item-{{ item.id }}">
+                <!-- Чекбокс выполнения -->
+                <form hx-post="/api/shopping/{{ item.id }}/toggle"
+                      hx-target="#shopping-list"
+                      hx-swap="innerHTML"
+                      class="flex-shrink-0">
+                    <button type="submit" class="text-xl {{ 'text-green-400' if item.is_purchased else 'text-gray-600 hover:text-green-400' }}">
+                        {% if item.is_purchased %}✅{% else %}⬜{% endif %}
+                    </button>
+                </form>
+
+                <!-- Информация о продукте -->
+                <div class="flex-1">
+                    <span class="font-medium text-white {{ 'line-through text-gray-500' if item.is_purchased else '' }}">
+                        {{ item.title }}
+                    </span>
+                </div>
+
+                <!-- Удаление -->
+                <form hx-delete="/api/shopping/{{ item.id }}"
+                      hx-target="#shopping-list"
+                      hx-swap="innerHTML"
+                      class="flex-shrink-0">
+                    <button type="submit" class="text-red-400 hover:text-red-300" title="Удалить">🗑</button>
+                </form>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="text-center py-10 text-gray-500">
+                <p>Список покупок пуст 🛒</p>
+                <p class="text-sm mt-2">Введите название продукта и нажмите Enter</p>
+            </div>
+        {% endif %}
+    ''')
+    
+    stats_html = f'''
+        <script>
+            document.getElementById('total-count').textContent = '{total}';
+            document.getElementById('purchased-count').textContent = '{purchased}';
+            document.getElementById('remaining-count').textContent = '{remaining}';
+        </script>
+    '''
+    
+    return HTMLResponse(content=list_template.render(items=items) + stats_html)
 
 
 @router.post("/api/shopping/{item_id}/toggle", response_class=HTMLResponse)
@@ -920,14 +960,65 @@ async def toggle_shopping_item(request: Request, item_id: int):
                 item.purchased_at = None
             await db.commit()
             
-            # Возвращаем обновленную строку
-            return templates.TemplateResponse("shopping.html", {
-                "request": request,
-                "items": [item],
-                "total": 0,
-                "purchased": 0,
-                "remaining": 0,
-            })
+            # Перезагружаем весь список для обновления
+            result = await db.execute(
+                select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
+            )
+            items = list(result.scalars().all())
+            
+            total = len(items)
+            purchased = sum(1 for i in items if i.is_purchased)
+            remaining = total - purchased
+            
+            from jinja2 import Template
+            list_template = Template('''
+                {% if items %}
+                    {% for item in items %}
+                    <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition flex items-center gap-3 {{ 'opacity-50' if item.is_purchased else '' }}" 
+                         id="item-{{ item.id }}">
+                        <!-- Чекбокс выполнения -->
+                        <form hx-post="/api/shopping/{{ item.id }}/toggle"
+                              hx-target="#shopping-list"
+                              hx-swap="innerHTML"
+                              class="flex-shrink-0">
+                            <button type="submit" class="text-xl {{ 'text-green-400' if item.is_purchased else 'text-gray-600 hover:text-green-400' }}">
+                                {% if item.is_purchased %}✅{% else %}⬜{% endif %}
+                            </button>
+                        </form>
+
+                        <!-- Информация о продукте -->
+                        <div class="flex-1">
+                            <span class="font-medium text-white {{ 'line-through text-gray-500' if item.is_purchased else '' }}">
+                                {{ item.title }}
+                            </span>
+                        </div>
+
+                        <!-- Удаление -->
+                        <form hx-delete="/api/shopping/{{ item.id }}"
+                              hx-target="#shopping-list"
+                              hx-swap="innerHTML"
+                              class="flex-shrink-0">
+                            <button type="submit" class="text-red-400 hover:text-red-300" title="Удалить">🗑</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-10 text-gray-500">
+                        <p>Список покупок пуст 🛒</p>
+                        <p class="text-sm mt-2">Введите название продукта и нажмите Enter</p>
+                    </div>
+                {% endif %}
+            ''')
+            
+            stats_html = f'''
+                <script>
+                    document.getElementById('total-count').textContent = '{total}';
+                    document.getElementById('purchased-count').textContent = '{purchased}';
+                    document.getElementById('remaining-count').textContent = '{remaining}';
+                </script>
+            '''
+            
+            return HTMLResponse(content=list_template.render(items=items) + stats_html)
     
     return HTMLResponse(content='<div class="hidden"></div>')
 
@@ -942,6 +1033,65 @@ async def delete_shopping_item(request: Request, item_id: int):
         if item:
             await db.delete(item)
             await db.commit()
+            
+            # Перезагружаем весь список
+            result = await db.execute(
+                select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
+            )
+            items = list(result.scalars().all())
+            
+            total = len(items)
+            purchased = sum(1 for i in items if i.is_purchased)
+            remaining = total - purchased
+            
+            from jinja2 import Template
+            list_template = Template('''
+                {% if items %}
+                    {% for item in items %}
+                    <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition flex items-center gap-3 {{ 'opacity-50' if item.is_purchased else '' }}" 
+                         id="item-{{ item.id }}">
+                        <!-- Чекбокс выполнения -->
+                        <form hx-post="/api/shopping/{{ item.id }}/toggle"
+                              hx-target="#shopping-list"
+                              hx-swap="innerHTML"
+                              class="flex-shrink-0">
+                            <button type="submit" class="text-xl {{ 'text-green-400' if item.is_purchased else 'text-gray-600 hover:text-green-400' }}">
+                                {% if item.is_purchased %}✅{% else %}⬜{% endif %}
+                            </button>
+                        </form>
+
+                        <!-- Информация о продукте -->
+                        <div class="flex-1">
+                            <span class="font-medium text-white {{ 'line-through text-gray-500' if item.is_purchased else '' }}">
+                                {{ item.title }}
+                            </span>
+                        </div>
+
+                        <!-- Удаление -->
+                        <form hx-delete="/api/shopping/{{ item.id }}"
+                              hx-target="#shopping-list"
+                              hx-swap="innerHTML"
+                              class="flex-shrink-0">
+                            <button type="submit" class="text-red-400 hover:text-red-300" title="Удалить">🗑</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-10 text-gray-500">
+                        <p>Список покупок пуст 🛒</p>
+                        <p class="text-sm mt-2">Введите название продукта и нажмите Enter</p>
+                    </div>
+                {% endif %}
+            ''')
+            
+            stats_html = f'''
+                <script>
+                    document.getElementById('total-count').textContent = '{total}';
+                    document.getElementById('purchased-count').textContent = '{purchased}';
+                    document.getElementById('remaining-count').textContent = '{remaining}';
+                </script>
+            '''
+            
+            return HTMLResponse(content=list_template.render(items=items) + stats_html)
     
-    # Возвращаем пустой div для удаления из DOM
-    return HTMLResponse(content=f'<div id="item-{item_id}" class="hidden"></div>')
+    return HTMLResponse(content='<div class="hidden"></div>')
