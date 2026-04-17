@@ -191,8 +191,9 @@ async def complete_recurring(
     recurring_id: int,
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Отметить периодическую задачу выполненной — создаёт выполненную задачу на сегодня"""
+    """Отметить периодическую задачу выполненной — создаёт выполненную задачу на сегодня и запоминает дату выполнения"""
     from app.models.task import Task
+    from app.models.recurring import recurring_completions
     from datetime import datetime
     
     result = await db.execute(select(RecurringTask).where(RecurringTask.id == recurring_id))
@@ -200,11 +201,31 @@ async def complete_recurring(
     if not task:
         raise HTTPException(status_code=404, detail="Recurring task not found")
 
+    today = date.today()
+    
+    # Проверяем, не выполняли ли уже эту периодическую задачу сегодня
+    existing_completion = await db.execute(
+        select(recurring_completions).where(
+            recurring_completions.c.recurring_task_id == recurring_id,
+            recurring_completions.c.completed_date == today
+        )
+    )
+    if existing_completion.fetchone():
+        # Уже выполнено сегодня — просто возвращаем пустой блок
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(f'<div id="recurring-{task.id}" class="hidden"></div>')
+
     # Увеличиваем счётчик выполнений
     task.completed_count += 1
     
+    # Записываем дату выполнения в таблицу completions
+    from sqlalchemy import insert
+    await db.execute(insert(recurring_completions).values(
+        recurring_task_id=recurring_id,
+        completed_date=today
+    ))
+    
     # Создаём обычную задачу на сегодня со статусом "выполнена"
-    today = date.today()
     completed_task = Task(
         title=task.title,
         description=task.description,

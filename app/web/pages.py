@@ -83,11 +83,24 @@ async def dashboard(request: Request):
         day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
         recurring_today = []
 
+        # Импортируем таблицу выполнений
+        from app.models.recurring import recurring_completions
+
         for rt in all_recurring:
             if rt.end_date and today > rt.end_date:
                 continue
             if today < rt.start_date:
                 continue
+
+            # Проверяем, не выполнена ли уже эта периодическая задача сегодня
+            completed_today = await db.execute(
+                select(recurring_completions).where(
+                    recurring_completions.c.recurring_task_id == rt.id,
+                    recurring_completions.c.completed_date == today
+                )
+            )
+            if completed_today.fetchone():
+                continue  # Пропускаем, если уже выполнено сегодня
 
             if rt.recurrence_type == "daily":
                 recurring_today.append(rt)
@@ -857,16 +870,16 @@ async def shopping_page(request: Request):
         )
         items = list(result.scalars().all())
         
-        total = len(items)
+        # Всего = только активные (некупленные)
+        total = sum(1 for item in items if not item.is_purchased)
+        # Куплено = все купленные
         purchased = sum(1 for item in items if item.is_purchased)
-        remaining = total - purchased
 
     return templates.TemplateResponse("shopping.html", {
         "request": request,
         "items": items,
         "total": total,
         "purchased": purchased,
-        "remaining": remaining,
     })
 
 
@@ -888,10 +901,6 @@ async def create_shopping_item(
             select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
         )
         items = list(result.scalars().all())
-        
-        total = len(items)
-        purchased = sum(1 for item in items if item.is_purchased)
-        remaining = total - purchased
 
     # Возвращаем только обновленный список элементов и статистику
     from jinja2 import Template
@@ -934,11 +943,14 @@ async def create_shopping_item(
         {% endif %}
     ''')
     
+    # Считаем заново: total = активные, purchased = все купленные
+    total = sum(1 for i in items if not i.is_purchased)
+    purchased = sum(1 for i in items if i.is_purchased)
+    
     stats_html = f'''
         <script>
             document.getElementById('total-count').textContent = '{total}';
             document.getElementById('purchased-count').textContent = '{purchased}';
-            document.getElementById('remaining-count').textContent = '{remaining}';
         </script>
     '''
     
@@ -966,9 +978,9 @@ async def toggle_shopping_item(request: Request, item_id: int):
             )
             items = list(result.scalars().all())
             
-            total = len(items)
+            # Считаем заново: total = активные, purchased = все купленные
+            total = sum(1 for i in items if not i.is_purchased)
             purchased = sum(1 for i in items if i.is_purchased)
-            remaining = total - purchased
             
             from jinja2 import Template
             list_template = Template('''
@@ -1014,7 +1026,6 @@ async def toggle_shopping_item(request: Request, item_id: int):
                 <script>
                     document.getElementById('total-count').textContent = '{total}';
                     document.getElementById('purchased-count').textContent = '{purchased}';
-                    document.getElementById('remaining-count').textContent = '{remaining}';
                 </script>
             '''
             
@@ -1040,9 +1051,9 @@ async def delete_shopping_item(request: Request, item_id: int):
             )
             items = list(result.scalars().all())
             
-            total = len(items)
+            # Считаем заново: total = активные, purchased = все купленные
+            total = sum(1 for i in items if not i.is_purchased)
             purchased = sum(1 for i in items if i.is_purchased)
-            remaining = total - purchased
             
             from jinja2 import Template
             list_template = Template('''
@@ -1088,7 +1099,6 @@ async def delete_shopping_item(request: Request, item_id: int):
                 <script>
                     document.getElementById('total-count').textContent = '{total}';
                     document.getElementById('purchased-count').textContent = '{purchased}';
-                    document.getElementById('remaining-count').textContent = '{remaining}';
                 </script>
             '''
             

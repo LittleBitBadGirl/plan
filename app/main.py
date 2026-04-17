@@ -50,6 +50,23 @@ async def lifespan(app: FastAPI):
         conn.commit()
     except Exception:
         pass
+
+    # Создаём таблицу для хранения дат выполнения периодических задач
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS recurring_completions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                recurring_task_id INTEGER NOT NULL,
+                completed_date DATE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (recurring_task_id) REFERENCES recurring_tasks(id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_recurring_completions_date ON recurring_completions(completed_date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_recurring_completions_task ON recurring_completions(recurring_task_id)")
+        conn.commit()
+    except Exception as e:
+        app_logger.warning(f"Не удалось создать таблицу recurring_completions: {e}")
     finally:
         conn.close()
 
