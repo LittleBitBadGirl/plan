@@ -191,44 +191,36 @@ async def complete_recurring(
     recurring_id: int,
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Отметить периодическую задачу выполненной (не удаляет, только счётчик)"""
+    """Отметить периодическую задачу выполненной — создаёт выполненную задачу на сегодня"""
+    from app.models.task import Task
+    from datetime import datetime
+    
     result = await db.execute(select(RecurringTask).where(RecurringTask.id == recurring_id))
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Recurring task not found")
 
+    # Увеличиваем счётчик выполнений
     task.completed_count += 1
+    
+    # Создаём обычную задачу на сегодня со статусом "выполнена"
+    today = date.today()
+    completed_task = Task(
+        title=task.title,
+        description=task.description,
+        category_id=task.category_id,
+        priority=task.priority,
+        due_date=today,
+        status="выполнена",
+        completed_at=datetime.utcnow(),
+        source="recurring",
+    )
+    db.add(completed_task)
     await db.flush()
-    # Возвращаем HTML-фрагмент для HTMX
+    
+    # Возвращаем пустой блок — задача исчезнет из списка
     from fastapi.responses import HTMLResponse
-    days_label = {
-        "daily": "ежедневно",
-        "weekly": "еженедельно",
-        "monthly": "ежемесячно"
-    }.get(task.recurrence_type, task.recurrence_type)
-    return HTMLResponse(f"""
-        <div class="bg-purple-900/20 rounded-lg p-4 border border-purple-700/50 hover:border-purple-500 transition" id="recurring-{task.id}">
-            <div class="flex justify-between items-start">
-                <div class="flex-1">
-                    <h3 class="font-semibold text-purple-200">🔄 {task.title}</h3>
-                    <div class="flex items-center gap-2 mt-1">
-                        <span class="text-xs text-purple-400">{days_label}</span>
-                        <span class="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-300">
-                            ✅ выполнено {task.completed_count} раз
-                        </span>
-                    </div>
-                </div>
-                <div class="flex gap-2 items-center">
-                    <form hx-post="/api/recurring/{task.id}/complete"
-                          hx-target="#recurring-{task.id}"
-                          hx-swap="outerHTML"
-                          class="inline">
-                        <button type="submit" class="text-green-400 hover:text-green-300" title="Отметить выполненной">✅</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    """)
+    return HTMLResponse(f'<div id="recurring-{task.id}" class="hidden"></div>')
 
 
 @router.get("/for-date/{task_date}")

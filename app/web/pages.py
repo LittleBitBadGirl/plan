@@ -8,6 +8,7 @@ from app.db.database import async_session
 from app.models.task import Task
 from app.models.category import Category
 from app.models.recurring import RecurringTask
+from app.models.shopping import ShoppingItem
 from datetime import date, datetime
 from pathlib import Path
 import json
@@ -105,7 +106,7 @@ async def dashboard(request: Request):
                 if today.day == rt.start_date.day:
                     recurring_today.append(rt)
 
-        # Статистика
+        # Статистика - считаем все выполненные задачи на сегодня (включая из регулярных)
         completed_result = await db.execute(
             select(func.count(Task.id)).where(
                 Task.due_date == today,
@@ -113,6 +114,15 @@ async def dashboard(request: Request):
             )
         )
         completed = completed_result.scalar() or 0
+        
+        # Общее количество задач на сегодня (активные + выполненные)
+        total_tasks_result = await db.execute(
+            select(func.count(Task.id)).where(
+                Task.due_date == today,
+                Task.is_archived == False
+            )
+        )
+        total_tasks = total_tasks_result.scalar() or 0
 
         # Категории для формы
         cats_result = await db.execute(
@@ -132,7 +142,7 @@ async def dashboard(request: Request):
         "recurring_tasks": recurring_today,
         "categories": categories,
         "completed": completed,
-        "total": len(tasks) + completed,
+        "total": total_tasks,
         "today": today,
         "ai_warning": ai_warning,
     })
@@ -834,3 +844,104 @@ async def task_status_htmx(
         "request": request,
         "tasks": tasks,
     })
+
+
+# ---- Список покупок (Shopping List) ----
+
+@router.get("/shopping", response_class=HTMLResponse)
+async def shopping_page(request: Request):
+    """Страница списка покупок"""
+    async with async_session() as db:
+        result = await db.execute(
+            select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
+        )
+        items = list(result.scalars().all())
+        
+        total = len(items)
+        purchased = sum(1 for item in items if item.is_purchased)
+        remaining = total - purchased
+
+    return templates.TemplateResponse("shopping.html", {
+        "request": request,
+        "items": items,
+        "total": total,
+        "purchased": purchased,
+        "remaining": remaining,
+    })
+
+
+@router.post("/api/shopping/create", response_class=HTMLResponse)
+async def create_shopping_item(
+    request: Request,
+    title: str = Form(...),
+    quantity: str = Form(""),
+):
+    """Создать элемент списка покупок"""
+    async with async_session() as db:
+        item = ShoppingItem(
+            title=title,
+            quantity=quantity,
+        )
+        db.add(item)
+        await db.commit()
+        
+        # Перезагружаем весь список
+        result = await db.execute(
+            select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
+        )
+        items = list(result.scalars().all())
+        
+        total = len(items)
+        purchased = sum(1 for item in items if item.is_purchased)
+        remaining = total - purchased
+
+    # Возвращаем обновленный список и статистику
+    return templates.TemplateResponse("shopping.html", {
+        "request": request,
+        "items": items,
+        "total": total,
+        "purchased": purchased,
+        "remaining": remaining,
+    })
+
+
+@router.post("/api/shopping/{item_id}/toggle", response_class=HTMLResponse)
+async def toggle_shopping_item(request: Request, item_id: int):
+    """Переключить статус покупки"""
+    async with async_session() as db:
+        result = await db.execute(select(ShoppingItem).where(ShoppingItem.id == item_id))
+        item = result.scalar_one_or_none()
+        
+        if item:
+            item.is_purchased = not item.is_purchased
+            if item.is_purchased:
+                item.purchased_at = datetime.utcnow()
+            else:
+                item.purchased_at = None
+            await db.commit()
+            
+            # Возвращаем обновленную строку
+            return templates.TemplateResponse("shopping.html", {
+                "request": request,
+                "items": [item],
+                "total": 0,
+                "purchased": 0,
+                "remaining": 0,
+            })
+    
+    return HTMLResponse(content='<div class="hidden"></div>')
+
+
+@router.delete("/api/shopping/{item_id}", response_class=HTMLResponse)
+async def delete_shopping_item(request: Request, item_id: int):
+    """Удалить элемент списка покупок"""
+    async with async_session() as db:
+        result = await db.execute(select(ShoppingItem).where(ShoppingItem.id == item_id))
+        item = result.scalar_one_or_none()
+        
+        if item:
+            await db.delete(item)
+            await db.commit()
+    
+    # Возвращаем пустой div для удаления из DOM
+    return HTMLResponse(content=f'<div id="item-{item_id}" class="hidden"></div>')
