@@ -24,20 +24,6 @@ cd /Users/vera/Desktop/личные_доки/СLI/plan
 ./setup.sh
 ```
 
-### 2. Настройка
-
-Файл `.env` уже содержит токены. Если нужно изменить:
-
-```bash
-# Telegram Bot Token (получить у @BotFather)
-TELEGRAM_BOT_TOKEN=8391790244:AAGWnMQkhyXoA4aJ1XoYioo6iBfhDeigX9M
-
-# API Token для аутентификации
-API_TOKEN=ваш_токен
-
-# HuggingFace Token (опционально, для Qwen)
-HF_TOKEN=ваш_токен
-```
 
 ### 3. Запуск
 
