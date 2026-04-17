@@ -20,7 +20,7 @@
 ### 1. Установка зависимостей
 
 ```bash
-cd /Users/vera/Desktop/личные_доки/СLI/plan
+
 ./setup.sh
 ```
 
