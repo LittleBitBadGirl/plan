@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, Date, Time, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Boolean, Date, Time, DateTime, JSON, Table, ForeignKey
 from sqlalchemy.sql import func
 from app.models.base import Base
 
@@ -20,3 +20,14 @@ class RecurringTask(Base):
     is_active = Column(Boolean, default=True, index=True)
     completed_count = Column(Integer, default=0)  # сколько раз выполнена
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+# Таблица для хранения дат выполнения периодических задач
+recurring_completions = Table(
+    "recurring_completions",
+    Base.metadata,
+    Column("id", Integer, primary_key=True, index=True),
+    Column("recurring_task_id", Integer, ForeignKey("recurring_tasks.id"), nullable=False),
+    Column("completed_date", Date, nullable=False, index=True),
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+)
