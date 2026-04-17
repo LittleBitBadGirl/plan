@@ -100,6 +100,13 @@
                     <span class="mr-3">🗄️</span>
                     <span>Архив</span>
                 </a>
+
+                <a href="/shopping"
+                   class="flex items-center px-4 py-3 rounded-lg transition-colors
+                          {% if request.url.path == '/shopping' %}bg-accent text-white{% else %}text-gray-400 hover:bg-dark-700 hover:text-white{% endif %}">
+                    <span class="mr-3">🛒</span>
+                    <span>Покупки</span>
+                </a>
             </nav>
         </aside>
 

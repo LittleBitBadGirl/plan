@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Список покупок — Планировщик{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-white">🛒 Список покупок</h1>
+            <p class="text-gray-400 mt-1">Добавляй продукты и отмечай купленное</p>
+        </div>
+        <button onclick="document.getElementById('new-item-form').classList.toggle('hidden')"
+                class="px-6 py-3 bg-accent hover:bg-blue-600 text-white font-medium rounded-lg transition-colors flex items-center">
+            <span class="mr-2">+</span> Добавить продукт
+        </button>
+    </div>
+
+    <!-- Форма добавления -->
+    <div id="new-item-form" class="hidden mb-6 bg-dark-800 rounded-lg p-4 border border-dark-700">
+        <form hx-post="/api/shopping/create"
+              hx-target="#shopping-list"
+              hx-swap="innerHTML"
+              class="flex gap-3 items-end">
+            <div class="flex-1">
+                <label class="block text-xs text-gray-400 mb-1">Название</label>
+                <input type="text" name="title" placeholder="Молоко, хлеб..." required
+                       class="w-full bg-dark-900 border border-dark-700 rounded px-3 py-2 text-white focus:outline-none focus:border-purple-500">
+            </div>
+            <div class="w-32">
+                <label class="block text-xs text-gray-400 mb-1">Количество</label>
+                <input type="text" name="quantity" placeholder="2 шт, 500 г"
+                       class="w-full bg-dark-900 border border-dark-700 rounded px-3 py-2 text-white focus:outline-none focus:border-purple-500">
+            </div>
+            <button type="submit" class="px-4 py-2 bg-green-600 hover:bg-green-500 text-white font-medium rounded transition-colors">
+                Добавить
+            </button>
+        </form>
+    </div>
+
+    <!-- Статистика -->
+    <div class="mb-6 flex gap-4">
+        <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 flex-1">
+            <span class="text-gray-400">Всего:</span>
+            <span class="float-right font-bold text-white" id="total-count">{{ total }}</span>
+        </div>
+        <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 flex-1">
+            <span class="text-gray-400">Куплено:</span>
+            <span class="float-right font-bold text-green-400" id="purchased-count">{{ purchased }}</span>
+        </div>
+        <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 flex-1">
+            <span class="text-gray-400">Осталось купить:</span>
+            <span class="float-right font-bold text-yellow-400" id="remaining-count">{{ remaining }}</span>
+        </div>
+    </div>
+
+    <!-- Список покупок -->
+    <div id="shopping-list" class="space-y-3">
+        {% if items %}
+            {% for item in items %}
+            <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition flex items-center gap-3 {{ 'opacity-50' if item.is_purchased else '' }}" 
+                 id="item-{{ item.id }}">
+                <!-- Чекбокс выполнения -->
+                <form hx-post="/api/shopping/{{ item.id }}/toggle"
+                      hx-target="#item-{{ item.id }}"
+                      hx-swap="outerHTML"
+                      class="flex-shrink-0">
+                    <button type="submit" class="text-xl {{ 'text-green-400' if item.is_purchased else 'text-gray-600 hover:text-green-400' }}">
+                        {% if item.is_purchased %}✅{% else %}⬜{% endif %}
+                    </button>
+                </form>
+
+                <!-- Информация о продукте -->
+                <div class="flex-1">
+                    <span class="font-medium text-white {{ 'line-through text-gray-500' if item.is_purchased else '' }}">
+                        {{ item.title }}
+                    </span>
+                    {% if item.quantity %}
+                        <span class="text-sm text-gray-400 ml-2">({{ item.quantity }})</span>
+                    {% endif %}
+                </div>
+
+                <!-- Удаление -->
+                <form hx-delete="/api/shopping/{{ item.id }}"
+                      hx-target="#item-{{ item.id }}"
+                      hx-swap="outerHTML"
+                      class="flex-shrink-0">
+                    <button type="submit" class="text-red-400 hover:text-red-300" title="Удалить">🗑</button>
+                </form>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="text-center py-10 text-gray-500">
+                <p>Список покупок пуст 🛒</p>
+                <p class="text-sm mt-2">Нажми «Добавить продукт», чтобы создать список</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
