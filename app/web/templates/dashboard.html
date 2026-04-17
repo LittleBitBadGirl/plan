@@ -8,7 +8,7 @@
     <div class="flex items-center justify-between mb-8">
         <div>
             <h1 class="text-3xl font-bold text-white">Дашборд</h1>
-            <p class="text-gray-400 mt-1">Задачи на сегодня — {{ today }}</p>
+            <p class="text-gray-400 mt-1">Задачи на сегодня — {{ today.strftime('%d.%m.%Y') }}</p>
         </div>
         <a href="/tasks/new"
            class="px-6 py-3 bg-accent hover:bg-blue-600 text-white font-medium rounded-lg transition-colors flex items-center">
@@ -25,33 +25,167 @@
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div class="md:col-span-2">
-            <h2 class="text-xl font-bold mb-4">📋 Задачи на сегодня</h2>
-            {% if tasks %}
-            <div class="space-y-3">
-                {% for task in tasks %}
-                <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition">
+
+            <!-- Периодические задачи (если есть) -->
+            {% if recurring_tasks %}
+            <h2 class="text-xl font-bold mb-4">🔄 Периодические</h2>
+            <div class="space-y-3 mb-8">
+                {% for rt in recurring_tasks %}
+                <div class="bg-purple-900/20 rounded-lg p-4 border border-purple-700/50 hover:border-purple-500 transition" id="recurring-{{ rt.id }}">
                     <div class="flex justify-between items-start">
-                        <div>
-                            <h3 class="font-semibold">{{ task.title }}</h3>
-                            {% if task.category %}
-                            <span class="text-sm text-gray-400">{{ task.category.name }}</span>
-                            {% endif %}
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-purple-200">🔄 {{ rt.title }}</h3>
+                            <div class="flex items-center gap-2 mt-1">
+                                <span class="text-xs text-purple-400">
+                                    {% if rt.recurrence_type == 'daily' %}ежедневно
+                                    {% elif rt.recurrence_type == 'weekly' %}еженедельно
+                                    {% else %}ежемесячно{% endif %}
+                                </span>
+                                {% if rt.completed_count > 0 %}
+                                <span class="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">
+                                    ✅ выполнено {{ rt.completed_count }} раз
+                                </span>
+                                {% endif %}
+                            </div>
                         </div>
-                        <div class="flex gap-2">
-                            <button hx-post="/tasks/{{ task.id }}/complete"
-                                    hx-target="closest div"
-                                    hx-swap="outerHTML"
-                                    class="text-green-400 hover:text-green-300">✅</button>
-                            <button hx-post="/tasks/{{ task.id }}/backlog"
-                                    hx-target="closest div"
-                                    hx-swap="outerHTML"
-                                    class="text-yellow-400 hover:text-yellow-300">📥</button>
+                        <div class="flex gap-2 items-center">
+                            <form hx-post="/api/recurring/{{ rt.id }}/complete"
+                                  hx-target="#recurring-{{ rt.id }}"
+                                  hx-swap="outerHTML"
+                                  class="inline">
+                                <button type="submit" class="text-green-400 hover:text-green-300" title="Отметить выполненной">✅</button>
+                            </form>
                         </div>
                     </div>
                 </div>
                 {% endfor %}
             </div>
-            {% else %}
+            {% endif %}
+
+            <!-- Обычные задачи -->
+            <h2 class="text-xl font-bold mb-4">📋 Задачи на сегодня</h2>
+            {% if tasks %}
+            <div class="space-y-3">
+                {% for task in tasks %}
+                <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition" id="task-{{ task.id }}">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <h3 class="font-semibold">{{ task.title }}</h3>
+                            
+                            <!-- Единая строка с мета-информацией -->
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs">
+                                {% set current_subtasks = subtasks_map.get(task.id, []) %}
+                                
+                                <!-- Категория (с иерархией: Родитель → Подкатегория) -->
+                                {% if task.category %}
+                                    {% if task.category.parent %}
+                                        <span class="text-gray-500">{{ task.category.parent.name }}</span>
+                                        <span class="text-gray-600">→</span>
+                                        <span class="text-gray-300">{{ task.category.name }}</span>
+                                    {% else %}
+                                        <span class="text-gray-400">{{ task.category.name }}</span>
+                                    {% endif %}
+                                {% endif %}
+                                
+                                <!-- Пометки о переносах -->
+                                {% if task.postpones and task.postpones > 0 %}
+                                <span class="text-yellow-500/80 flex items-center gap-1" title="Перенесена {{ task.postpones }} раз(а)">
+                                    ⏱ ×{{ task.postpones }}
+                                </span>
+                                {% endif %}
+
+                                <!-- Кнопка Подзадач (всегда видна) -->
+                                <span onclick="document.getElementById('subtasks-{{ task.id }}').classList.toggle('hidden')"
+                                      class="text-purple-400 cursor-pointer hover:text-purple-300 font-medium transition-colors flex items-center gap-1"
+                                      title="Управление подзадачами">
+                                    📂 
+                                    {% if current_subtasks and current_subtasks|length > 0 %}
+                                        {% set done = current_subtasks | selectattr("status", "equalto", "выполнена") | list | length %}
+                                        {{ done }}/{{ current_subtasks|length }}
+                                    {% else %}
+                                        <span class="text-[10px] opacity-50">+</span>
+                                    {% endif %}
+                                </span>
+                            </div>
+
+                            <!-- Скрытый список подзадач -->
+                            <div id="subtasks-{{ task.id }}" class="hidden mt-2 pt-2 border-t border-dark-700/50">
+                                {% if current_subtasks and current_subtasks|length > 0 %}
+                                    <!-- Список -->
+                                    <div class="space-y-1 mb-2">
+                                        {% for sub in current_subtasks %}
+                                        <div class="flex items-center gap-2 text-sm {{ 'opacity-50 line-through text-gray-600' if sub.status == 'выполнена' else '' }}">
+                                            <form hx-post="/tasks/{{ sub.id }}/complete"
+                                                  hx-target="#subtask-{{ sub.id }}"
+                                                  hx-swap="outerHTML"
+                                                  class="inline">
+                                                <button type="submit" class="text-xs text-green-500 hover:text-green-400">✅</button>
+                                            </form>
+                                            <span id="subtask-{{ sub.id }}" class="flex-1 truncate text-gray-300">{{ sub.title }}</span>
+                                            <form hx-delete="/tasks/{{ sub.id }}/subtask"
+                                                  hx-target="#subtasks-{{ task.id }}"
+                                                  hx-swap="innerHTML"
+                                                  class="inline">
+                                                <button type="submit" class="text-xs text-red-400 hover:text-red-300">🗑</button>
+                                            </form>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+
+                                <!-- Форма добавления -->
+                                <form hx-post="/tasks/{{ task.id }}/subtasks"
+                                      hx-target="#subtasks-{{ task.id }}"
+                                      hx-swap="innerHTML"
+                                      class="mt-1">
+                                    <input type="text" name="title" placeholder="+ Добавить подзадачу..." required
+                                           class="w-full bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500/50">
+                                </form>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 items-center">
+                            <!-- ⚡️ На сегодня (скрыто, так как задача уже на сегодня) -->
+                            <!-- ✅ Выполнено -->
+                            <form hx-post="/tasks/{{ task.id }}/complete"
+                                  hx-target="#task-{{ task.id }}"
+                                  hx-swap="outerHTML"
+                                  class="inline">
+                                <button type="submit" class="text-green-400 hover:text-green-300">✅</button>
+                            </form>
+                            <!-- 📅 Перенос -->
+                            <div class="relative">
+                                <form hx-post="/tasks/{{ task.id }}/plan"
+                                      hx-target="#task-{{ task.id }}"
+                                      hx-swap="outerHTML"
+                                      class="flex items-center gap-1">
+                                    <input type="text"
+                                           name="due_date"
+                                           id="date-input-{{ task.id }}"
+                                           placeholder="ДД.ММ"
+                                           maxlength="5"
+                                           class="bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white hidden w-16"
+                                           onkeypress="if(event.key==='Enter'){event.preventDefault(); this.form.requestSubmit()}"
+                                    >
+                                    <button type="button"
+                                            onclick="document.getElementById('date-input-{{ task.id }}').classList.toggle('hidden'); document.getElementById('date-input-{{ task.id }}').focus()"
+                                            class="text-blue-400 hover:text-blue-300" title="Перенести на дату">
+                                        📅
+                                    </button>
+                                </form>
+                            </div>
+                            <!-- 📥 В бэклог -->
+                            <form hx-post="/tasks/{{ task.id }}/backlog"
+                                  hx-target="#task-{{ task.id }}"
+                                  hx-swap="outerHTML"
+                                  class="inline">
+                                <button type="submit" class="text-yellow-400 hover:text-yellow-300">📥</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% elif not recurring_tasks %}
             <div class="text-center py-10 text-gray-500">
                 <p>Нет задач на сегодня 🎉</p>
                 <a href="/backlog" class="text-purple-400 hover:text-purple-300 mt-2 inline-block">Перейти в бэклог →</a>
@@ -70,4 +204,5 @@
         </div>
     </div>
 </div>
+
 {% endblock %}

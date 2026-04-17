@@ -5,7 +5,7 @@ from app.models.task import Task
 
 
 @pytest.mark.asyncio
-async def test_create_task(db_session):
+async def test_create_task(db):
     """Тест создания задачи"""
     task = Task(
         title="Тестовая задача",
@@ -15,9 +15,9 @@ async def test_create_task(db_session):
         due_date=date(2026, 4, 5),
         source="web",
     )
-    db_session.add(task)
-    await db_session.flush()
-    await db_session.refresh(task)
+    db.add(task)
+    await db.flush()
+    await db.refresh(task)
 
     assert task.id is not None
     assert task.title == "Тестовая задача"
@@ -29,24 +29,24 @@ async def test_create_task(db_session):
 
 
 @pytest.mark.asyncio
-async def test_soft_delete_task(db_session):
+async def test_soft_delete_task(db):
     """Тест мягкого удаления (архивирования) задачи"""
     task = Task(
         title="Задача для удаления",
         status="новая",
         source="web",
     )
-    db_session.add(task)
-    await db_session.flush()
-    await db_session.refresh(task)
+    db.add(task)
+    await db.flush()
+    await db.refresh(task)
 
     task_id = task.id
     assert task.is_archived is False
 
     # Архивирование
     task.is_archived = True
-    await db_session.flush()
+    await db.flush()
 
     # Проверка что задача заархивирована
-    result = await db_session.get(Task, task_id)
+    result = await db.get(Task, task_id)
     assert result.is_archived is True

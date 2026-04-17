@@ -1,5 +1,6 @@
 from datetime import date
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.task import Task
 from app.db.database import async_session
@@ -8,10 +9,13 @@ from app.db.database import async_session
 async def _rollover_impl(db: AsyncSession):
     """Перенести просроченные задачи на сегодня"""
     today = date.today()
+    is_weekend = today.weekday() >= 5  # 5 = Суббота, 6 = Воскресенье
 
-    # Найти просроченные задачи (статус "новая" или "в_работе", due_date < сегодня)
+    # Найти просроченные задачи (с загрузкой категории для проверки)
     result = await db.execute(
-        select(Task).where(
+        select(Task)
+        .options(selectinload(Task.category))
+        .where(
             Task.status.in_(["новая", "в_работе"]),
             Task.due_date < today,
             Task.is_archived == False,
@@ -23,6 +27,10 @@ async def _rollover_impl(db: AsyncSession):
     chronic_count = 0
 
     for task in overdue_tasks:
+        # В выходные пропускаем рабочие задачи
+        if is_weekend and task.category and "Работа" in task.category.name:
+            continue
+
         # Увеличить счётчик переносов
         task.postpones += 1
         task.due_date = today

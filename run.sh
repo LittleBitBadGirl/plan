@@ -16,8 +16,11 @@ source .env
 set +a
 
 echo "🚀 Запуск планировщика задач..."
-echo "📱 Telegram бот: ${TELEGRAM_BOT_TOKEN:0:10}..."
 echo "🌐 Веб-интерфейс: http://localhost:8000"
+echo "📚 API Docs: http://localhost:8000/docs"
+echo "📂 Воркфлоу n8n: n8n-workflow.json"
+echo ""
+echo "⚠️  Telegram бот теперь через n8n (см. n8n-workflow.json)"
 echo ""
 
 # Запуск

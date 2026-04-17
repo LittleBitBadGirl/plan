@@ -20,11 +20,12 @@
                     <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Категория</th>
                     <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Статус</th>
                     <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Дата выполнения</th>
+                    <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Действия</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-dark-600">
                 {% for task in tasks %}
-                <tr class="table-row hover:bg-dark-700/50 opacity-70">
+                <tr id="archive-task-{{ task.id }}" class="table-row hover:bg-dark-700/50 opacity-70">
                     <td class="px-6 py-4">
                         <span class="text-gray-400 line-through">{{ task.title }}</span>
                     </td>
@@ -39,31 +40,43 @@
                     <td class="px-6 py-4 text-gray-500">
                         {% if task.completed_at %}{{ task.completed_at.strftime('%d.%m.%Y %H:%M') }}{% else %}—{% endif %}
                     </td>
+                    <td class="px-6 py-4">
+                        <button hx-post="/archive/{{ task.id }}/restore"
+                                hx-target="#archive-task-{{ task.id }}"
+                                hx-swap="outerHTML"
+                                class="px-3 py-1 bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500/30 transition-colors text-sm"
+                                title="Восстановить задачу">
+                            ↩️ Вернуть
+                        </button>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
 
         <!-- Pagination -->
+        {% if total > limit %}
         <div class="px-6 py-4 bg-dark-700 border-t border-dark-600 flex items-center justify-between">
             <span class="text-sm text-gray-400">
-                Показано {{ tasks|length }} из {{ total }}
+                Страница {{ page }} из {{ (total // limit) + 1 }} (всего {{ total }} задач)
             </span>
             <div class="flex items-center space-x-2">
                 {% if has_prev %}
-                <a href="?offset={{ prev_offset }}&limit={{ limit }}"
-                   class="pagination-btn px-4 py-2 rounded-lg text-gray-400 hover:text-white">
+                <a href="?page={{ prev_page }}&limit={{ limit }}"
+                   class="pagination-btn px-4 py-2 rounded-lg text-gray-400 hover:text-white bg-dark-600 hover:bg-dark-500 transition-colors">
                     ← Назад
                 </a>
                 {% endif %}
+                <span class="text-sm text-gray-500">{{ page }}</span>
                 {% if has_next %}
-                <a href="?offset={{ next_offset }}&limit={{ limit }}"
-                   class="pagination-btn px-4 py-2 rounded-lg text-gray-400 hover:text-white">
+                <a href="?page={{ next_page }}&limit={{ limit }}"
+                   class="pagination-btn px-4 py-2 rounded-lg text-gray-400 hover:text-white bg-dark-600 hover:bg-dark-500 transition-colors">
                     Далее →
                 </a>
                 {% endif %}
             </div>
         </div>
+        {% endif %}
         {% else %}
         <div class="text-center py-16 text-gray-500">
             <span class="text-4xl mb-4 block">🗄️</span>

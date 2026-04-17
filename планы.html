@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Планы Полины</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 800px; margin: 0 auto; }
+        .paper {
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        .header { padding: 48px 56px 32px; border-bottom: 1px solid #e5e5e5; }
+        .header-top { font-size: 13px; color: #6b7280; margin-bottom: 16px; letter-spacing: 0.5px; }
+        .header-title {
+            font-size: 42px; font-weight: 700; color: #1a1a1a;
+            line-height: 1.1; letter-spacing: -1px; margin-bottom: 12px;
+        }
+        .header-subtitle { font-size: 16px; color: #6b7280; line-height: 1.5; }
+        .stats-row { display: flex; gap: 48px; margin-top: 24px; padding-top: 24px; border-top: 1px solid #f0f0f0; }
+        .stat-item { text-align: center; }
+        .stat-value { font-size: 32px; font-weight: 700; color: #1a1a1a; line-height: 1; }
+        .stat-label { font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; margin-top: 6px; }
+
+        /* Main Tabs */
+        .main-tabs { display: flex; border-bottom: 2px solid #e5e5e5; }
+        .main-tab {
+            flex: 1; padding: 16px; text-align: center; font-size: 14px; font-weight: 600;
+            color: #9ca3af; cursor: pointer; border: none; background: none; transition: all 0.2s; position: relative;
+        }
+        .main-tab:hover { color: #1a1a1a; }
+        .main-tab.active { color: #1a1a1a; }
+        .main-tab.active::after {
+            content: ''; position: absolute; bottom: -2px; left: 0; right: 0; height: 2px; background: #1a1a1a;
+        }
+        .main-tab .tab-count {
+            display: inline-block; background: #e5e5e5; color: #6b7280; font-size: 11px;
+            padding: 2px 8px; border-radius: 10px; margin-left: 6px;
+        }
+        .main-tab.active .tab-count { background: #1a1a1a; color: white; }
+
+        /* Time Filters */
+        .time-filters { display: flex; gap: 8px; padding: 24px 56px; border-bottom: 1px solid #f0f0f0; flex-wrap: wrap; }
+        .time-btn {
+            padding: 8px 20px; border: 1px solid #e5e5e5; background: white; border-radius: 20px;
+            font-size: 13px; color: #6b7280; cursor: pointer; transition: all 0.2s; font-weight: 500;
+        }
+        .time-btn:hover { border-color: #1a1a1a; color: #1a1a1a; }
+        .time-btn.active { background: #1a1a1a; border-color: #1a1a1a; color: white; }
+
+        /* Task List */
+        .content { padding: 24px 56px 40px; }
+        .task-list { list-style: none; }
+        .task-item {
+            display: flex; gap: 16px; padding: 14px 0; border-bottom: 1px solid #f0f0f0;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .task-item:hover { background: #fafafa; margin: 0 -56px; padding-left: 56px; padding-right: 56px; }
+        .task-item:hover .delete-btn { opacity: 1; }
+        .task-item:hover .move-btn { opacity: 1; }
+        .task-number { font-size: 14px; font-weight: 600; color: #9ca3af; min-width: 24px; padding-top: 2px; }
+        .task-body { flex: 1; }
+        .task-name { font-size: 17px; font-weight: 500; color: #1a1a1a; margin-bottom: 6px; line-height: 1.4; }
+        .task-meta { display: flex; gap: 8px; align-items: center; }
+        .task-tag { font-size: 10px; padding: 3px 8px; border-radius: 4px; font-weight: 600; text-transform: uppercase; }
+        .tag-p0 { background: #fee2e2; color: #dc2626; }
+        .tag-p1 { background: #fef3c7; color: #d97706; }
+        .tag-p2 { background: #dbeafe; color: #2563eb; }
+        .task-progress { font-size: 12px; color: #9ca3af; }
+        .task-check {
+            width: 22px; height: 22px; border: 2px solid #e5e5e5; border-radius: 50%; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center; transition: all 0.2s; margin-top: 2px;
+        }
+        .task-check::after { content: '✓'; color: white; font-size: 13px; font-weight: 600; display: none; }
+        .task-item.completed .task-check { background: #1a1a1a; border-color: #1a1a1a; }
+        .task-item.completed .task-check::after { display: block; }
+        .task-item.completed .task-name { text-decoration: line-through; opacity: 0.5; }
+        .delete-btn {
+            opacity: 0; background: none; border: none; color: #ef4444; cursor: pointer;
+            font-size: 16px; padding: 4px 8px; border-radius: 4px; transition: all 0.2s; flex-shrink: 0;
+        }
+        .delete-btn:hover { background: #fee2e2; opacity: 1 !important; }
+        .move-btn {
+            opacity: 0; background: none; border: 1px solid #e5e5e5; color: #9ca3af; cursor: pointer;
+            font-size: 14px; padding: 2px 8px; border-radius: 4px; transition: all 0.2s; flex-shrink: 0;
+        }
+        .move-btn:hover { border-color: #1a1a1a; color: #1a1a1a; }
+
+        .actions { display: flex; gap: 12px; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e5e5e5; flex-wrap: wrap; }
+        .btn {
+            padding: 10px 18px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer;
+            transition: all 0.2s; border: 1px solid #e5e5e5; background: white; color: #1a1a1a;
+        }
+        .btn:hover { border-color: #1a1a1a; }
+        .btn-primary { background: #1a1a1a; border-color: #1a1a1a; color: white; }
+        .btn-primary:hover { background: #333; }
+
+        /* Progress Tab */
+        .progress-tab { display: none; padding: 32px 56px; }
+        .progress-tab.active { display: block; }
+        .progress-section-title { font-size: 13px; color: #9ca3af; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 16px; }
+
+        .progress-card {
+            background: #fafafa; border-radius: 10px; padding: 20px; margin-bottom: 16px;
+        }
+        .progress-card-header {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
+        }
+        .progress-card-title { font-size: 15px; font-weight: 600; color: #1a1a1a; }
+        .progress-card-value { font-size: 14px; color: #6b7280; font-weight: 500; }
+
+        /* Tick Marks Progress Bar */
+        .tick-bar { display: flex; gap: 3px; margin-bottom: 8px; }
+        .tick {
+            flex: 1; height: 28px; border-radius: 3px; background: #e5e5e5;
+            transition: background 0.3s ease; position: relative;
+        }
+        .tick.filled { background: #10b981; }
+        .tick.filled.purple { background: #8b5cf6; }
+        .tick.filled.blue { background: #3b82f6; }
+        .tick.filled.amber { background: #f59e0b; }
+        .tick.filled.rose { background: #ec4899; }
+        .tick.filled.red { background: #ef4444; }
+        .tick.filled.cyan { background: #06b6d4; }
+
+        .tick-labels { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        .tick-label { font-size: 10px; color: #9ca3af; }
+        .tick-subtitle { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+
+        /* Consultation Log */
+        .consultation-log { margin-top: 12px; }
+        .consultation-entry {
+            display: flex; align-items: center; gap: 8px; padding: 8px 0;
+            border-bottom: 1px solid #e5e5e5; font-size: 13px;
+        }
+        .consultation-entry:last-child { border-bottom: none; }
+        .consultation-day { font-weight: 600; color: #1a1a1a; min-width: 36px; }
+        .consultation-client { color: #6b7280; flex: 1; }
+        .consultation-amount { color: #10b981; font-weight: 600; }
+        .consultation-remove {
+            background: none; border: none; color: #ef4444; cursor: pointer;
+            font-size: 14px; padding: 2px 6px; border-radius: 4px;
+        }
+        .consultation-remove:hover { background: #fee2e2; }
+
+        .week-summary {
+            background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;
+            padding: 12px 16px; margin-top: 12px; font-size: 13px;
+        }
+        .week-summary .total { font-weight: 700; color: #166534; font-size: 16px; }
+        .week-summary .tax { color: #d97706; font-weight: 600; }
+
+        /* Orders Grid */
+        .orders-grid { display: grid; gap: 12px; }
+        .order-card {
+            background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 14px;
+        }
+        .order-name { font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px; }
+        .order-status { font-size: 12px; color: #6b7280; margin-bottom: 8px; }
+        .order-stages { display: flex; gap: 3px; flex-wrap: wrap; }
+        .order-stage {
+            flex: 1; min-width: 40px; height: 22px; border-radius: 3px; background: #e5e5e5;
+            display: flex; align-items: center; justify-content: center; font-size: 9px;
+            color: #9ca3af; font-weight: 500; cursor: pointer; transition: all 0.2s;
+        }
+        .order-stage.done { background: #10b981; color: white; }
+
+        /* Body Metrics */
+        .metrics-row { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; }
+        .metric-item { flex: 1; min-width: 120px; background: #fff; border-radius: 8px; padding: 12px; text-align: center; }
+        .metric-label { font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; }
+        .metric-value { font-size: 24px; font-weight: 700; color: #1a1a1a; margin: 4px 0; }
+        .metric-goal { font-size: 11px; color: #10b981; }
+
+        /* Self-care checklist */
+        .selfcare-item {
+            display: flex; align-items: center; gap: 10px; padding: 10px 0;
+            border-bottom: 1px solid #f0f0f0; cursor: pointer;
+        }
+        .selfcare-item:last-child { border-bottom: none; }
+        .selfcare-check {
+            width: 20px; height: 20px; border: 2px solid #e5e5e5; border-radius: 4px;
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+        .selfcare-item.checked .selfcare-check { background: #f59e0b; border-color: #f59e0b; }
+        .selfcare-item.checked .selfcare-check::after { content: '✓'; color: white; font-size: 12px; font-weight: 600; }
+        .selfcare-item.checked .selfcare-name { text-decoration: line-through; opacity: 0.5; }
+        .selfcare-name { font-size: 15px; color: #1a1a1a; }
+        .selfcare-note { font-size: 11px; color: #9ca3af; }
+
+        /* Streak */
+        .streak-display { text-align: center; padding: 16px; }
+        .streak-number { font-size: 48px; font-weight: 700; color: #ef4444; line-height: 1; }
+        .streak-label { font-size: 13px; color: #6b7280; margin-top: 4px; }
+
+        /* Toast */
+        .toast {
+            position: fixed; bottom: 24px; right: 24px; background: #1a1a1a; color: white;
+            padding: 14px 24px; border-radius: 6px; font-size: 14px; font-weight: 500;
+            transform: translateY(100px); opacity: 0; transition: all 0.3s; z-index: 1000;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+
+        @media (max-width: 700px) {
+            .header { padding: 36px 24px 24px; }
+            .time-filters { padding: 16px 24px; }
+            .content { padding: 24px; }
+            .progress-tab { padding: 24px; }
+            .header-title { font-size: 32px; }
+            .stats-row { gap: 24px; }
+            .task-item:hover { margin: 0 -24px; padding-left: 24px; padding-right: 24px; }
+            .metrics-row { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="paper">
+        <div class="header">
+            <div class="header-top">неделя 14–20 апреля 2026</div>
+            <h1 class="header-title">ТЫ УЖЕ МНОГОЕ<br>СДЕЛАЛА.<br>ПРОСТО ЗАБЫЛА.</h1>
+            <p class="header-subtitle">здесь видно и то, что впереди, и то, что уже позади</p>
+            <div class="stats-row">
+                <div class="stat-item"><div class="stat-value" id="statTotal">0</div><div class="stat-label">Всего</div></div>
+                <div class="stat-item"><div class="stat-value" id="statDone">0</div><div class="stat-label">Готово</div></div>
+                <div class="stat-item"><div class="stat-value" id="statTodo">0</div><div class="stat-label">Осталось</div></div>
+                <div class="stat-item"><div class="stat-value" id="statProgress">0%</div><div class="stat-label">Прогресс</div></div>
+            </div>
+        </div>
+
+        <div class="main-tabs">
+            <button class="main-tab active" id="tabTasks" onclick="switchTab('tasks')">Задачи <span class="tab-count" id="taskCount">0</span></button>
+            <button class="main-tab" id="tabProgress" onclick="switchTab('progress')">Прогресс <span class="tab-count" id="progressCount">0</span></button>
+        </div>
+
+        <!-- TASKS TAB -->
+        <div id="tasksTab">
+            <div class="time-filters" id="timeFilters">
+                <button class="time-btn active" onclick="filterSlot(null, this)">Все</button>
+                <button class="time-btn" onclick="filterSlot('Сегодня', this)">Сегодня</button>
+                <button class="time-btn" onclick="filterSlot('Завтра', this)">Завтра</button>
+                <button class="time-btn" onclick="filterSlot('На неделе', this)">На неделе</button>
+            </div>
+            <div class="content">
+                <ul class="task-list" id="taskList"></ul>
+                <div class="actions">
+                    <button class="btn btn-primary" onclick="addTask()">+ Задача</button>
+                    <button class="btn" onclick="exportData()">📤 Экспорт</button>
+                    <button class="btn" onclick="hardReset()" style="color:#dc2626;border-color:#fee2e2;">⚠ Сброс</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PROGRESS TAB -->
+        <div class="progress-tab" id="progressTab">
+
+            <!-- 1. Консультации -->
+            <div class="progress-card">
+                <div class="progress-card-header">
+                    <span class="progress-card-title">💰 Консультации (на этой неделе)</span>
+                    <span class="progress-card-value" id="consultCount">0</span>
+                </div>
+                <div class="tick-bar" id="consultTicks"></div>
+                <div class="tick-labels">
+                    <span class="tick-label">Пн</span><span class="tick-label">Вт</span>
+                    <span class="tick-label">Ср</span><span class="tick-label">Чт</span>
+                    <span class="tick-label">Пт</span><span class="tick-label">Сб</span>
+                    <span class="tick-label">Вс</span>
+                </div>
+                <div class="consultation-log" id="consultLog"></div>
+                <div class="week-summary" id="weekSummary">
+                    <div>Доход за неделю: <span class="total" id="weekIncome">0 ₽</span></div>
+                    <div>Налог 4%: <span class="tax" id="weekTax">0 ₽</span></div>
+                </div>
+                <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                    <button class="btn" onclick="addConsult('Элина',2500)" style="font-size:12px;padding:8px 14px">+ Элина 2500</button>
+                    <button class="btn" onclick="addConsult('Юлия',3000)" style="font-size:12px;padding:8px 14px">+ Юлия 3000</button>
+                    <button class="btn" onclick="addConsult('Денис',3000)" style="font-size:12px;padding:8px 14px">+ Денис 3000</button>
+                    <button class="btn" onclick="addConsult('Елена',2500)" style="font-size:12px;padding:8px 14px">+ Елена 2500</button>
+                    <button class="btn" onclick="addConsult('Александра',3000)" style="font-size:12px;padding:8px 14px">+ Александра 3000</button>
+                    <button class="btn" onclick="addConsultCustom()" style="font-size:12px;padding:8px 14px">+ Другая</button>
+                </div>
+            </div>
+
+            <!-- 2. Тело -->
+            <div class="progress-card">
+                <div class="progress-card-header">
+                    <span class="progress-card-title">🏋️‍♀️ Тело</span>
+                    <span class="progress-card-value" id="streakValue">0 дней</span>
+                </div>
+                <div class="streak-display">
+                    <div class="streak-number" id="streakNum">0</div>
+                    <div class="streak-label">дней зарядки подряд</div>
+                </div>
+                <div class="metrics-row">
+                    <div class="metric-item">
+                        <div class="metric-label">Вес</div>
+                        <div class="metric-value" id="metricWeight">53.8</div>
+                        <div class="metric-goal">кг</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Талия</div>
+                        <div class="metric-value" id="metricWaist">67</div>
+                        <div class="metric-goal">см</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Бёдра</div>
+                        <div class="metric-value" id="metricHips">93</div>
+                        <div class="metric-goal">см</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Грудь</div>
+                        <div class="metric-value" id="metricChest">85</div>
+                        <div class="metric-goal">см</div>
+                    </div>
+                </div>
+                <div class="tick-subtitle" style="margin-top:12px">Замеры от 22.03.2026 · Следующие — пятница 18.04</div>
+                <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                    <button class="btn" onclick="updateStreak(1)" style="font-size:12px;padding:8px 14px">✅ Зарядка сегодня</button>
+                    <button class="btn" onclick="updateStreak(-1)" style="font-size:12px;padding:8px 14px">↩ Пропуск</button>
+                    <button class="btn" onclick="updateMetrics()" style="font-size:12px;padding:8px 14px">📏 Обновить замеры</button>
+                </div>
+            </div>
+
+            <!-- 3. Заказы -->
+            <div class="progress-card">
+                <div class="progress-card-header">
+                    <span class="progress-card-title">📝 Заказы</span>
+                    <span class="progress-card-value" id="ordersValue">0/0</span>
+                </div>
+                <div class="orders-grid" id="ordersGrid"></div>
+            </div>
+
+            <!-- 4. Учёба -->
+            <div class="progress-card">
+                <div class="progress-card-header">
+                    <span class="progress-card-title">🎓 Учёба</span>
+                </div>
+                <div style="margin-bottom:16px">
+                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">Фрейд — Том 1 (35 лекций)</div>
+                    <div class="tick-bar" id="freudTicks"></div>
+                    <div class="tick-labels">
+                        <span class="tick-label">Л1</span><span class="tick-label">Л5</span>
+                        <span class="tick-label">Л10</span><span class="tick-label">Л15</span>
+                        <span class="tick-label">Л20</span><span class="tick-label">Л25</span>
+                        <span class="tick-label">Л30</span><span class="tick-label">Л35</span>
+                    </div>
+                    <div class="tick-subtitle" id="freudSubtitle">Прочитано: 0 лекций</div>
+                    <div style="margin-top:8px;display:flex;gap:8px">
+                        <button class="btn" onclick="updateFreud(1)" style="font-size:12px;padding:6px 12px">+1 лекция</button>
+                        <button class="btn" onclick="updateFreud(-1)" style="font-size:12px;padding:6px 12px">↩ Назад</button>
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">Мак-Вильямс (видео)</div>
+                    <div class="tick-bar" id="nancyTicks"></div>
+                    <div class="tick-labels">
+                        <span class="tick-label">В1</span><span class="tick-label">В2</span>
+                        <span class="tick-label">В3</span><span class="tick-label">В4</span>
+                        <span class="tick-label">В5</span><span class="tick-label">В6</span>
+                    </div>
+                    <div class="tick-subtitle" id="nancySubtitle">Просмотрено: 0 из 6</div>
+                    <div style="margin-top:8px;display:flex;gap:8px">
+                        <button class="btn" onclick="updateNancy(1)" style="font-size:12px;padding:6px 12px">+1 видео</button>
+                        <button class="btn" onclick="updateNancy(-1)" style="font-size:12px;padding:6px 12px">↩ Назад</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5. Налоги -->
+            <div class="progress-card">
+                <div class="progress-card-header">
+                    <span class="progress-card-title">📊 Налоги</span>
+                    <span class="progress-card-value" id="taxValue">Рассчитываю</span>
+                </div>
+                <div class="tick-bar" id="taxTicks"></div>
+                <div class="tick-labels" id="taxLabels">
+                    <span class="tick-label">Янв</span><span class="tick-label">Фев</span>
+                    <span class="tick-label">Мар</span><span class="tick-label">Апр</span>
+                    <span class="tick-label">Май</span><span class="tick-label">Июн</span>
+                </div>
+                <div class="tick-subtitle" id="taxSubtitle">Нажми на деление, чтобы отметить оплату</div>
+                <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                    <button class="btn" onclick="calcTax()" style="font-size:12px;padding:8px 14px">🧮 Рассчитать налог</button>
+                    <button class="btn" onclick="resetTax()" style="font-size:12px;padding:8px 14px">↺ Сбросить</button>
+                </div>
+            </div>
+
+            <!-- 6. Для себя -->
+            <div class="progress-card">
+                <div class="progress-card-header">
+                    <span class="progress-card-title">✨ Для себя</span>
+                    <span class="progress-card-value" id="selfcareValue">0/0</span>
+                </div>
+                <div id="selfcareList"></div>
+            </div>
+
+            <!-- 7. Контент -->
+            <div class="progress-card">
+                <div class="progress-card-header">
+                    <span class="progress-card-title">📱 Контент (эта неделя)</span>
+                    <span class="progress-card-value" id="contentValue">0</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                    <div>
+                        <div style="font-size:13px;font-weight:600;margin-bottom:6px">Посты ТГ</div>
+                        <div class="tick-bar" id="tgTicks"></div>
+                        <div style="display:flex;gap:6px;margin-top:6px">
+                            <button class="btn" onclick="updateContent('tg',1)" style="font-size:11px;padding:4px 10px">+1</button>
+                            <button class="btn" onclick="updateContent('tg',-1)" style="font-size:11px;padding:4px 10px">-1</button>
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size:13px;font-weight:600;margin-bottom:6px">Рилсы</div>
+                        <div class="tick-bar" id="reelsTicks"></div>
+                        <div style="display:flex;gap:6px;margin-top:6px">
+                            <button class="btn" onclick="updateContent('reels',1)" style="font-size:11px;padding:4px 10px">+1</button>
+                            <button class="btn" onclick="updateContent('reels',-1)" style="font-size:11px;padding:4px 10px">-1</button>
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size:13px;font-weight:600;margin-bottom:6px">Сторис</div>
+                        <div class="tick-bar" id="storiesTicks"></div>
+                        <div style="display:flex;gap:6px;margin-top:6px">
+                            <button class="btn" onclick="updateContent('stories',1)" style="font-size:11px;padding:4px 10px">+1</button>
+                            <button class="btn" onclick="updateContent('stories',-1)" style="font-size:11px;padding:4px 10px">-1</button>
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size:13px;font-weight:600;margin-bottom:6px">Тредс</div>
+                        <div class="tick-bar" id="threadsTicks"></div>
+                        <div style="display:flex;gap:6px;margin-top:6px">
+                            <button class="btn" onclick="updateContent('threads',1)" style="font-size:11px;padding:4px 10px">+1</button>
+                            <button class="btn" onclick="updateContent('threads',-1)" style="font-size:11px;padding:4px 10px">-1</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="tick-subtitle" style="margin-top:8px" id="contentSubtitle">Всего единиц контента: 0</div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let tasks = [];
+let selectedTimeSlot = null;
+
+// Progress State
+let state = {
+    consultations: [],  // {name, amount, day}
+    streak: 0,
+    metrics: { weight: 53.75, waist: 67, hips: 93, chest: 85 },
+    freudLectures: 0,
+    nancyVideos: 0,
+    orders: {
+        yulia: { stages: ['Введение','Глава 1','Глава 2','Заключение','Список лит.','Приложения'], done: [true,true,true,true,false,false], name: 'Юлия — диплом' },
+        nadezhda: { stages: ['Введение','Глава 1 (перераб.)','Глава 2','Глава 3','Заключение','Список лит.','Приложения'], done: [true,false,false,false,false,false,false], name: 'Надежда — ВКР' },
+        daria: { stages: ['Введение','Глава 1','Глава 2','Заключение','Список лит.'], done: [false,false,false,false,false], name: 'Дарья — диплом (новый)' },
+        zarina: { stages: ['Эссе 1','Эссе 2','Эссе 3','Эссе 4','Эссе 5','Эссе 6','Эссе 7'], done: [false,false,false,false,false,false,false], name: 'Зарина — 7 эссе' }
+    },
+    selfcare: [
+        { name: 'Забрать телефон', note: 'вторник', checked: false },
+        { name: 'Записаться на танцы', note: 'эта/след. неделя', checked: false },
+        { name: 'Косметолог', note: 'май', checked: false },
+        { name: 'Гиря — заниматься', note: 'каждое утро', checked: true }
+    ],
+    content: { tg: 0, reels: 0, stories: 0, threads: 0 },
+    contentTarget: { tg: 4, reels: 5, stories: 7, threads: 5 },
+    taxPaid: [false,false,false,false,false,false], // Янв-Июн
+    weekStart: null // Monday of current week
+};
+
+function getWeekStart() {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(now.setDate(diff)).toISOString().slice(0,10);
+}
+
+function loadState() {
+    const saved = localStorage.getItem('polinaPlannerV5');
+    const savedTasks = localStorage.getItem('polinaPlannerTasksV5');
+    if (saved) {
+        state = JSON.parse(saved);
+    }
+    if (savedTasks) tasks = JSON.parse(savedTasks);
+
+    // Weekly reset check
+    const currentWeekStart = getWeekStart();
+    if (state.weekStart && state.weekStart !== currentWeekStart) {
+        state.consultations = [];
+        state.content = { tg: 0, reels: 0, stories: 0, threads: 0 };
+        state.weekStart = currentWeekStart;
+    }
+    if (!state.weekStart) state.weekStart = currentWeekStart;
+
+    if (tasks.length === 0) loadDefaultTasks();
+    render();
+}
+
+function saveState() {
+    localStorage.setItem('polinaPlannerV5', JSON.stringify(state));
+    localStorage.setItem('polinaPlannerTasksV5', JSON.stringify(tasks));
+}
+
+function loadDefaultTasks() {
+    tasks = [
+        // ═══ Сегодня (14 апр, Пн) ═══
+        { id: 1, name: 'Налоги — проверить и провести операции', priority: 'p0', progress: 'Мой налог', timeSlot: 'Сегодня', completed: false },
+        { id: 2, name: 'Посты в ТГ (2)', priority: 'p1', progress: '', timeSlot: 'Сегодня', completed: false },
+        { id: 3, name: 'Зарина — эссе 1', priority: 'p0', progress: 'из 7', timeSlot: 'Сегодня', completed: false },
+        { id: 4, name: 'Зарина — эссе 2', priority: 'p0', progress: 'из 7', timeSlot: 'Сегодня', completed: false },
+        { id: 5, name: 'Зарина — эссе 3', priority: 'p0', progress: 'из 7', timeSlot: 'Сегодня', completed: false },
+        { id: 6, name: 'Гиря — махи 50 + зарядка', priority: 'p1', progress: 'каждое утро', timeSlot: 'Сегодня', completed: false },
+
+        // ═══ Завтра (15 апр, Вт) ═══
+        { id: 7, name: 'Зарина — эссе 4', priority: 'p0', progress: 'из 7', timeSlot: 'Завтра', completed: false },
+        { id: 8, name: 'Зарина — эссе 5', priority: 'p0', progress: 'из 7', timeSlot: 'Завтра', completed: false },
+        { id: 9, name: 'Телефон — забрать', priority: 'p0', progress: 'вторник', timeSlot: 'Завтра', completed: false },
+        { id: 10, name: 'Надежда — переработать главу 1', priority: 'p0', progress: 'ВКР', timeSlot: 'Завтра', completed: false },
+
+        // ═══ На неделе ═══
+        { id: 11, name: 'Зарина — эссе 6', priority: 'p1', progress: 'из 7', timeSlot: 'На неделе', completed: false },
+        { id: 12, name: 'Зарина — эссе 7', priority: 'p1', progress: 'из 7', timeSlot: 'На неделе', completed: false },
+        { id: 13, name: 'Юлия — доделать диплом (замечания)', priority: 'p0', progress: '', timeSlot: 'На неделе', completed: false },
+        { id: 14, name: 'Дарья — диплом (начать)', priority: 'p1', progress: 'новый заказ', timeSlot: 'На неделе', completed: false },
+        { id: 15, name: 'Фрейд — Лекция 2', priority: 'p0', progress: 'только одна!', timeSlot: 'На неделе', completed: false },
+        { id: 16, name: 'Посты в ТГ (ещё 2)', priority: 'p2', progress: '', timeSlot: 'На неделе', completed: false },
+        { id: 17, name: 'Снять рилс', priority: 'p1', progress: 'если есть ресурс', timeSlot: 'На неделе', completed: false },
+        { id: 18, name: 'Записаться на танцы', priority: 'p1', progress: 'эта или след. неделя', timeSlot: 'На неделе', completed: false },
+        { id: 19, name: 'Подготовить актуальные "Стыд"', priority: 'p2', progress: '', timeSlot: 'На неделе', completed: false },
+
+        // ═══ Консультации ═══
+        { id: 20, name: 'Элина — консультация (чт 9:00)', priority: 'p0', progress: 'четверг', timeSlot: 'На неделе', completed: false },
+        { id: 21, name: 'Юлия — консультация (сб 10:00)', priority: 'p0', progress: 'суббота', timeSlot: 'На неделе', completed: false },
+        { id: 22, name: 'Денис — консультация (сб 15:00)', priority: 'p0', progress: 'суббота', timeSlot: 'На неделе', completed: false },
+        { id: 23, name: 'Елена (Гриша) — консультация (сб 18:00)', priority: 'p0', progress: 'суббота', timeSlot: 'На неделе', completed: false },
+        { id: 24, name: 'Александра — консультация (вс 10:30)', priority: 'p0', progress: 'воскресенье', timeSlot: 'На неделе', completed: false },
+    ];
+}
+
+function render() {
+    renderTasks();
+    renderConsultations();
+    renderOrders();
+    renderFreud();
+    renderNancy();
+    renderSelfcare();
+    renderContent();
+    renderTax();
+    renderBody();
+    updateStats();
+}
+
+function updateStats() {
+    const total = tasks.length;
+    const done = tasks.filter(t => t.completed).length;
+    const todo = total - done;
+    const progress = total > 0 ? Math.round((done / total) * 100) : 0;
+    document.getElementById('statTotal').textContent = total;
+    document.getElementById('statDone').textContent = done;
+    document.getElementById('statTodo').textContent = todo;
+    document.getElementById('statProgress').textContent = progress + '%';
+    document.getElementById('taskCount').textContent = tasks.filter(t => !t.completed).length;
+    document.getElementById('progressCount').textContent = done;
+}
+
+function renderTasks() {
+    const container = document.getElementById('taskList');
+    let filtered = [...tasks];
+    if (selectedTimeSlot) filtered = filtered.filter(t => t.timeSlot === selectedTimeSlot);
+    filtered.sort((a, b) => {
+        if (a.completed !== b.completed) return a.completed - b.completed;
+        const s = { 'Сегодня': 0, 'Завтра': 1, 'На неделе': 2 };
+        return (s[a.timeSlot] ?? 99) - (s[b.timeSlot] ?? 99);
+    });
+    if (filtered.length === 0) {
+        container.innerHTML = '<li style="text-align:center;padding:40px;color:#9ca3af">Нет задач</li>';
+        return;
+    }
+    container.innerHTML = filtered.map((t, i) => `
+        <li class="task-item ${t.completed ? 'completed' : ''}" onclick="toggleTask(${t.id})">
+            <div class="task-number">${i+1}/</div>
+            <div class="task-check"></div>
+            <div class="task-body">
+                <div class="task-name">${t.name}</div>
+                <div class="task-meta">
+                    <span class="task-tag ${t.priority}">${t.priority}</span>
+                    ${t.progress ? `<span class="task-progress">${t.progress}</span>` : ''}
+                    <span class="task-progress" style="margin-left:auto;font-size:11px;color:#9ca3af">${t.timeSlot}</span>
+                    <button class="move-btn" onclick="event.stopPropagation();cycleSlot(${t.id})">→</button>
+                </div>
+            </div>
+            <button class="delete-btn" onclick="event.stopPropagation();deleteTask(${t.id})">✕</button>
+        </li>
+    `).join('');
+}
+
+function toggleTask(id) {
+    const t = tasks.find(x => x.id === id);
+    if (t) { t.completed = !t.completed; saveState(); render(); showToast(t.completed ? '✓ Выполнено' : '↺ В работу'); }
+}
+function deleteTask(id) {
+    if (confirm('Удалить?')) { tasks = tasks.filter(x => x.id !== id); saveState(); render(); }
+}
+function cycleSlot(id) {
+    const t = tasks.find(x => x.id === id);
+    if (!t) return;
+    const slots = ['Сегодня','Завтра','На неделе'];
+    t.timeSlot = slots[(slots.indexOf(t.timeSlot) + 1) % slots.length];
+    saveState(); render(); showToast('📅 ' + t.timeSlot);
+}
+function filterSlot(slot, btn) {
+    selectedTimeSlot = slot;
+    document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderTasks();
+}
+function switchTab(tab) {
+    document.getElementById('tasksTab').style.display = tab === 'tasks' ? 'block' : 'none';
+    const pt = document.getElementById('progressTab');
+    pt.className = tab === 'progress' ? 'progress-tab active' : 'progress-tab';
+    document.getElementById('tabTasks').classList.toggle('active', tab === 'tasks');
+    document.getElementById('tabProgress').classList.toggle('active', tab === 'progress');
+}
+function addTask() {
+    const name = prompt('Название:'); if (!name) return;
+    const pri = prompt('Приоритет (p0/p1/p2):') || 'p1';
+    const slot = prompt('Когда (Сегодня/Завтра/На неделе):') || 'На неделе';
+    const prog = prompt('Прогресс:') || '';
+    tasks.push({ id: tasks.length ? Math.max(...tasks.map(t=>t.id))+1 : 1, name, priority: pri, progress: prog, timeSlot: slot, completed: false });
+    saveState(); render();
+}
+function hardReset() {
+    if (confirm('Сбросить все данные?')) {
+        localStorage.removeItem('polinaPlannerV5');
+        localStorage.removeItem('polinaPlannerTasksV5');
+        tasks = []; state = { consultations:[], streak:0, metrics:{weight:53.75,waist:67,hips:93,chest:85}, freudLectures:0, nancyVideos:0, orders:state.orders, selfcare:state.selfcare, content:{tg:0,reels:0,stories:0,threads:0}, contentTarget:{tg:4,reels:5,stories:7,threads:5}, taxPaid:[false,false,false,false,false,false], weekStart:getWeekStart() };
+        loadDefaultTasks(); render();
+    }
+}
+function exportData() {
+    const done = tasks.filter(t=>t.completed).length;
+    const r = `# Планы — ${new Date().toLocaleDateString('ru-RU')}\n\nВсего: ${tasks.length} | Готово: ${done}\n\n${tasks.map(t=>`- [${t.completed?'x':' '}] ${t.name}`).join('\n')}`;
+    const blob = new Blob([r], {type:'text/markdown'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `планы_${new Date().toISOString().slice(0,10)}.md`; a.click();
+    showToast('📤 Экспорт');
+}
+
+// ===== CONSULTATIONS =====
+function addConsult(name, amount) {
+    const days = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+    const today = new Date().getDay();
+    const dayIdx = today === 0 ? 6 : today - 1;
+    state.consultations.push({ name, amount, dayIdx, dayLabel: days[dayIdx] });
+    saveState(); render();
+    showToast(`💰 ${name} — ${amount}₽`);
+}
+function addConsultCustom() {
+    const name = prompt('Имя клиента:'); if (!name) return;
+    const amount = parseInt(prompt('Сумма (₽):')); if (!amount) return;
+    addConsult(name, amount);
+}
+function removeConsult(idx) {
+    state.consultations.splice(idx, 1);
+    saveState(); render();
+}
+function renderConsultations() {
+    const log = document.getElementById('consultLog');
+    const ticks = document.getElementById('consultTicks');
+    const total = state.consultations.reduce((s,c) => s + c.amount, 0);
+    const tax = Math.round(total * 0.04);
+
+    // 7 ticks for the week
+    const dayCounts = [0,0,0,0,0,0,0];
+    state.consultations.forEach(c => { if (c.dayIdx >= 0 && c.dayIdx < 7) dayCounts[c.dayIdx]++; });
+    ticks.innerHTML = dayCounts.map((c,i) => `<div class="tick ${c > 0 ? 'filled green' : ''}"></div>`).join('');
+
+    document.getElementById('consultCount').textContent = state.consultations.length + ' сессий';
+    document.getElementById('weekIncome').textContent = total.toLocaleString('ru-RU') + ' ₽';
+    document.getElementById('weekTax').textContent = tax.toLocaleString('ru-RU') + ' ₽';
+
+    if (state.consultations.length === 0) {
+        log.innerHTML = '<div style="text-align:center;padding:16px;color:#9ca3af;font-size:13px">Пока нет консультаций на этой неделе</div>';
+        return;
+    }
+
+    log.innerHTML = state.consultations.map((c,i) => `
+        <div class="consultation-entry">
+            <span class="consultation-day">${c.dayLabel}</span>
+            <span class="consultation-client">${c.name}</span>
+            <span class="consultation-amount">${c.amount.toLocaleString('ru-RU')} ₽</span>
+            <button class="consultation-remove" onclick="removeConsult(${i})">✕</button>
+        </div>
+    `).join('');
+}
+
+// ===== BODY =====
+function renderBody() {
+    document.getElementById('metricWeight').textContent = state.metrics.weight;
+    document.getElementById('metricWaist').textContent = state.metrics.waist;
+    document.getElementById('metricHips').textContent = state.metrics.hips;
+    document.getElementById('metricChest').textContent = state.metrics.chest;
+    document.getElementById('streakNum').textContent = state.streak;
+    document.getElementById('streakValue').textContent = state.streak + ' дн.';
+}
+function updateStreak(delta) {
+    state.streak = Math.max(0, state.streak + delta);
+    saveState(); renderBody();
+    showToast(delta > 0 ? '🔥 Серия продолжается!' : '↩ Пропуск принят');
+}
+function updateMetrics() {
+    const w = prompt('Вес (кг):', state.metrics.weight);
+    const wa = prompt('Талия (см):', state.metrics.waist);
+    const h = prompt('Бёдра (см):', state.metrics.hips);
+    const ch = prompt('Грудь (см):', state.metrics.chest);
+    if (w) state.metrics.weight = parseFloat(w);
+    if (wa) state.metrics.waist = parseFloat(wa);
+    if (h) state.metrics.hips = parseFloat(h);
+    if (ch) state.metrics.chest = parseFloat(ch);
+    saveState(); renderBody();
+    showToast('📏 Замеры обновлены');
+}
+
+// ===== ORDERS =====
+function renderOrders() {
+    const grid = document.getElementById('ordersGrid');
+    let totalDone = 0, totalAll = 0;
+    grid.innerHTML = Object.entries(state.orders).map(([key, order]) => {
+        const done = order.done.filter(d => d).length;
+        totalDone += done; totalAll += order.done.length;
+        return `
+            <div class="order-card">
+                <div class="order-name">${order.name}</div>
+                <div class="order-status">${done}/${order.done.length} этапов</div>
+                <div class="order-stages">
+                    ${order.stages.map((s,i) => `
+                        <div class="order-stage ${order.done[i] ? 'done' : ''}" onclick="toggleOrderStage('${key}',${i})" title="${s}">${order.done[i] ? '✓' : s.slice(0,4)}</div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }).join('');
+    document.getElementById('ordersValue').textContent = totalDone + '/' + totalAll;
+}
+function toggleOrderStage(key, idx) {
+    state.orders[key].done[idx] = !state.orders[key].done[idx];
+    saveState(); renderOrders();
+}
+
+// ===== FREUD =====
+function renderFreud() {
+    const total = 35;
+    const done = state.freudLectures;
+    const ticks = document.getElementById('freudTicks');
+    let html = '';
+    for (let i = 0; i < total; i++) {
+        html += `<div class="tick ${i < done ? 'filled purple' : ''}"></div>`;
+    }
+    ticks.innerHTML = html;
+    document.getElementById('freudSubtitle').textContent = `Прочитано: ${done} из ${total} лекций`;
+}
+function updateFreud(delta) {
+    state.freudLectures = Math.max(0, Math.min(35, state.freudLectures + delta));
+    saveState(); renderFreud();
+}
+
+// ===== NANCY =====
+function renderNancy() {
+    const total = 6;
+    const done = state.nancyVideos;
+    const ticks = document.getElementById('nancyTicks');
+    let html = '';
+    for (let i = 0; i < total; i++) {
+        html += `<div class="tick ${i < done ? 'filled blue' : ''}"></div>`;
+    }
+    ticks.innerHTML = html;
+    document.getElementById('nancySubtitle').textContent = `Просмотрено: ${done} из ${total}`;
+}
+function updateNancy(delta) {
+    state.nancyVideos = Math.max(0, Math.min(6, state.nancyVideos + delta));
+    saveState(); renderNancy();
+}
+
+// ===== TAX =====
+function renderTax() {
+    const ticks = document.getElementById('taxTicks');
+    const labels = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+    ticks.innerHTML = state.taxPaid.map((p,i) => `<div class="tick ${p ? 'filled amber' : ''}" onclick="toggleTax(${i})" style="cursor:pointer" title="${labels[i]}"></div>`).join('');
+    const paid = state.taxPaid.filter(p => p).length;
+    document.getElementById('taxLabels').innerHTML = labels.map(l => `<span class="tick-label">${l}</span>`).join('');
+    document.getElementById('taxValue').textContent = paid + '/12 оплачено';
+    document.getElementById('taxSubtitle').textContent = paid > 0 ? `Оплачено месяцев: ${paid}` : 'Нажми на деление, чтобы отметить оплату';
+}
+function toggleTax(idx) {
+    state.taxPaid[idx] = !state.taxPaid[idx];
+    saveState(); renderTax();
+}
+function calcTax() {
+    const total = state.consultations.reduce((s,c) => s + c.amount, 0);
+    const tax = Math.round(total * 0.04);
+    alert(`Доход за неделю: ${total.toLocaleString('ru-RU')} ₽\nНалог 4%: ${tax.toLocaleString('ru-RU')} ₽\n\nОтметь оплату в делениях выше.`);
+}
+function resetTax() {
+    state.taxPaid = state.taxPaid.map(() => false);
+    saveState(); renderTax();
+}
+
+// ===== SELFCARE =====
+function renderSelfcare() {
+    const list = document.getElementById('selfcareList');
+    const checked = state.selfcare.filter(s => s.checked).length;
+    document.getElementById('selfcareValue').textContent = checked + '/' + state.selfcare.length;
+    list.innerHTML = state.selfcare.map((s,i) => `
+        <div class="selfcare-item ${s.checked ? 'checked' : ''}" onclick="toggleSelfcare(${i})">
+            <div class="selfcare-check"></div>
+            <div>
+                <div class="selfcare-name">${s.name}</div>
+                <div class="selfcare-note">${s.note}</div>
+            </div>
+        </div>
+    `).join('');
+}
+function toggleSelfcare(idx) {
+    state.selfcare[idx].checked = !state.selfcare[idx].checked;
+    saveState(); renderSelfcare();
+}
+
+// ===== CONTENT =====
+function renderContent() {
+    const types = ['tg','reels','stories','threads'];
+    const targets = { tg: 4, reels: 5, stories: 7, threads: 5 };
+    let total = 0;
+    types.forEach(type => {
+        const val = state.content[type];
+        const target = targets[type];
+        const ticks = document.getElementById(type === 'tg' ? 'tgTicks' : type === 'reels' ? 'reelsTicks' : type === 'stories' ? 'storiesTicks' : 'threadsTicks');
+        let html = '';
+        for (let i = 0; i < target; i++) {
+            html += `<div class="tick ${i < val ? 'filled rose' : ''}"></div>`;
+        }
+        ticks.innerHTML = html;
+        total += val;
+    });
+    document.getElementById('contentValue').textContent = total;
+    document.getElementById('contentSubtitle').textContent = `Всего единиц контента: ${total} / ${Object.values(targets).reduce((a,b)=>a+b,0)}`;
+}
+function updateContent(type, delta) {
+    state.content[type] = Math.max(0, state.content[type] + delta);
+    saveState(); renderContent();
+}
+
+// ===== TOAST =====
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+loadState();
+</script>
+</body>
+</html>

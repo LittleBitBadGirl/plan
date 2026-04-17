@@ -38,13 +38,36 @@
                 <!-- Filled by JS -->
             </div>
         </div>
+
+        <!-- Legend -->
+        <div class="flex items-center gap-4 mt-4 text-sm text-gray-400">
+            <div class="flex items-center gap-2">
+                <div class="w-4 h-4 rounded bg-accent/30 border border-accent"></div>
+                <span>Сегодня</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <div class="w-4 h-4 rounded bg-purple-500/30 border border-purple-500"></div>
+                <span>Выбранная дата</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <div class="w-4 h-4 rounded bg-green-500/20"></div>
+                <span>Есть задачи</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Selected Date Header -->
+    <div id="selected-date-header" class="bg-dark-800 rounded-xl border border-dark-600 p-6 mb-6">
+        <h2 class="text-lg font-semibold text-white">
+            📅 <span id="selected-date-title">Выберите дату в календаре</span>
+        </h2>
     </div>
 
     <!-- Selected Date Tasks -->
-    <div id="selected-date-tasks" class="bg-dark-800 rounded-xl border border-dark-600 p-6">
+    <div class="bg-dark-800 rounded-xl border border-dark-600 p-6">
         <h2 class="text-lg font-semibold text-white mb-4">Задачи на дату</h2>
         <div id="date-tasks-list" class="text-gray-400">
-            <p>Выберите дату в календаре</p>
+            <p>Нажмите на день в календаре</p>
         </div>
     </div>
 </div>
@@ -53,6 +76,7 @@
 <script>
 // Простой календарь на JS
 let currentDate = new Date();
+let selectedDate = null;
 
 function renderCalendar() {
     const year = currentDate.getFullYear();
@@ -82,25 +106,66 @@ function renderCalendar() {
     const today = new Date();
     for (let day = 1; day <= lastDay.getDate(); day++) {
         const isToday = (day === today.getDate() && month === today.getMonth() && year === today.getFullYear());
+        const isSelected = selectedDate && (day === selectedDate.getDate() && month === selectedDate.getMonth() && year === selectedDate.getFullYear());
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
+        let dayClass = 'calendar-day p-2 min-h-[80px] rounded-lg cursor-pointer transition-colors hover:bg-dark-700/50';
+        if (isToday) {
+            dayClass += ' today bg-accent/10 border border-accent';
+        }
+        if (isSelected) {
+            dayClass += ' selected bg-purple-500/20 border border-purple-500';
+        }
+
         container.innerHTML += `
-            <div class="calendar-day p-2 min-h-[80px] rounded-lg cursor-pointer transition-colors
-                        ${isToday ? 'today' : 'hover:bg-dark-700/50'}"
-                 onclick="loadDateTasks('${dateStr}')">
+            <div class="${dayClass}" onclick="loadDateTasks('${dateStr}', '${day}.${month + 1}.${year}')">
                 <div class="text-sm font-medium ${isToday ? 'text-accent' : 'text-gray-300'}">${day}</div>
+                <div class="task-dots mt-1" id="dots-${dateStr}"></div>
             </div>
         `;
     }
+
+    // Load task indicators for current month
+    loadTaskIndicators(year, month);
 }
 
-function loadDateTasks(dateStr) {
+function loadTaskIndicators(year, month) {
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+
+    for (let day = 1; day <= lastDay.getDate(); day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        fetch(`/api/tasks/date/${dateStr}`)
+            .then(r => r.json())
+            .then(tasks => {
+                if (tasks.length > 0) {
+                    const dotsEl = document.getElementById(`dots-${dateStr}`);
+                    if (dotsEl) {
+                        const completedCount = tasks.filter(t => t.status === 'выполнена').length;
+                        const totalCount = tasks.length;
+                        dotsEl.innerHTML = `<div class="text-xs ${completedCount === totalCount ? 'text-green-400' : 'text-yellow-400'}">● ${totalCount}</div>`;
+                    }
+                }
+            })
+            .catch(() => {});
+    }
+}
+
+function loadDateTasks(dateStr, displayDate) {
+    // Update selected date highlight
+    selectedDate = new Date(dateStr + 'T00:00:00');
+
+    // Update header
+    document.getElementById('selected-date-title').textContent = displayDate;
+
+    // Re-render calendar to update selected day highlight
+    renderCalendar();
+
+    // Load tasks
     const list = document.getElementById('date-tasks-list');
     list.innerHTML = '<p class="text-gray-500 animate-pulse-slow">Загрузка...</p>';
 
-    fetch(`/api/tasks/date/${dateStr}`, {
-        headers: { 'X-API-Token': '{{ request.app.state.api_token if request.app.state.api_token else "" }}' }
-    })
+    fetch(`/api/tasks/date/${dateStr}`)
     .then(r => r.json())
     .then(tasks => {
         if (tasks.length === 0) {

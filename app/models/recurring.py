@@ -18,4 +18,5 @@ class RecurringTask(Base):
     end_date = Column(Date, nullable=True)
     time_of_day = Column(Time, nullable=True)
     is_active = Column(Boolean, default=True, index=True)
+    completed_count = Column(Integer, default=0)  # сколько раз выполнена
     created_at = Column(DateTime(timezone=True), server_default=func.now())

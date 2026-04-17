@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import date, datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.api.dependencies import get_db_session, verify_token
 from app.models.task import Task
@@ -12,8 +12,38 @@ from app.models.category import Category
 router = APIRouter(prefix="/api/tasks", tags=["tasks"], dependencies=[Depends(verify_token)])
 
 
+class TaskResponse(BaseModel):
+    """Pydantic схема для сериализации задачи"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    description: str
+    category_id: Optional[int]
+    status: str
+    priority: str
+    due_date: Optional[date]
+    created_at: datetime
+    completed_at: Optional[datetime]
+    source: str
+    parent_task_id: Optional[int]
+    is_archived: bool
+    sort_order: int
+    needs_review: bool
+    message_hash: Optional[str]
+    postpones: int
+    chronic_task: Optional[bool]
+    chronic_reviewed: Optional[bool]
+
+
 class TaskCreate(BaseModel):
     title: str
+    parent_task_id: Optional[int] = None  # Добавлено для подзадач
+
+    def model_post_init(self, __context):
+        if not self.title.strip():
+            raise ValueError("Title cannot be empty")
+
     description: str = ""
     category_id: Optional[int] = None
     priority: str = "средний"
@@ -30,11 +60,12 @@ class TaskUpdate(BaseModel):
     due_date: Optional[date] = None
 
 
-@router.get("")
+@router.get("", response_model=list[TaskResponse])
 async def list_tasks(
     db: AsyncSession = Depends(get_db_session),
     status: Optional[str] = None,
     category_id: Optional[int] = None,
+    parent_id: Optional[int] = None,  # Фильтр для подзадач
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
     limit: int = Query(50, le=200),
@@ -47,6 +78,9 @@ async def list_tasks(
         query = query.where(Task.status == status)
     if category_id:
         query = query.where(Task.category_id == category_id)
+    if parent_id is not None:
+        # Если parent_id=None, ищем корневые задачи. Если int — ищем детей.
+        query = query.where(Task.parent_task_id == parent_id)
     if from_date:
         query = query.where(Task.due_date >= from_date)
     if to_date:
@@ -59,12 +93,12 @@ async def list_tasks(
     return result.scalars().all()
 
 
-@router.post("")
+@router.post("", response_model=TaskResponse)
 async def create_task(
     task_data: TaskCreate,
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Создать задачу"""
+    """Создать задачу (в т.ч. подзадачу, если указан parent_task_id)"""
     task = Task(
         title=task_data.title,
         description=task_data.description,
@@ -72,6 +106,7 @@ async def create_task(
         priority=task_data.priority,
         due_date=task_data.due_date,
         source=task_data.source,
+        parent_task_id=task_data.parent_task_id,
     )
     db.add(task)
     await db.flush()
@@ -79,7 +114,40 @@ async def create_task(
     return task
 
 
-@router.get("/{task_id}")
+@router.get("/archive", response_model=list[TaskResponse])
+async def get_archive(
+    db: AsyncSession = Depends(get_db_session),
+    limit: int = Query(50, le=200),
+    offset: int = 0,
+):
+    """Получить архив задач"""
+    query = (
+        select(Task)
+        .where(Task.is_archived == True)
+        .order_by(Task.completed_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/date/{task_date}", response_model=list[TaskResponse])
+async def get_tasks_by_date(
+    task_date: date,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Получить задачи на конкретную дату"""
+    query = (
+        select(Task)
+        .where(Task.due_date == task_date, Task.is_archived == False)
+        .order_by(Task.due_date.asc(), Task.sort_order.asc())
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/{task_id}", response_model=TaskResponse)
 async def get_task(
     task_id: int,
     db: AsyncSession = Depends(get_db_session),
@@ -92,7 +160,7 @@ async def get_task(
     return task
 
 
-@router.put("/{task_id}")
+@router.put("/{task_id}", response_model=TaskResponse)
 async def update_task(
     task_id: int,
     task_data: TaskUpdate,
@@ -129,12 +197,12 @@ async def delete_task(
     return {"message": "Task archived"}
 
 
-@router.post("/{task_id}/complete")
+@router.post("/{task_id}/complete", response_model=TaskResponse)
 async def complete_task(
     task_id: int,
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Отметить задачу выполненной"""
+    """Отметить задачу выполненной (каскадно для подзадач и родителя)"""
     result = await db.execute(select(Task).where(Task.id == task_id))
     task = result.scalar_one_or_none()
     if not task:
@@ -142,11 +210,39 @@ async def complete_task(
 
     task.status = "выполнена"
     task.completed_at = datetime.utcnow()
+
+    # 1. Если это родительская задача — закрываем всех детей
+    if task.parent_task_id is None:
+        children_result = await db.execute(
+            select(Task).where(Task.parent_task_id == task.id, Task.status != "выполнена")
+        )
+        children = children_result.scalars().all()
+        for child in children:
+            child.status = "выполнена"
+            child.completed_at = datetime.utcnow()
+
+    # 2. Если это подзадача — проверяем, закрыты ли все siblings
+    if task.parent_task_id:
+        parent_result = await db.execute(select(Task).where(Task.id == task.parent_task_id))
+        parent = parent_result.scalar_one_or_none()
+        if parent:
+            # Проверяем, есть ли открытые дети у этого родителя
+            open_children = await db.execute(
+                select(Task).where(
+                    Task.parent_task_id == parent.id,
+                    Task.status != "выполнена"
+                )
+            )
+            if not open_children.scalars().first():
+                # Все дети закрыты — закрываем родителя
+                parent.status = "выполнена"
+                parent.completed_at = datetime.utcnow()
+
     await db.flush()
     return task
 
 
-@router.post("/{task_id}/subtasks")
+@router.post("/{task_id}/subtasks", response_model=TaskResponse)
 async def add_subtask(
     task_id: int,
     task_data: TaskCreate,
@@ -171,7 +267,7 @@ async def add_subtask(
     return subtask
 
 
-@router.post("/{task_id}/archive")
+@router.post("/{task_id}/archive", response_model=TaskResponse)
 async def archive_task(
     task_id: int,
     db: AsyncSession = Depends(get_db_session),
@@ -185,36 +281,3 @@ async def archive_task(
     task.is_archived = True
     await db.flush()
     return {"message": "Task archived"}
-
-
-@router.get("/archive")
-async def get_archive(
-    db: AsyncSession = Depends(get_db_session),
-    limit: int = Query(50, le=200),
-    offset: int = 0,
-):
-    """Получить архив задач"""
-    query = (
-        select(Task)
-        .where(Task.is_archived == True)
-        .order_by(Task.completed_at.desc())
-        .offset(offset)
-        .limit(limit)
-    )
-    result = await db.execute(query)
-    return result.scalars().all()
-
-
-@router.get("/date/{task_date}")
-async def get_tasks_by_date(
-    task_date: date,
-    db: AsyncSession = Depends(get_db_session),
-):
-    """Получить задачи на конкретную дату"""
-    query = (
-        select(Task)
-        .where(Task.due_date == task_date, Task.is_archived == False)
-        .order_by(Task.due_date.asc(), Task.sort_order.asc())
-    )
-    result = await db.execute(query)
-    return result.scalars().all()

@@ -3,6 +3,7 @@ from aiogram.types import Message
 from aiogram.filters import Command
 import hashlib
 from datetime import datetime
+from app.utils.logger import app_logger
 
 from app.services.ai_service import ai_service
 from app.db.database import async_session
@@ -58,60 +59,70 @@ async def handle_text(message: Message):
     if text.startswith("/"):
         return
 
-    # Сохранить в missed_messages
-    async with async_session() as db:
-        message_hash = hashlib.sha256(
-            f"{text}{message.date}".encode()
-        ).hexdigest()
+    try:
+        app_logger.info(f"📨 TG сообщение: \"{text}\" от chat_id={message.chat.id}")
+        
+        async with async_session() as db:
+            message_hash = hashlib.sha256(
+                f"{text}{message.date}".encode()
+            ).hexdigest()
 
-        missed = MissedMessage(
-            telegram_chat_id=message.chat.id,
-            message_text=text,
-            message_type="text",
-            message_hash=message_hash,
-        )
-        db.add(missed)
-        await db.flush()
-
-        # AI категоризация
-        result = await ai_service.categorize(text)
-        category_name = result.get("category", "Личное")
-        subcategory_name = result.get("subcategory", "Другое")
-
-        # Создать задачу с категорией
-        from app.models.task import Task
-        from app.models.category import Category
-        from sqlalchemy import select
-
-        cat_result = await db.execute(
-            select(Category).where(
-                Category.name == category_name,
-                Category.is_global == True
+            missed = MissedMessage(
+                telegram_chat_id=message.chat.id,
+                message_text=text,
+                message_type="text",
+                message_hash=message_hash,
             )
-        )
-        category = cat_result.scalar_one_or_none()
+            db.add(missed)
+            await db.flush()
 
-        subcat_result = await db.execute(
-            select(Category).where(
-                Category.name == subcategory_name,
-                Category.parent_id == category.id if category else None
+            # AI категоризация
+            result = await ai_service.categorize(text)
+            category_name = result.get("category", "Личное")
+            subcategory_name = result.get("subcategory", "Другое")
+            app_logger.info(f" Категория: {category_name}/{subcategory_name}")
+
+            # Создать задачу с категорией
+            from app.models.task import Task
+            from app.models.category import Category
+            from sqlalchemy import select
+
+            cat_result = await db.execute(
+                select(Category).where(
+                    Category.is_global == True,
+                    Category.name.like(f"%{category_name}%")
+                )
             )
-        )
-        subcategory = subcat_result.scalar_one_or_none()
+            category = cat_result.scalar_one_or_none()
 
-        task = Task(
-            title=text,
-            category_id=subcategory.id if subcategory else (category.id if category else None),
-            source="telegram",
-        )
-        db.add(task)
-        await db.flush()
+            subcat_result = await db.execute(
+                select(Category).where(
+                    Category.name == subcategory_name,
+                    Category.parent_id == category.id if category else None
+                )
+            )
+            subcategory = subcat_result.scalar_one_or_none()
 
-        cat_display = f"{category_name}/{subcategory_name}" if category else "Без категории"
-        await message.answer(
-            f"✅ Задача добавлена: {text}\n"
-            f"📂 {cat_display}"
-        )
+            # Если подкатегория не найдена — берём глобальную категорию
+            cat_id = subcategory.id if subcategory else (category.id if category else None)
+
+            task = Task(
+                title=text,
+                category_id=cat_id,
+                source="telegram",
+            )
+            db.add(task)
+            await db.commit()
+
+            cat_display = f"{category.name}/{subcategory_name}" if category and subcategory else (category.name if category else "Без категории")
+            app_logger.info(f"✅ Задача создана: ID={task.id} \"{text}\" → {cat_display}")
+            await message.answer(
+                f"✅ Задача добавлена: {text}\n"
+                f"📂 {cat_display}"
+            )
+    except Exception as e:
+        app_logger.error(f"❌ Ошибка при создании задачи из TG: {e}", exc_info=True)
+        await message.answer(f"❌ Ошибка: {e}")
 
 
 @router.message(F.voice)

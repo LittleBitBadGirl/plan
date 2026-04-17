@@ -59,13 +59,6 @@
                     <span>Дашборд</span>
                 </a>
 
-                <a href="/tasks"
-                   class="flex items-center px-4 py-3 rounded-lg transition-colors
-                          {% if request.url.path.startswith('/tasks') %}bg-accent text-white{% else %}text-gray-400 hover:bg-dark-700 hover:text-white{% endif %}">
-                    <span class="mr-3">📝</span>
-                    <span>Задачи</span>
-                </a>
-
                 <a href="/calendar"
                    class="flex items-center px-4 py-3 rounded-lg transition-colors
                           {% if request.url.path == '/calendar' %}bg-accent text-white{% else %}text-gray-400 hover:bg-dark-700 hover:text-white{% endif %}">

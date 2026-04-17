@@ -5,8 +5,8 @@ from pathlib import Path
 class Settings(BaseSettings):
     """Настройки приложения из .env"""
 
-    # Telegram
-    telegram_bot_token: str
+    # Telegram (теперь через n8n)
+    telegram_bot_token: str = ""  # используется в n8n workflow
 
     # Аутентификация
     api_token: str

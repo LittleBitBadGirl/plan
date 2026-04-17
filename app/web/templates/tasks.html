@@ -139,7 +139,7 @@
                                title="Редактировать">
                                 ✏️
                             </a>
-                            <form hx-post="/tasks/{{ task.id }}/delete"
+                            <form hx-delete="/tasks/{{ task.id }}"
                                   hx-target="closest tr"
                                   hx-swap="outerHTML"
                                   class="inline">

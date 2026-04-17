@@ -132,23 +132,25 @@ class AIService:
     def _simple_categorize(self, text: str) -> Dict[str, str]:
         """Простая категоризация по ключевым словам (fallback)"""
         text_lower = text.lower()
-        
-        # Ключевые слова для категорий
-        if any(word in text_lower for word in ['марж', 'деньг', 'налог', 'счет', 'оплат']):
-            return {"category": "Работа", "subcategory": "Финансы"}
-        if any(word in text_lower for word in ['тз', 'реестр', 'документ', 'инлайн']):
-            return {"category": "Работа", "subcategory": "Документы"}
-        if any(word in text_lower for word in ['дан', 'сын', 'подарок']):
-            return {"category": "Личное", "subcategory": "Семья"}
-        if any(word in text_lower for word in ['врач', 'массаж', 'баня']):
-            return {"category": "Личное", "subcategory": "Здоровье"}
-        if any(word in text_lower for word in ['sql', 'курс', 'обучен', 'изуч']):
-            return {"category": "Обучение", "subcategory": "Курсы"}
+
+        # Сначала проверяем более специфичные паттерны
         if 'дон' in text_lower:
             return {"category": "Личное", "subcategory": "Свои сайты"}
         if 'планербот' in text_lower or 'транскрибатор' in text_lower:
             return {"category": "Личное", "subcategory": "Пет-проекты"}
-        
+        if any(word in text_lower for word in ['дан', 'сын', 'подарок']):
+            return {"category": "Личное", "subcategory": "Семья"}
+        if any(word in text_lower for word in ['врач', 'массаж', 'баня']):
+            return {"category": "Личное", "subcategory": "Здоровье"}
+
+        # Затем общие рабочие паттерны
+        if any(word in text_lower for word in ['марж', 'деньг', 'налог', 'счет', 'оплат']):
+            return {"category": "Работа", "subcategory": "Финансы"}
+        if any(word in text_lower for word in ['тз', 'реестр', 'документ', 'инлайн']):
+            return {"category": "Работа", "subcategory": "Документы"}
+        if any(word in text_lower for word in ['sql', 'курс', 'обучен', 'изуч']):
+            return {"category": "Обучение", "subcategory": "Курсы"}
+
         return {"category": "Личное", "subcategory": "Другое"}
 
 
