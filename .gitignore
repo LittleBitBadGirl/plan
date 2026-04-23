@@ -34,3 +34,5 @@ htmlcov/
 .DS_Store
 Thumbs.db
 ```planner.db
+.env
+CONTEXT.md
