@@ -31,6 +31,30 @@ async def get_categories_list():
         return result.scalars().all()
 
 
+async def get_today_stats(db: AsyncSession):
+    """Вспомогательная функция для получения статистики на сегодня"""
+    today = date.today()
+    # Считаем только корневые задачи
+    completed_result = await db.execute(
+        select(func.count(Task.id)).where(
+            Task.due_date == today,
+            Task.status == "выполнена",
+            Task.parent_task_id == None
+        )
+    )
+    completed = completed_result.scalar() or 0
+    
+    total_result = await db.execute(
+        select(func.count(Task.id)).where(
+            Task.due_date == today,
+            Task.parent_task_id == None,
+            (Task.is_archived == False) | (Task.status == "выполнена")
+        )
+    )
+    total = total_result.scalar() or 0
+    return completed, total
+
+
 # ---- Страницы ----
 
 @router.get("/", response_class=HTMLResponse)
@@ -106,23 +130,8 @@ async def dashboard(request: Request):
                 if today.day == rt.start_date.day:
                     recurring_today.append(rt)
 
-        # Статистика - считаем все выполненные задачи на сегодня (включая из регулярных)
-        completed_result = await db.execute(
-            select(func.count(Task.id)).where(
-                Task.due_date == today,
-                Task.status == "выполнена"
-            )
-        )
-        completed = completed_result.scalar() or 0
-        
-        # Общее количество задач на сегодня (активные + выполненные)
-        total_tasks_result = await db.execute(
-            select(func.count(Task.id)).where(
-                Task.due_date == today,
-                Task.is_archived == False
-            )
-        )
-        total_tasks = total_tasks_result.scalar() or 0
+        # Получаем статистику через хелпер
+        completed, total = await get_today_stats(db)
 
         # Категории для формы
         cats_result = await db.execute(
@@ -142,10 +151,11 @@ async def dashboard(request: Request):
         "recurring_tasks": recurring_today,
         "categories": categories,
         "completed": completed,
-        "total": total_tasks,
+        "total": total,
         "today": today,
         "ai_warning": ai_warning,
     })
+
 
 
 @router.get("/tasks", response_class=HTMLResponse)
@@ -740,7 +750,12 @@ async def complete_task(task_id: int):
             task.completed_at = datetime.utcnow()
             task.is_archived = True
             await db.commit()
-            return HTMLResponse(f'<div class="text-green-400 p-4">✅ {task.title} — выполнено! (в архиве)</div>')
+            
+            # Получаем обновленную статистику для OOB
+            completed, total = await get_today_stats(db)
+            stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
+            
+            return HTMLResponse(f'<div>✅ {task.title} — выполнено! (в архиве)</div>{stats_oob}')
     return HTMLResponse('<div class="text-gray-500 p-4">Задача не найдена</div>')
 
 
@@ -754,7 +769,12 @@ async def move_to_backlog(task_id: int):
             task.due_date = None
             task.status = "новая"
             await db.commit()
-            return HTMLResponse(f'<div class="text-yellow-400 p-4">📥 {task.title} → в бэклог</div>')
+            
+            # Получаем обновленную статистику для OOB
+            completed, total = await get_today_stats(db)
+            stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
+            
+            return HTMLResponse(f'<div>📥 {task.title} → в бэклог</div>{stats_oob}')
     return HTMLResponse('<div class="text-gray-500 p-4">Задача не найдена</div>')
 
 
@@ -767,11 +787,17 @@ async def delete_task(task_id: int):
         if task:
             task.is_archived = True
             await db.commit()
+            
+            # Получаем обновленную статистику для OOB
+            completed, total = await get_today_stats(db)
+            stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
+            
             return HTMLResponse(f"""
                 <div hx-swap-oob="delete:#task-{task_id}"></div>
                 <div id="toast" class="fixed top-4 right-4 bg-red-600 text-white px-4 py-2 rounded shadow-lg z-50 animate-fade-in">
                     🗑 {task.title} — в архив
                 </div>
+                {stats_oob}
             """)
     return HTMLResponse('<div class="text-gray-500 p-4">Задача не найдена</div>')
 
@@ -791,11 +817,17 @@ async def plan_task(task_id: int, due_date: str = Form(None)):
                     task.due_date = date(date.today().year, int(month), int(day))
                     await db.flush()
                     await db.commit()
+                    
+                    # Получаем обновленную статистику для OOB
+                    completed, total = await get_today_stats(db)
+                    stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
+                    
                     return HTMLResponse(content=f"""
                         <div hx-swap-oob="delete:#task-{task_id}"></div>
                         <div id="toast" class="fixed top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded shadow-lg z-50 animate-fade-in">
                             📅 {task.title} → {due_date}.{date.today().year}
                         </div>
+                        {stats_oob}
                     """)
                 except (ValueError, IndexError) as e:
                     return HTMLResponse(content=f'<div class="text-red-400 p-4">❌ Неверный формат: {e}. Введите ДД.ММ</div>', status_code=400)
@@ -803,11 +835,17 @@ async def plan_task(task_id: int, due_date: str = Form(None)):
                 task.due_date = date.today()
                 await db.flush()
                 await db.commit()
+                
+                # Получаем обновленную статистику для OOB
+                completed, total = await get_today_stats(db)
+                stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
+                
                 return HTMLResponse(content=f"""
                     <div hx-swap-oob="delete:#task-{task_id}"></div>
                     <div id="toast" class="fixed top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded shadow-lg z-50 animate-fade-in">
                         📅 {task.title} → сегодня
                     </div>
+                    {stats_oob}
                 """)
     return HTMLResponse(content='<div class="text-gray-500 p-4">Задача не найдена</div>', status_code=404)
 
@@ -898,21 +936,21 @@ async def create_shopping_item(
     list_template = Template('''
         {% if items %}
             {% for item in items %}
-            <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition flex items-center gap-3 {{ 'opacity-50' if item.is_purchased else '' }}" 
+            <div class="bg-dark-800 rounded-lg p-2 px-3 border border-dark-700 hover:border-purple-600 transition flex items-center gap-2 {{ 'opacity-40' if item.is_purchased else '' }}" 
                  id="item-{{ item.id }}">
                 <!-- Чекбокс выполнения -->
                 <form hx-post="/api/shopping/{{ item.id }}/toggle"
                       hx-target="#shopping-list"
                       hx-swap="innerHTML"
                       class="flex-shrink-0">
-                    <button type="submit" class="text-xl {{ 'text-green-400' if item.is_purchased else 'text-gray-600 hover:text-green-400' }}">
+                    <button type="submit" class="text-lg {{ 'text-green-400' if item.is_purchased else 'text-gray-600 hover:text-green-400' }}">
                         {% if item.is_purchased %}✅{% else %}⬜{% endif %}
                     </button>
                 </form>
 
                 <!-- Информация о продукте -->
-                <div class="flex-1">
-                    <span class="font-medium text-white {{ 'line-through text-gray-500' if item.is_purchased else '' }}">
+                <div class="flex-1 min-w-0">
+                    <span class="font-medium text-sm text-white truncate block {{ 'line-through text-gray-500' if item.is_purchased else '' }}">
                         {{ item.title }}
                     </span>
                 </div>
@@ -922,14 +960,13 @@ async def create_shopping_item(
                       hx-target="#shopping-list"
                       hx-swap="innerHTML"
                       class="flex-shrink-0">
-                    <button type="submit" class="text-red-400 hover:text-red-300" title="Удалить">🗑</button>
+                    <button type="submit" class="text-gray-500 hover:text-red-400 text-xs" title="Удалить">🗑</button>
                 </form>
             </div>
             {% endfor %}
         {% else %}
-            <div class="text-center py-10 text-gray-500">
+            <div class="col-span-full text-center py-10 text-gray-500">
                 <p>Список покупок пуст 🛒</p>
-                <p class="text-sm mt-2">Введите название продукта и нажмите Enter</p>
             </div>
         {% endif %}
     ''')
@@ -1023,75 +1060,115 @@ async def toggle_shopping_item(request: Request, item_id: int):
     return HTMLResponse(content='<div class="hidden"></div>')
 
 
-@router.delete("/api/shopping/{item_id}", response_class=HTMLResponse)
-async def delete_shopping_item(request: Request, item_id: int):
-    """Удалить элемент списка покупок"""
+@router.post("/api/shopping/restore-all", response_class=HTMLResponse)
+async def restore_all_shopping_items(request: Request):
+    """Сбросить статус 'куплено' для всех товаров"""
     async with async_session() as db:
-        result = await db.execute(select(ShoppingItem).where(ShoppingItem.id == item_id))
-        item = result.scalar_one_or_none()
+        from sqlalchemy import update
+        await db.execute(
+            update(ShoppingItem).where(ShoppingItem.is_purchased == True).values(is_purchased=False, purchased_at=None)
+        )
+        await db.commit()
         
-        if item:
-            await db.delete(item)
-            await db.commit()
-            
-            # Перезагружаем весь список
-            result = await db.execute(
-                select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
-            )
-            items = list(result.scalars().all())
-            
-            total = len(items)
-            purchased = sum(1 for i in items if i.is_purchased)
-            remaining = total - purchased
-            
-            from jinja2 import Template
-            list_template = Template('''
-                {% if items %}
-                    {% for item in items %}
-                    <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition flex items-center gap-3 {{ 'opacity-50' if item.is_purchased else '' }}" 
-                         id="item-{{ item.id }}">
-                        <!-- Чекбокс выполнения -->
-                        <form hx-post="/api/shopping/{{ item.id }}/toggle"
-                              hx-target="#shopping-list"
-                              hx-swap="innerHTML"
-                              class="flex-shrink-0">
-                            <button type="submit" class="text-xl {{ 'text-green-400' if item.is_purchased else 'text-gray-600 hover:text-green-400' }}">
-                                {% if item.is_purchased %}✅{% else %}⬜{% endif %}
-                            </button>
-                        </form>
+        # Перезагружаем список
+        result = await db.execute(
+            select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
+        )
+        items = list(result.scalars().all())
+        total = len(items)
+        purchased = 0
+        remaining = total
 
-                        <!-- Информация о продукте -->
-                        <div class="flex-1">
-                            <span class="font-medium text-white {{ 'line-through text-gray-500' if item.is_purchased else '' }}">
-                                {{ item.title }}
-                            </span>
-                        </div>
-
-                        <!-- Удаление -->
-                        <form hx-delete="/api/shopping/{{ item.id }}"
-                              hx-target="#shopping-list"
-                              hx-swap="innerHTML"
-                              class="flex-shrink-0">
-                            <button type="submit" class="text-red-400 hover:text-red-300" title="Удалить">🗑</button>
-                        </form>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="text-center py-10 text-gray-500">
-                        <p>Список покупок пуст 🛒</p>
-                        <p class="text-sm mt-2">Введите название продукта и нажмите Enter</p>
-                    </div>
-                {% endif %}
-            ''')
-            
-            stats_html = f'''
-                <script>
-                    document.getElementById('total-count').textContent = '{total}';
-                    document.getElementById('purchased-count').textContent = '{purchased}';
-                    document.getElementById('remaining-count').textContent = '{remaining}';
-                </script>
-            '''
-            
-            return HTMLResponse(content=list_template.render(items=items) + stats_html)
+    from jinja2 import Template
+    # Используем тот же компактный шаблон (копирую его из метода выше)
+    list_template = Template('''
+        {% if items %}
+            {% for item in items %}
+            <div class="bg-dark-800 rounded-lg p-2 px-3 border border-dark-700 hover:border-purple-600 transition flex items-center gap-2 {{ 'opacity-40' if item.is_purchased else '' }}" 
+                 id="item-{{ item.id }}">
+                <form hx-post="/api/shopping/{{ item.id }}/toggle" hx-target="#shopping-list" hx-swap="innerHTML" class="flex-shrink-0">
+                    <button type="submit" class="text-lg {{ 'text-green-400' if item.is_purchased else 'text-gray-600 hover:text-green-400' }}">
+                        {% if item.is_purchased %}✅{% else %}⬜{% endif %}
+                    </button>
+                </form>
+                <div class="flex-1 min-w-0">
+                    <span class="font-medium text-sm text-white truncate block {{ 'line-through text-gray-500' if item.is_purchased else '' }}">
+                        {{ item.title }}
+                    </span>
+                </div>
+                <form hx-delete="/api/shopping/{{ item.id }}" hx-target="#shopping-list" hx-swap="innerHTML" class="flex-shrink-0">
+                    <button type="submit" class="text-gray-500 hover:text-red-400 text-xs" title="Удалить">🗑</button>
+                </form>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="col-span-full text-center py-10 text-gray-500">
+                <p>Список покупок пуст 🛒</p>
+            </div>
+        {% endif %}
+    ''')
     
-    return HTMLResponse(content='<div class="hidden"></div>')
+    stats_html = f'''
+        <script>
+            document.getElementById('total-count').textContent = '{total}';
+            document.getElementById('purchased-count').textContent = '{purchased}';
+            document.getElementById('remaining-count').textContent = '{remaining}';
+        </script>
+    '''
+    return HTMLResponse(content=list_template.render(items=items) + stats_html)
+
+
+@router.delete("/api/shopping/clear-purchased", response_class=HTMLResponse)
+async def clear_purchased_items(request: Request):
+    """Удалить все купленные товары"""
+    async with async_session() as db:
+        await db.execute(
+            delete(ShoppingItem).where(ShoppingItem.is_purchased == True)
+        )
+        await db.commit()
+        
+        # Перезагружаем список
+        result = await db.execute(
+            select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
+        )
+        items = list(result.scalars().all())
+        total = len(items)
+        purchased = 0
+        remaining = total
+
+    from jinja2 import Template
+    list_template = Template('''
+        {% if items %}
+            {% for item in items %}
+            <div class="bg-dark-800 rounded-lg p-2 px-3 border border-dark-700 hover:border-purple-600 transition flex items-center gap-2 {{ 'opacity-40' if item.is_purchased else '' }}" 
+                 id="item-{{ item.id }}">
+                <form hx-post="/api/shopping/{{ item.id }}/toggle" hx-target="#shopping-list" hx-swap="innerHTML" class="flex-shrink-0">
+                    <button type="submit" class="text-lg {{ 'text-green-400' if item.is_purchased else 'text-gray-600 hover:text-green-400' }}">
+                        {% if item.is_purchased %}✅{% else %}⬜{% endif %}
+                    </button>
+                </form>
+                <div class="flex-1 min-w-0">
+                    <span class="font-medium text-sm text-white truncate block {{ 'line-through text-gray-500' if item.is_purchased else '' }}">
+                        {{ item.title }}
+                    </span>
+                </div>
+                <form hx-delete="/api/shopping/{{ item.id }}" hx-target="#shopping-list" hx-swap="innerHTML" class="flex-shrink-0">
+                    <button type="submit" class="text-gray-500 hover:text-red-400 text-xs" title="Удалить">🗑</button>
+                </form>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="col-span-full text-center py-10 text-gray-500">
+                <p>Список покупок пуст 🛒</p>
+            </div>
+        {% endif %}
+    ''')
+    
+    stats_html = f'''
+        <script>
+            document.getElementById('total-count').textContent = '{total}';
+            document.getElementById('purchased-count').textContent = '{purchased}';
+            document.getElementById('remaining-count').textContent = '{remaining}';
+        </script>
+    '''
+    return HTMLResponse(content=list_template.render(items=items) + stats_html)

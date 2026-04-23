@@ -194,6 +194,8 @@ async def complete_recurring(
     """Отметить периодическую задачу выполненной — создаёт выполненную задачу на сегодня"""
     from app.models.task import Task
     from datetime import datetime
+    from app.web.pages import get_today_stats
+    from fastapi.responses import HTMLResponse
     
     result = await db.execute(select(RecurringTask).where(RecurringTask.id == recurring_id))
     task = result.scalar_one_or_none()
@@ -214,13 +216,17 @@ async def complete_recurring(
         status="выполнена",
         completed_at=datetime.utcnow(),
         source="recurring",
+        is_archived=True, # Сразу в архив
     )
     db.add(completed_task)
-    await db.flush()
+    await db.commit() # Нужно закомитить, чтобы статистика увидела новую задачу
     
-    # Возвращаем пустой блок — задача исчезнет из списка
-    from fastapi.responses import HTMLResponse
-    return HTMLResponse(f'<div id="recurring-{task.id}" class="hidden"></div>')
+    # Получаем обновленную статистику для OOB
+    completed, total = await get_today_stats(db)
+    stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
+    
+    # Возвращаем пустую строку — задача исчезнет (так как hx-swap="outerHTML")
+    return HTMLResponse(content=f'{stats_oob}')
 
 
 @router.get("/for-date/{task_date}")

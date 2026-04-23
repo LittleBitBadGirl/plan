@@ -10,9 +10,13 @@
             <h1 class="text-3xl font-bold text-white">🛒 Список покупок</h1>
             <p class="text-gray-400 mt-1">Добавляй продукты и отмечай купленное</p>
         </div>
+        <button onclick="copyShoppingList()" 
+                class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded-lg transition flex items-center gap-2">
+            📋 Копировать для ТГ
+        </button>
     </div>
 
-    <!-- Форма добавления - всегда видима -->
+    <!-- ... (форма и статистика без изменений) ... -->
     <div class="mb-6 bg-dark-800 rounded-lg p-4 border border-dark-700">
         <form hx-post="/api/shopping/create"
               hx-target="#shopping-list"
@@ -30,40 +34,55 @@
     </div>
 
     <!-- Статистика -->
-    <div class="mb-6 flex gap-4">
-        <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 flex-1">
-            <span class="text-gray-400">Всего:</span>
+    <div class="mb-4 flex gap-4">
+        <div class="bg-dark-800 rounded-lg p-3 border border-dark-700 flex-1">
+            <span class="text-gray-400 text-sm">Всего:</span>
             <span class="float-right font-bold text-white" id="total-count">{{ total }}</span>
         </div>
-        <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 flex-1">
-            <span class="text-gray-400">Куплено:</span>
+        <div class="bg-dark-800 rounded-lg p-3 border border-dark-700 flex-1">
+            <span class="text-gray-400 text-sm">Куплено:</span>
             <span class="float-right font-bold text-green-400" id="purchased-count">{{ purchased }}</span>
         </div>
-        <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 flex-1">
-            <span class="text-gray-400">Осталось купить:</span>
+        <div class="bg-dark-800 rounded-lg p-3 border border-dark-700 flex-1">
+            <span class="text-gray-400 text-sm">Осталось:</span>
             <span class="float-right font-bold text-yellow-400" id="remaining-count">{{ remaining }}</span>
         </div>
     </div>
 
-    <!-- Список покупок -->
-    <div id="shopping-list" class="space-y-3">
+    <!-- Массовые действия -->
+    <div class="mb-6 flex gap-3">
+        <button hx-post="/api/shopping/restore-all"
+                hx-target="#shopping-list"
+                hx-confirm="Вернуть все купленные товары в активный список?"
+                class="flex-1 py-1.5 bg-dark-700 hover:bg-dark-600 text-gray-300 text-xs font-medium rounded border border-dark-600 transition flex items-center justify-center gap-2">
+            ↩️ Вернуть купленное
+        </button>
+        <button hx-delete="/api/shopping/clear-purchased"
+                hx-target="#shopping-list"
+                hx-confirm="Удалить все купленные товары навсегда?"
+                class="flex-1 py-1.5 bg-dark-700/50 hover:bg-red-900/20 text-gray-400 hover:text-red-400 text-xs font-medium rounded border border-dark-600 hover:border-red-900/50 transition flex items-center justify-center gap-2">
+            🗑 Очистить купленное
+        </button>
+    </div>
+
+    <!-- Список покупок (Сетка для компактности) -->
+    <div id="shopping-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {% if items %}
             {% for item in items %}
-            <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition flex items-center gap-3 {{ 'opacity-50' if item.is_purchased else '' }}" 
+            <div class="bg-dark-800 rounded-lg p-2 px-3 border border-dark-700 hover:border-purple-600 transition flex items-center gap-2 {{ 'opacity-40' if item.is_purchased else '' }}" 
                  id="item-{{ item.id }}">
-                <!-- Чекбокс выполнения -->
+                <!-- Чекбокс -->
                 <form hx-post="/api/shopping/{{ item.id }}/toggle"
                       hx-target="#shopping-list"
                       hx-swap="innerHTML"
                       class="flex-shrink-0">
-                    <button type="submit" class="text-xl {{ 'text-green-400' if item.is_purchased else 'text-gray-600 hover:text-green-400' }}">
+                    <button type="submit" class="text-lg {{ 'text-green-400' if item.is_purchased else 'text-gray-600 hover:text-green-400' }}">
                         {% if item.is_purchased %}✅{% else %}⬜{% endif %}
                     </button>
                 </form>
 
-                <!-- Информация о продукте -->
-                <div class="flex-1">
-                    <span class="font-medium text-white {{ 'line-through text-gray-500' if item.is_purchased else '' }}">
+                <div class="flex-1 min-w-0">
+                    <span class="font-medium text-sm text-white truncate block {{ 'line-through text-gray-500' if item.is_purchased else '' }}" title="{{ item.title }}">
                         {{ item.title }}
                     </span>
                 </div>
@@ -73,17 +92,44 @@
                       hx-target="#shopping-list"
                       hx-swap="innerHTML"
                       class="flex-shrink-0">
-                    <button type="submit" class="text-red-400 hover:text-red-300" title="Удалить">🗑</button>
+                    <button type="submit" class="text-gray-500 hover:text-red-400 text-xs" title="Удалить">🗑</button>
                 </form>
             </div>
             {% endfor %}
         {% else %}
-            <div class="text-center py-10 text-gray-500">
+            <div class="col-span-full text-center py-10 text-gray-500">
                 <p>Список покупок пуст 🛒</p>
-                <p class="text-sm mt-2">Введите название продукта и нажмите Enter</p>
             </div>
         {% endif %}
     </div>
+</div>
+
+<script>
+function copyShoppingList() {
+    // Собираем только некупленные товары
+    const items = Array.from(document.querySelectorAll('#shopping-list > div:not(.opacity-40)'))
+        .map(el => '• ' + el.querySelector('.font-medium').textContent.trim());
+    
+    if (items.length === 0) {
+        alert('Нечего копировать (список пуст или всё уже куплено)');
+        return;
+    }
+
+    const text = "🛒 *Список покупок:*\n\n" + items.join('\n');
+    
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = event.target.closest('button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '✅ Скопировано!';
+        btn.classList.replace('bg-purple-600', 'bg-green-600');
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.classList.replace('bg-green-600', 'bg-purple-600');
+        }, 2000);
+    });
+}
+</script>
+
 </div>
 
 {% endblock %}
