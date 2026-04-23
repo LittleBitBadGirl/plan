@@ -31,18 +31,7 @@
                        placeholder="Например: Позвонить клиенту">
             </div>
 
-            <!-- Description -->
-            <div>
-                <label for="description" class="block text-sm font-medium text-gray-300 mb-2">
-                    Описание
-                </label>
-                <textarea id="description" name="description" rows="3"
-                          class="w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white
-                                 placeholder-gray-500 focus:outline-none focus:border-accent"
-                          placeholder="Подробности задачи...">{{ task.description if task else '' }}</textarea>
-            </div>
-
-            <!-- Category & Priority -->
+            <!-- Category -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <label for="category_id" class="block text-sm font-medium text-gray-300 mb-2">
@@ -68,35 +57,16 @@
                     </select>
                 </div>
 
+                <!-- Due Date -->
                 <div>
-                    <label for="priority" class="block text-sm font-medium text-gray-300 mb-2">
-                        Приоритет
+                    <label for="due_date" class="block text-sm font-medium text-gray-300 mb-2">
+                        Дата выполнения
                     </label>
-                    <select id="priority" name="priority"
-                            class="w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white
-                                   focus:outline-none focus:border-accent">
-                        <option value="низкий" {% if task and task.priority == 'низкий' %}selected{% endif %}>
-                            🟢 Низкий
-                        </option>
-                        <option value="средний" {% if not task or task.priority == 'средний' %}selected{% endif %}>
-                            🟡 Средний
-                        </option>
-                        <option value="высокий" {% if task and task.priority == 'высокий' %}selected{% endif %}>
-                            🔴 Высокий
-                        </option>
-                    </select>
+                    <input type="date" id="due_date" name="due_date"
+                           value="{{ task.due_date.strftime('%Y-%m-%d') if task and task.due_date else '' }}"
+                           class="w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white
+                                  focus:outline-none focus:border-accent">
                 </div>
-            </div>
-
-            <!-- Due Date -->
-            <div>
-                <label for="due_date" class="block text-sm font-medium text-gray-300 mb-2">
-                    Дата выполнения
-                </label>
-                <input type="date" id="due_date" name="due_date"
-                       value="{{ task.due_date.strftime('%Y-%m-%d') if task and task.due_date else '' }}"
-                       class="w-full md:w-64 px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white
-                              focus:outline-none focus:border-accent">
             </div>
 
             <!-- Status (только для редактирования) -->

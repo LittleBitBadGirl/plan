@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Boolean, Date, Time, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Boolean, Date, Time, DateTime, JSON, ForeignKey
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.models.base import Base
 
@@ -9,7 +10,7 @@ class RecurringTask(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(500), nullable=False)
     description = Column(String, default="")
-    category_id = Column(Integer, nullable=True)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     priority = Column(String(20), default="средний")
     recurrence_type = Column(String(20), nullable=False)  # daily/weekly/monthly/custom
     recurrence_days = Column(JSON, nullable=True)  # ["mon", "wed", "fri"]
@@ -18,5 +19,8 @@ class RecurringTask(Base):
     end_date = Column(Date, nullable=True)
     time_of_day = Column(Time, nullable=True)
     is_active = Column(Boolean, default=True, index=True)
-    completed_count = Column(Integer, default=0)  # сколько раз выполнена
+    completed_count = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Связи
+    category = relationship("Category")

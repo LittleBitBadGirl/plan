@@ -1,262 +1,160 @@
 {% extends "base.html" %}
 
-{% block title %}Периодические задачи — Task Planner{% endblock %}
+{% block title %}Периодические — Task Planner{% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto">
+<div class="max-w-6xl mx-auto" x-data="{ showCreate: false }">
     <!-- Header -->
     <div class="flex items-center justify-between mb-8">
         <div>
-            <h1 class="text-3xl font-bold text-white">Периодические задачи</h1>
-            <p class="text-gray-400 mt-1">Шаблоны для автоматического создания задач</p>
+            <h1 class="text-3xl font-bold text-white">🔄 Периодические</h1>
+            <p class="text-gray-400 mt-1">Шаблоны регулярных задач</p>
         </div>
-        <button onclick="document.getElementById('create-form-section').classList.toggle('hidden')"
-                class="px-6 py-3 bg-accent hover:bg-blue-600 text-white font-medium rounded-lg transition-colors">
-            + Создать шаблон
+        <button @click="showCreate = !showCreate" type="button"
+                class="px-6 py-3 bg-accent hover:bg-blue-600 text-white font-medium rounded-lg transition-colors shadow-lg min-w-[160px]">
+            <span x-show="!showCreate">+ Новый шаблон</span>
+            <span x-show="showCreate" x-cloak>Скрыть форму</span>
         </button>
     </div>
 
-    <!-- Info -->
-    <div class="bg-dark-800 rounded-xl border border-dark-600 p-6 mb-6">
-        <div class="flex items-start">
-            <span class="text-2xl mr-4">🔄</span>
-            <div>
-                <h3 class="text-white font-medium">Как это работает</h3>
-                <p class="text-gray-400 mt-1">
-                    Периодические задачи автоматически создают задачи по расписанию (каждый день в 00:05).
-                    Например, «Встреча с друзьями» каждую пятницу.
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Create Form -->
-    <div id="create-form-section" class="hidden bg-dark-800 rounded-xl border border-dark-600 p-6 mb-6">
-        <h2 class="text-lg font-semibold text-white mb-4">Новый шаблон</h2>
-        <form id="recurring-form" class="space-y-4">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <!-- Create Form (Modern) -->
+    <div x-show="showCreate" x-cloak
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 transform -translate-y-4"
+         x-transition:enter-end="opacity-100 transform translate-y-0"
+         class="bg-dark-800 rounded-2xl border border-dark-600 p-6 mb-8 shadow-2xl">
+        <form action="/api/recurring/web-create" method="post" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                    <label class="block text-sm text-gray-400 mb-1">Название *</label>
-                    <input type="text" name="title" required placeholder="Например: Встреча с друзьями"
-                           class="w-full px-4 py-2 bg-dark-700 border border-dark-500 rounded-lg text-white focus:outline-none focus:border-accent">
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Название задачи *</label>
+                    <input type="text" name="title" required
+                           class="w-full bg-dark-900 border border-dark-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-accent"
+                           placeholder="Например: Уборка">
                 </div>
                 <div>
-                    <label class="block text-sm text-gray-400 mb-1">Приоритет</label>
-                    <select name="priority"
-                            class="w-full px-4 py-2 bg-dark-700 border border-dark-500 rounded-lg text-white focus:outline-none focus:border-accent">
-                        <option value="низкий">Низкий</option>
-                        <option value="средний" selected>Средний</option>
-                        <option value="высокий">Высокий</option>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Категория</label>
+                    <select name="category_id" 
+                            class="w-full bg-dark-900 border border-dark-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-accent">
+                        <option value="">Без категории</option>
+                        {% for cat in categories %}
+                            {% if cat.is_global %}
+                            <optgroup label="{{ cat.name }}">
+                                {% for subcat in categories %}
+                                    {% if subcat.parent_id == cat.id %}
+                                    <option value="{{ subcat.id }}">{{ subcat.name }}</option>
+                                    {% endif %}
+                                {% endfor %}
+                            </optgroup>
+                            {% endif %}
+                        {% endfor %}
                     </select>
                 </div>
             </div>
 
-            <div>
-                <label class="block text-sm text-gray-400 mb-1">Описание</label>
-                <textarea name="description" rows="2" placeholder="Необязательно"
-                          class="w-full px-4 py-2 bg-dark-700 border border-dark-500 rounded-lg text-white focus:outline-none focus:border-accent"></textarea>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                    <label class="block text-sm text-gray-400 mb-1">Тип повторения *</label>
-                    <select id="recurrence-type" name="recurrence_type" required onchange="toggleDaysField()"
-                            class="w-full px-4 py-2 bg-dark-700 border border-dark-500 rounded-lg text-white focus:outline-none focus:border-accent">
-                        <option value="daily">Ежедневно</option>
-                        <option value="weekly">Еженедельно</option>
-                        <option value="monthly">Ежемесячно</option>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div x-data="{ type: 'daily' }">
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Повторять</label>
+                    <select name="recurrence_type" x-model="type"
+                            class="w-full bg-dark-900 border border-dark-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-accent">
+                        <option value="daily">📅 Ежедневно</option>
+                        <option value="weekly">📆 Еженедельно</option>
+                        <option value="monthly">🗓 Ежемесячно</option>
                     </select>
-                </div>
-                <div>
-                    <label class="block text-sm text-gray-400 mb-1">День старта *</label>
-                    <input type="date" name="start_date" required
-                           class="w-full px-4 py-2 bg-dark-700 border border-dark-500 rounded-lg text-white focus:outline-none focus:border-accent">
-                </div>
-                <div>
-                    <label class="block text-sm text-gray-400 mb-1">Время (необязательно)</label>
-                    <input type="time" name="time_of_day"
-                           class="w-full px-4 py-2 bg-dark-700 border border-dark-500 rounded-lg text-white focus:outline-none focus:border-accent">
-                </div>
-            </div>
 
-            <!-- Days checkboxes (for weekly) -->
-            <div id="days-field" class="hidden">
-                <label class="block text-sm text-gray-400 mb-2">Дни недели</label>
-                <div class="flex flex-wrap gap-3">
-                    <label class="flex items-center gap-1 text-gray-300">
-                        <input type="checkbox" name="days" value="mon" class="accent-accent"> Пн
-                    </label>
-                    <label class="flex items-center gap-1 text-gray-300">
-                        <input type="checkbox" name="days" value="tue" class="accent-accent"> Вт
-                    </label>
-                    <label class="flex items-center gap-1 text-gray-300">
-                        <input type="checkbox" name="days" value="wed" class="accent-accent"> Ср
-                    </label>
-                    <label class="flex items-center gap-1 text-gray-300">
-                        <input type="checkbox" name="days" value="thu" class="accent-accent"> Чт
-                    </label>
-                    <label class="flex items-center gap-1 text-gray-300">
-                        <input type="checkbox" name="days" value="fri" class="accent-accent"> Пт
-                    </label>
-                    <label class="flex items-center gap-1 text-gray-300">
-                        <input type="checkbox" name="days" value="sat" class="accent-accent"> Сб
-                    </label>
-                    <label class="flex items-center gap-1 text-gray-300">
-                        <input type="checkbox" name="days" value="sun" class="accent-accent"> Вс
-                    </label>
+                    <!-- Дни недели (только если weekly) -->
+                    <div x-show="type === 'weekly'" class="mt-4 flex flex-wrap gap-2">
+                        {% for day, label in [('mon','Пн'),('tue','Вт'),('wed','Ср'),('thu','Чт'),('fri','Пт'),('sat','Сб'),('sun','Вс')] %}
+                        <label class="cursor-pointer group">
+                            <input type="checkbox" name="days" value="{{ day }}" class="hidden peer">
+                            <div class="px-2 py-1 bg-dark-900 border border-dark-700 rounded text-[10px] text-gray-500 peer-checked:bg-accent peer-checked:text-white peer-checked:border-accent transition-all uppercase font-bold">
+                                {{ label }}
+                            </div>
+                        </label>
+                        {% endfor %}
+                    </div>
                 </div>
-            </div>
 
-            <div class="flex gap-3">
-                <button type="submit"
-                        class="px-6 py-2 bg-accent hover:bg-blue-600 text-white rounded-lg transition-colors">
-                    Создать
-                </button>
-                <button type="button" onclick="document.getElementById('create-form-section').classList.add('hidden')"
-                        class="px-6 py-2 bg-dark-700 hover:bg-dark-600 text-gray-300 rounded-lg transition-colors">
-                    Отмена
-                </button>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Начать с</label>
+                    <input type="date" name="start_date" value="{{ today }}"
+                           class="w-full bg-dark-900 border border-dark-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-accent">
+                </div>
+
+                <div class="flex items-end">
+                    <button type="submit" 
+                            class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-2 rounded-lg transition-all shadow-lg">
+                        Создать шаблон
+                    </button>
+                </div>
             </div>
         </form>
-        <div id="form-message" class="mt-3 hidden"></div>
     </div>
 
-    <!-- Recurring Tasks List -->
-    <div class="bg-dark-800 rounded-xl border border-dark-600 overflow-hidden">
-        <div id="recurring-list" class="divide-y divide-dark-600">
-            <div class="text-center py-16 text-gray-500">
-                <span class="text-4xl mb-4 block">🔄</span>
-                <p class="text-lg">Загрузка...</p>
+    <!-- Templates Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for rt in recurring_tasks %}
+        <div class="bg-dark-800 rounded-xl border border-dark-600 overflow-hidden flex flex-col shadow-lg hover:border-purple-500/50 transition-all group {{ 'opacity-50' if not rt.is_active else '' }}" 
+             id="rt-card-{{ rt.id }}">
+            
+            <div class="p-5 flex-1">
+                <div class="flex justify-between items-start mb-3">
+                    <div class="flex flex-col gap-1">
+                        {% if rt.category %}
+                        <span class="text-[10px] font-bold uppercase tracking-widest text-accent">
+                            {{ rt.category.name }}
+                        </span>
+                        {% endif %}
+                        <h3 class="text-lg font-bold text-white leading-tight">{{ rt.title }}</h3>
+                    </div>
+                    <form hx-post="/api/recurring/{{ rt.id }}/toggle" hx-swap="none" hx-on::after-request="window.location.reload()">
+                        <button type="submit" 
+                                class="w-8 h-8 rounded-full bg-dark-700 flex items-center justify-center border border-dark-500 hover:bg-accent hover:border-accent transition-all text-sm">
+                            {{ '⏸' if rt.is_active else '▶️' }}
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Schedule Tag -->
+                <div class="flex flex-wrap gap-2 mt-4">
+                    <div class="px-2 py-1 bg-purple-500/10 border border-purple-500/20 rounded text-[10px] text-purple-400 font-bold uppercase">
+                        {% if rt.recurrence_type == 'daily' %}
+                            🔄 Каждый день
+                        {% elif rt.recurrence_type == 'monthly' %}
+                            🗓 Раз в месяц
+                        {% else %}
+                            📆 Еженедельно
+                        {% endif %}
+                    </div>
+                    {% if rt.recurrence_type == 'weekly' and rt.recurrence_days %}
+                        {% set days = rt.recurrence_days if rt.recurrence_days is iterable and rt.recurrence_days is not string else [] %}
+                        <div class="flex gap-1">
+                            {% for d in days %}
+                                <span class="px-1.5 py-0.5 bg-dark-700 rounded text-[9px] text-gray-400 font-bold uppercase">{{ d }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Footer Stats -->
+            <div class="px-5 py-3 bg-dark-900/30 border-t border-dark-700/50 flex justify-between items-center text-xs">
+                <span class="text-gray-500">Выполнено: <b class="text-gray-300">{{ rt.completed_count }}</b></span>
+                <button hx-delete="/api/recurring/{{ rt.id }}" 
+                        hx-confirm="Удалить этот шаблон?"
+                        hx-on::after-request="window.location.reload()"
+                        class="text-gray-700 hover:text-red-500 transition-colors">
+                    🗑 Удалить
+                </button>
             </div>
         </div>
+        {% endfor %}
+
+        {% if not recurring_tasks %}
+        <div class="col-span-full py-20 text-center text-gray-600">
+            <span class="text-5xl block mb-4">🌀</span>
+            <p>Нет периодических задач. Создайте шаблон, чтобы экономить время!</p>
+        </div>
+        {% endif %}
     </div>
 </div>
-
-{% block extra_scripts %}
-<script>
-function toggleDaysField() {
-    const type = document.getElementById('recurrence-type').value;
-    const daysField = document.getElementById('days-field');
-    daysField.classList.toggle('hidden', type !== 'weekly');
-}
-
-// Load recurring tasks
-function loadRecurring() {
-    fetch('/api/recurring')
-        .then(r => r.json())
-        .then(tasks => {
-            const container = document.getElementById('recurring-list');
-            if (!tasks || tasks.length === 0) {
-                container.innerHTML = `
-                    <div class="text-center py-16 text-gray-500">
-                        <span class="text-4xl mb-4 block">🔄</span>
-                        <p class="text-lg">Периодических задач пока нет</p>
-                        <p class="text-sm mt-2">Создайте шаблон для автоматического планирования</p>
-                    </div>`;
-                return;
-            }
-
-            const typeLabels = {daily: '📅 Ежедневно', weekly: '📆 Еженедельно', monthly: '🗓 Ежемесячно'};
-            const dayNames = {mon: 'Пн', tue: 'Вт', wed: 'Ср', thu: 'Чт', fri: 'Пт', sat: 'Сб', sun: 'Вс'};
-
-            container.innerHTML = tasks.map(t => {
-                let schedule = typeLabels[t.recurrence_type] || t.recurrence_type;
-                if (t.recurrence_type === 'weekly' && t.recurrence_days) {
-                    schedule += ': ' + t.recurrence_days.map(d => dayNames[d] || d).join(', ');
-                }
-                return `
-                <div class="p-4 flex items-center justify-between hover:bg-dark-700/50" id="recurring-${t.id}">
-                    <div class="flex-1">
-                        <div class="flex items-center gap-3">
-                            <h3 class="font-medium text-white">${t.title}</h3>
-                            <span class="text-xs px-2 py-1 rounded bg-dark-600 text-gray-400">${schedule}</span>
-                        </div>
-                        ${t.description ? `<p class="text-sm text-gray-500 mt-1">${t.description}</p>` : ''}
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <button onclick="toggleRecurring(${t.id}, ${!t.is_active})"
-                                class="px-3 py-1 rounded text-sm ${t.is_active ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-gray-500/20 text-gray-400 hover:bg-gray-500/30'} transition-colors">
-                            ${t.is_active ? '✅ Активна' : '⏸ Неактивна'}
-                        </button>
-                        <button onclick="deleteRecurring(${t.id})"
-                                class="px-3 py-1 bg-red-500/20 text-red-400 rounded text-sm hover:bg-red-500/30 transition-colors">
-                            🗑
-                        </button>
-                    </div>
-                </div>`;
-            }).join('');
-        })
-        .catch(() => {
-            document.getElementById('recurring-list').innerHTML = '<div class="text-center py-16 text-red-400">Ошибка загрузки</div>';
-        });
-}
-
-// Create task
-document.getElementById('recurring-form').addEventListener('submit', function(e) {
-    e.preventDefault();
-    const form = e.target;
-    const formData = new FormData(form);
-
-    const data = {
-        title: formData.get('title'),
-        description: formData.get('description') || '',
-        priority: formData.get('priority'),
-        recurrence_type: formData.get('recurrence_type'),
-        start_date: formData.get('start_date'),
-        time_of_day: formData.get('time_of_day') || null,
-    };
-
-    // Collect days for weekly
-    if (data.recurrence_type === 'weekly') {
-        const days = [];
-        form.querySelectorAll('input[name="days"]:checked').forEach(cb => days.push(cb.value));
-        if (days.length === 0) {
-            showMessage('Выберите хотя бы один день недели', 'error');
-            return;
-        }
-        data.recurrence_days = days;
-    }
-
-    fetch('/api/recurring', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(data)
-    })
-    .then(r => {
-        if (!r.ok) return r.json().then(e => { throw new Error(e.detail || 'Ошибка') });
-        return r.json();
-    })
-    .then(() => {
-        showMessage('✅ Шаблон создан!', 'success');
-        form.reset();
-        document.getElementById('create-form-section').classList.add('hidden');
-        loadRecurring();
-    })
-    .catch(err => {
-        showMessage('❌ ' + err.message, 'error');
-    });
-});
-
-function toggleRecurring(id, newState) {
-    fetch(`/api/recurring/${id}/toggle`, {method: 'POST'})
-        .then(() => loadRecurring());
-}
-
-function deleteRecurring(id) {
-    if (!confirm('Удалить шаблон?')) return;
-    fetch(`/api/recurring/${id}`, {method: 'DELETE'})
-        .then(() => loadRecurring());
-}
-
-function showMessage(text, type) {
-    const msg = document.getElementById('form-message');
-    msg.textContent = text;
-    msg.className = `mt-3 p-3 rounded ${type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`;
-    msg.classList.remove('hidden');
-    setTimeout(() => msg.classList.add('hidden'), 3000);
-}
-
-loadRecurring();
-</script>
-{% endblock %}
 {% endblock %}

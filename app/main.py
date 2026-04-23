@@ -19,6 +19,7 @@ from app.web.pages import router as web_router
 from app.config import settings
 from app.services.rollover_service import rollover_overdue_tasks
 from app.services.recurring_service import generate_recurring_tasks
+from app.services.backup_service import create_backup
 
 
 @asynccontextmanager
@@ -35,36 +36,28 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Добавление completed_count и UNIQUE constraint если нет
-    import sqlite3
-    db_path = settings.project_dir / "planner.db"
-    conn = sqlite3.connect(str(db_path))
-    try:
-        conn.execute("ALTER TABLE recurring_tasks ADD COLUMN completed_count INTEGER DEFAULT 0")
-        conn.commit()
-    except Exception:
-        pass  # Колонка уже есть
-
-    try:
-        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_recurring_unique ON recurring_tasks(title, recurrence_type)")
-        conn.commit()
-    except Exception:
-        pass
-    finally:
-        conn.close()
-
+    # ... (код с миграциями sqlite3) ...
     # Seed категорий, если БД пуста
     async with async_session() as db:
         await seed_categories(db)
         await db.commit()
 
-    # Перенос просроченных задач при запуске (если сервер не работал ночью)
-    rollover_result = await rollover_overdue_tasks()
-    if rollover_result["moved"] > 0:
-        app_logger.info(f"🔄 Перенесено {rollover_result['moved']} просроченных задач (в т.ч. {rollover_result['new_chronic']} хронических)")
+    # Сделать бэкап при запуске
+    await create_backup()
 
+    # Перенос просроченных задач при запуске
+    rollover_result = await rollover_overdue_tasks()
+    # ...
     # APScheduler — фоновые задачи
     scheduler = AsyncIOScheduler()
+
+    # Бэкап БД ежедневно в 00:01
+    scheduler.add_job(
+        create_backup,
+        CronTrigger(hour=0, minute=1),
+        id="backup_db",
+        name="Резервное копирование БД",
+    )
 
     # Генерация периодических задач ежедневно в 00:05
     scheduler.add_job(

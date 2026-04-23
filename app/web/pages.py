@@ -133,9 +133,9 @@ async def dashboard(request: Request):
         # Получаем статистику через хелпер
         completed, total = await get_today_stats(db)
 
-        # Категории для формы
+        # Категории для формы (загружаем все для выпадающего списка)
         cats_result = await db.execute(
-            select(Category).where(Category.is_global == True).order_by(Category.name)
+            select(Category).order_by(Category.is_global.desc(), Category.name)
         )
         categories = cats_result.scalars().all()
 
@@ -556,6 +556,86 @@ async def categories_page(request: Request):
     })
 
 
+@router.get("/categories/{category_id}/edit-form", response_class=HTMLResponse)
+async def get_category_edit_form(category_id: int):
+    """Вернуть инлайн-форму редактирования названия категории"""
+    async with async_session() as db:
+        result = await db.execute(select(Category).where(Category.id == category_id))
+        category = result.scalar_one_or_none()
+        if not category:
+            return HTMLResponse("Ошибка")
+        
+    return HTMLResponse(f"""
+        <form hx-post="/categories/{category_id}/edit" hx-swap="outerHTML" class="flex gap-2 items-center">
+            <input type="text" name="name" value="{category.name}" 
+                   class="bg-dark-900 border border-accent rounded px-2 py-1 text-sm text-white focus:outline-none w-full">
+            <button type="submit" class="text-green-400 text-xs">✅</button>
+            <button type="button" onclick="window.location.reload()" class="text-gray-500 text-xs">❌</button>
+        </form>
+    """)
+
+
+@router.post("/categories/{parent_id}/sub/create", response_class=HTMLResponse)
+async def create_subcategory_inline(parent_id: int, name: str = Form(...)):
+    """Создать подкатегорию прямо из карточки родителя"""
+    async with async_session() as db:
+        new_sub = Category(name=name, parent_id=parent_id, is_global=False)
+        db.add(new_sub)
+        await db.commit()
+    
+    # Перезагружаем всю страницу, чтобы обновить счетчики и списки (самый надежный способ)
+    from fastapi.responses import RedirectResponse
+    return HTMLResponse(content='<script>window.location.reload()</script>')
+
+
+@router.delete("/api/categories/{category_id}", response_class=HTMLResponse)
+async def delete_category_htmx(category_id: int):
+    """Удалить категорию (HTMX)"""
+    async with async_session() as db:
+        result = await db.execute(select(Category).where(Category.id == category_id))
+        cat = result.scalar_one_or_none()
+        if cat:
+            await db.delete(cat)
+            await db.commit()
+            return HTMLResponse(content="") # Удалит элемент из DOM
+    return HTMLResponse(status_code=404)
+
+
+@router.post("/categories/{category_id}/edit", response_class=HTMLResponse)
+async def edit_category(category_id: int, name: str = Form(...)):
+    """Сохранить новое название категории"""
+    async with async_session() as db:
+        result = await db.execute(select(Category).where(Category.id == category_id))
+        category = result.scalar_one_or_none()
+        if category:
+            category.name = name
+            await db.commit()
+            
+            # Возвращаем заголовок/элемент с новым именем
+            # Если это глобальная категория, возвращаем h2, если подкатегория - span
+            if category.is_global:
+                return HTMLResponse(f"""
+                    <h2 class="text-lg font-bold text-white flex items-center gap-2" id="cat-title-{category_id}">
+                        <span class="text-accent text-xl">🏷️</span>
+                        {category.name}
+                    </h2>
+                """)
+            else:
+                return HTMLResponse(f"""
+                    <div class="flex items-center justify-between group/item p-2 hover:bg-dark-700/30 rounded transition-colors" id="cat-title-{category_id}">
+                        <span class="text-sm text-gray-300 flex items-center gap-2">
+                            <span class="text-gray-600">└</span>
+                            {category.name}
+                        </span>
+                        <div class="flex items-center gap-2 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                            <button hx-get="/categories/{category_id}/edit-form" hx-target="#cat-title-{category_id}" class="text-xs text-gray-500 hover:text-white" title="Изменить">✏️</button>
+                            <button hx-delete="/api/categories/{category_id}" hx-target="#cat-title-{category_id}" hx-swap="delete" hx-confirm="Удалить подкатегорию?" class="text-red-500 hover:text-red-400 text-xs" title="Удалить">🗑</button>
+                        </div>
+                    </div>
+                """)
+    return HTMLResponse("Ошибка")
+
+
 @router.get("/calendar", response_class=HTMLResponse)
 async def calendar_page(request: Request):
     """Календарь"""
@@ -641,7 +721,7 @@ async def stats_page(request: Request):
         )
         total_new = new_result.scalar() or 0
 
-        # 1. Задачи без категории (активные)
+        # 1. Задачи без категории
         no_cat_result = await db.execute(
             select(func.count(Task.id)).where(
                 Task.category_id == None,
@@ -651,8 +731,7 @@ async def stats_page(request: Request):
         )
         no_category_count = no_cat_result.scalar() or 0
 
-        # 2. Средняя скорость выполнения (в днях)
-        # Используем julianday для SQLite: разница дат в днях
+        # 2. Средняя скорость выполнения
         speed_result = await db.execute(
             select(func.avg(func.julianday(Task.completed_at) - func.julianday(Task.created_at))).where(
                 Task.status == "выполнена",
@@ -663,6 +742,30 @@ async def stats_page(request: Request):
         avg_speed_days = speed_result.scalar()
         avg_speed = f"{avg_speed_days:.1f} дн." if avg_speed_days else "—"
 
+        # 3. Распределение по категориям (Топ-5)
+        cat_stats_query = (
+            select(Category.name, func.count(Task.id))
+            .join(Task, Task.category_id == Category.id)
+            .where(Task.status == "выполнена", root_filter)
+            .group_by(Category.name)
+            .order_by(func.count(Task.id).desc())
+            .limit(5)
+        )
+        cat_stats_result = await db.execute(cat_stats_query)
+        category_distribution = cat_stats_result.all()
+
+        # 4. Прогресс за последние 7 дней
+        from datetime import timedelta
+        week_ago = date.today() - timedelta(days=7)
+        weekly_stats_query = (
+            select(func.date(Task.completed_at), func.count(Task.id))
+            .where(Task.completed_at >= week_ago, Task.status == "выполнена", root_filter)
+            .group_by(func.date(Task.completed_at))
+            .order_by(func.date(Task.completed_at).asc())
+        )
+        weekly_result = await db.execute(weekly_stats_query)
+        weekly_history = weekly_result.all()
+
     return templates.TemplateResponse("stats.html", {
         "request": request,
         "total_completed": total_completed,
@@ -670,13 +773,60 @@ async def stats_page(request: Request):
         "total_new": total_new,
         "no_category_count": no_category_count,
         "avg_speed": avg_speed,
+        "category_distribution": category_distribution,
+        "weekly_history": weekly_history,
     })
 
 
 @router.get("/recurring", response_class=HTMLResponse)
 async def recurring_page(request: Request):
-    """Периодические задачи"""
-    return templates.TemplateResponse("recurring.html", {"request": request})
+    """Периодические задачи — управление шаблонами"""
+    async with async_session() as db:
+        # Получаем все шаблоны
+        result = await db.execute(
+            select(RecurringTask)
+            .options(selectinload(RecurringTask.category))
+            .order_by(RecurringTask.is_active.desc(), RecurringTask.title)
+        )
+        recurring_tasks = result.scalars().all()
+
+        # Категории для формы (загружаем все)
+        cats_result = await db.execute(
+            select(Category).order_by(Category.is_global.desc(), Category.name)
+        )
+        categories = cats_result.scalars().all()
+
+    return templates.TemplateResponse("recurring.html", {
+        "request": request,
+        "recurring_tasks": recurring_tasks,
+        "categories": categories,
+    })
+
+
+@router.post("/api/recurring/web-create", response_class=HTMLResponse)
+async def create_recurring_web(
+    request: Request,
+    title: str = Form(...),
+    category_id: str = Form(None),
+    recurrence_type: str = Form(...),
+    days: List[str] = Form(None),
+    start_date: str = Form(None),
+):
+    """Создать периодическую задачу из веб-интерфейса"""
+    async with async_session() as db:
+        new_rt = RecurringTask(
+            title=title,
+            category_id=int(category_id) if category_id and category_id.isdigit() else None,
+            recurrence_type=recurrence_type,
+            recurrence_days=json.dumps(days) if recurrence_type == "weekly" and days else None,
+            start_date=date.fromisoformat(start_date) if start_date else date.today(),
+            is_active=True,
+        )
+        db.add(new_rt)
+        await db.commit()
+    
+    # Просто перезагружаем страницу
+    return HTMLResponse(content='<script>window.location.reload()</script>')
 
 
 # ---- HTMX эндпоинты ----
@@ -704,43 +854,98 @@ async def tasks_list_htmx(request: Request):
 async def task_create_htmx(
     request: Request,
     title: str = Form(...),
-    description: str = Form(""),
-    category_id: int = Form(None),
-    priority: str = Form("средний"),
-    due_date: str = Form(None),
+    category_id: str = Form(None),
 ):
-    """HTMX: создать задачу"""
+    """HTMX: быстрое создание задачи на сегодня"""
+    today = date.today()
     async with async_session() as db:
         task = Task(
             title=title,
-            description=description,
-            category_id=category_id if category_id else None,
-            priority=priority,
-            due_date=date.fromisoformat(due_date) if due_date else date.today(),
+            category_id=int(category_id) if category_id and category_id.isdigit() else None,
+            due_date=today,
             source="web",
+            status="новая",
         )
         db.add(task)
-        await db.flush()
-        await db.refresh(task)
+        await db.commit()
 
-        # Вернуть обновлённый список
-        today = date.today()
+        # Вернуть обновлённый список со всей нужной информацией
         result = await db.execute(
-            select(Task).where(
+            select(Task)
+            .options(selectinload(Task.category).selectinload(Category.parent))
+            .where(
                 Task.due_date == today,
-                Task.is_archived == False
+                Task.is_archived == False,
+                Task.parent_task_id == None
             ).order_by(Task.sort_order.asc(), Task.created_at.asc())
         )
         tasks = result.scalars().all()
 
-    return templates.TemplateResponse("partials/tasks_list.html", {
+        # Загружаем подзадачи
+        subtasks_map = {}
+        if tasks:
+            task_ids = [t.id for t in tasks]
+            subtasks_result = await db.execute(
+                select(Task).where(Task.parent_task_id.in_(task_ids))
+            )
+            all_subtasks = subtasks_result.scalars().all()
+            
+            from collections import defaultdict
+            subtasks_map = defaultdict(list)
+            for st in all_subtasks:
+                subtasks_map[st.parent_task_id].append(st)
+
+    # Статистика для OOB
+    completed, total = await get_today_stats(db)
+    stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
+
+    # Отрисовка шаблона
+    template = templates.get_template("partials/tasks_list.html")
+    content = template.render({
         "request": request,
         "tasks": tasks,
+        "subtasks_map": subtasks_map,
     })
+    
+    return HTMLResponse(content=content + stats_oob)
+
+
+async def get_tasks_today(db: AsyncSession, request: Request):
+    """Вспомогательная функция для получения списка задач на сегодня и их отрисовки"""
+    today = date.today()
+    result = await db.execute(
+        select(Task)
+        .options(selectinload(Task.category).selectinload(Category.parent))
+        .where(
+            Task.due_date == today,
+            Task.is_archived == False,
+            Task.parent_task_id == None
+        ).order_by(Task.sort_order.asc(), Task.created_at.asc())
+    )
+    tasks = result.scalars().all()
+
+    subtasks_map = {}
+    if tasks:
+        task_ids = [t.id for t in tasks]
+        subtasks_result = await db.execute(
+            select(Task).where(Task.parent_task_id.in_(task_ids))
+        )
+        all_subtasks = subtasks_result.scalars().all()
+        from collections import defaultdict
+        subtasks_map = defaultdict(list)
+        for st in all_subtasks:
+            subtasks_map[st.parent_task_id].append(st)
+
+    template = templates.get_template("partials/tasks_list.html")
+    content = template.render({"request": request, "tasks": tasks, "subtasks_map": subtasks_map})
+    
+    completed, total = await get_today_stats(db)
+    stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
+    return content + stats_oob
 
 
 @router.post("/tasks/{task_id}/complete", response_class=HTMLResponse)
-async def complete_task(task_id: int):
+async def complete_task(request: Request, task_id: int):
     """Отметить задачу выполненной → перемещает в архив"""
     async with async_session() as db:
         result = await db.execute(select(Task).where(Task.id == task_id))
@@ -750,17 +955,12 @@ async def complete_task(task_id: int):
             task.completed_at = datetime.utcnow()
             task.is_archived = True
             await db.commit()
-            
-            # Получаем обновленную статистику для OOB
-            completed, total = await get_today_stats(db)
-            stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
-            
-            return HTMLResponse(f'<div>✅ {task.title} — выполнено! (в архиве)</div>{stats_oob}')
+            return HTMLResponse(content=await get_tasks_today(db, request))
     return HTMLResponse('<div class="text-gray-500 p-4">Задача не найдена</div>')
 
 
 @router.post("/tasks/{task_id}/backlog", response_class=HTMLResponse)
-async def move_to_backlog(task_id: int):
+async def move_to_backlog(request: Request, task_id: int):
     """Переместить задачу в бэклог (убрать дату)"""
     async with async_session() as db:
         result = await db.execute(select(Task).where(Task.id == task_id))
@@ -769,17 +969,12 @@ async def move_to_backlog(task_id: int):
             task.due_date = None
             task.status = "новая"
             await db.commit()
-            
-            # Получаем обновленную статистику для OOB
-            completed, total = await get_today_stats(db)
-            stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
-            
-            return HTMLResponse(f'<div>📥 {task.title} → в бэклог</div>{stats_oob}')
+            return HTMLResponse(content=await get_tasks_today(db, request))
     return HTMLResponse('<div class="text-gray-500 p-4">Задача не найдена</div>')
 
 
 @router.delete("/tasks/{task_id}", response_class=HTMLResponse)
-async def delete_task(task_id: int):
+async def delete_task(request: Request, task_id: int):
     """Удалить задачу (soft delete → архив)"""
     async with async_session() as db:
         result = await db.execute(select(Task).where(Task.id == task_id))
@@ -788,66 +983,36 @@ async def delete_task(task_id: int):
             task.is_archived = True
             await db.commit()
             
-            # Получаем обновленную статистику для OOB
-            completed, total = await get_today_stats(db)
-            stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
-            
-            return HTMLResponse(f"""
-                <div hx-swap-oob="delete:#task-{task_id}"></div>
-                <div id="toast" class="fixed top-4 right-4 bg-red-600 text-white px-4 py-2 rounded shadow-lg z-50 animate-fade-in">
+            tasks_content = await get_tasks_today(db, request)
+            toast_oob = f"""
+                <div id="toast" hx-swap-oob="afterbegin:body" class="fixed top-4 right-4 bg-red-600 text-white px-4 py-2 rounded shadow-lg z-50 animate-fade-in">
                     🗑 {task.title} — в архив
                 </div>
-                {stats_oob}
-            """)
+            """
+            return HTMLResponse(content=tasks_content + toast_oob)
     return HTMLResponse('<div class="text-gray-500 p-4">Задача не найдена</div>')
 
 
 @router.post("/tasks/{task_id}/plan", response_class=HTMLResponse)
-async def plan_task(task_id: int, due_date: str = Form(None)):
+async def plan_task(request: Request, task_id: int, due_date: str = Form(None)):
     """Запланировать задачу на дату"""
     from datetime import date
     async with async_session() as db:
         result = await db.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
         if task:
-            if due_date:
-                # Парсим ДД.ММ (год текущий)
-                try:
+            try:
+                if due_date:
                     day, month = due_date.split(".")
                     task.due_date = date(date.today().year, int(month), int(day))
-                    await db.flush()
-                    await db.commit()
-                    
-                    # Получаем обновленную статистику для OOB
-                    completed, total = await get_today_stats(db)
-                    stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
-                    
-                    return HTMLResponse(content=f"""
-                        <div hx-swap-oob="delete:#task-{task_id}"></div>
-                        <div id="toast" class="fixed top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded shadow-lg z-50 animate-fade-in">
-                            📅 {task.title} → {due_date}.{date.today().year}
-                        </div>
-                        {stats_oob}
-                    """)
-                except (ValueError, IndexError) as e:
-                    return HTMLResponse(content=f'<div class="text-red-400 p-4">❌ Неверный формат: {e}. Введите ДД.ММ</div>', status_code=400)
-            else:
-                task.due_date = date.today()
-                await db.flush()
+                else:
+                    task.due_date = date.today()
                 await db.commit()
-                
-                # Получаем обновленную статистику для OOB
-                completed, total = await get_today_stats(db)
-                stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
-                
-                return HTMLResponse(content=f"""
-                    <div hx-swap-oob="delete:#task-{task_id}"></div>
-                    <div id="toast" class="fixed top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded shadow-lg z-50 animate-fade-in">
-                        📅 {task.title} → сегодня
-                    </div>
-                    {stats_oob}
-                """)
+                return HTMLResponse(content=await get_tasks_today(db, request))
+            except Exception as e:
+                return HTMLResponse(content=f'<div class="text-red-400 p-4">❌ Ошибка: {e}</div>', status_code=400)
     return HTMLResponse(content='<div class="text-gray-500 p-4">Задача не найдена</div>', status_code=404)
+
 
 
 @router.post("/tasks/{task_id}/status", response_class=HTMLResponse)
@@ -1118,13 +1283,21 @@ async def restore_all_shopping_items(request: Request):
     return HTMLResponse(content=list_template.render(items=items) + stats_html)
 
 
-@router.delete("/api/shopping/clear-purchased", response_class=HTMLResponse)
-async def clear_purchased_items(request: Request):
-    """Удалить все купленные товары"""
+@router.post("/api/shopping/bulk-create", response_class=HTMLResponse)
+async def bulk_create_shopping_items(
+    request: Request,
+    titles: str = Form(...),
+):
+    """Создать несколько элементов списка покупок из текста (по одному на строку)"""
+    lines = [line.strip() for line in titles.split('\n') if line.strip()]
+    
     async with async_session() as db:
-        await db.execute(
-            delete(ShoppingItem).where(ShoppingItem.is_purchased == True)
-        )
+        for title in lines:
+            # Убираем лишние символы в начале (буллиты, дефисы)
+            clean_title = title.lstrip('•-*+ ').strip()
+            if clean_title:
+                item = ShoppingItem(title=clean_title)
+                db.add(item)
         await db.commit()
         
         # Перезагружаем список
@@ -1133,9 +1306,10 @@ async def clear_purchased_items(request: Request):
         )
         items = list(result.scalars().all())
         total = len(items)
-        purchased = 0
-        remaining = total
+        purchased = sum(1 for i in items if i.is_purchased)
+        remaining = total - purchased
 
+    # Тот же компактный шаблон
     from jinja2 import Template
     list_template = Template('''
         {% if items %}
