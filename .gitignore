@@ -36,3 +36,5 @@ Thumbs.db
 ```planner.db
 .env
 CONTEXT.md
+backups/
+planner.db*
