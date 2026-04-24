@@ -304,7 +304,7 @@ async def backlog_page(request: Request):
     async with async_session() as db:
         result = await db.execute(
             select(Task)
-            .options(selectinload(Task.category))
+            .options(selectinload(Task.category).selectinload(Category.parent))
             .where(
                 Task.is_archived == False,
                 Task.due_date == None,
