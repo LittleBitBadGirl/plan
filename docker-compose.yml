@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  planner:
+    build: .
+    container_name: task_planner
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - ./planner.db:/app/planner.db
+      - ./uploads:/app/uploads
+      - ./config:/app/config
+      - ./backups:/app/backups
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:////app/planner.db
+      - AI_DEVICE=cpu
+    restart: unless-stopped
+
+networks:
+  default:
+    name: planner_network

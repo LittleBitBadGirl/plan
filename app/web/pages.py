@@ -9,11 +9,14 @@ from app.models.task import Task
 from app.models.category import Category
 from app.models.recurring import RecurringTask
 from app.models.shopping import ShoppingItem
-from datetime import date, datetime
+from app.models.report import AIReport
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 import json
 from typing import List
 from app.services.rollover_service import rollover_overdue_tasks
+
+import re
 
 router = APIRouter(tags=["web"])
 
@@ -243,6 +246,8 @@ async def task_web_create(
     priority: str = Form("средний"),
     due_date: str = Form(""),
     status: str = Form("новая"),
+    is_milestone: bool = Form(False),
+    impact_notes: str = Form(""),
 ):
     """Web: создать задачу из формы (form-data)"""
     async with async_session() as db:
@@ -268,6 +273,8 @@ async def task_web_create(
             priority=priority,
             due_date=date.fromisoformat(due_date) if due_date else None,
             status=status,
+            is_milestone=is_milestone,
+            impact_notes=impact_notes,
             source="web",
         )
         db.add(task)
@@ -288,6 +295,8 @@ async def task_web_edit(
     priority: str = Form("средний"),
     due_date: str = Form(""),
     status: str = Form("новая"),
+    is_milestone: bool = Form(False),
+    impact_notes: str = Form(""),
 ):
     """Web: редактировать задачу из формы (form-data)"""
     async with async_session() as db:
@@ -302,8 +311,12 @@ async def task_web_edit(
         task.priority = priority
         task.due_date = date.fromisoformat(due_date) if due_date else None
         task.status = status
+        task.is_milestone = is_milestone
+        task.impact_notes = impact_notes
+        
         if status == "выполнена" and not task.completed_at:
             task.completed_at = datetime.utcnow()
+            task.is_archived = True
         elif status != "выполнена":
             task.completed_at = None
         await db.commit()
@@ -401,7 +414,20 @@ async def make_task_recurring(
         if not task:
             return HTMLResponse(f'<div id="task-{task_id}" class="hidden"></div>')
 
-        # 2. Создаем RecurringTask
+        # 2. Проверка на дубликат (title + recurrence_type)
+        existing = await db.execute(
+            select(RecurringTask).where(
+                RecurringTask.title == task.title,
+                RecurringTask.recurrence_type == recurrence_type,
+            )
+        )
+        if existing.scalar_one_or_none():
+            # Если уже есть такой шаблон, просто удаляем задачу из бэклога
+            await db.delete(task)
+            await db.commit()
+            return HTMLResponse(f'<div id="task-{task_id}" class="hidden"></div>')
+
+        # 3. Создаем RecurringTask
         recurring = RecurringTask(
             title=task.title,
             description=task.description,
@@ -414,7 +440,7 @@ async def make_task_recurring(
         )
         db.add(recurring)
 
-        # 3. Удаляем старую задачу из бэклога
+        # 4. Удаляем старую задачу из бэклога
         await db.delete(task)
         await db.commit()
 
@@ -780,6 +806,12 @@ async def stats_page(request: Request):
         weekly_result = await db.execute(weekly_stats_query)
         weekly_history = weekly_result.all()
 
+        # Последний AI отчет
+        report_result = await db.execute(
+            select(AIReport).order_by(AIReport.report_date.desc())
+        )
+        last_report = report_result.scalars().first()
+
     return templates.TemplateResponse("stats.html", {
         "request": request,
         "total_completed": total_completed,
@@ -789,7 +821,59 @@ async def stats_page(request: Request):
         "avg_speed": avg_speed,
         "category_distribution": category_distribution,
         "weekly_history": weekly_history,
+        "last_report": last_report,
     })
+
+
+@router.get("/api/ai/prepare-analysis", response_class=HTMLResponse)
+async def prepare_analysis_data(request: Request):
+    """Подготовить текстовый дамп задач за вчера для Gemini"""
+    yesterday = date.today() - timedelta(days=1)
+    
+    async with async_session() as db:
+        # Задачи за вчера
+        result = await db.execute(
+            select(Task)
+            .options(selectinload(Task.category))
+            .where(
+                (func.date(Task.completed_at) == yesterday) | 
+                (Task.due_date == yesterday)
+            )
+        )
+        tasks = result.scalars().all()
+
+        if not tasks:
+            return HTMLResponse("""
+                <div class="bg-yellow-900/20 border border-yellow-700/50 p-6 rounded-xl text-center">
+                    <p class="text-yellow-500">За вчера (24.04) не найдено задач в плане.</p>
+                </div>
+            """)
+
+        # Формируем отчет для терминала
+        summary = f"Данные за {yesterday.strftime('%d.%m.%Y')} готовы.\n"
+        summary += f"Всего задействовано задач: {len(tasks)}\n\n"
+        
+        for t in tasks:
+            status_icon = "✅" if t.status == "выполнена" else "❌"
+            cat = t.category.name if t.category else "Без категории"
+            summary += f"{status_icon} [{cat}] {t.title}\n"
+
+    return HTMLResponse(f"""
+        <div class="bg-blue-900/20 border border-blue-500/50 p-6 rounded-xl">
+            <h3 class="text-blue-400 font-bold mb-3 flex items-center gap-2">
+                <span>🤖</span> Инструкция для Gemini
+            </h3>
+            <p class="text-gray-300 text-sm mb-4">
+                Данные за вчерашний день успешно выгружены. Теперь просто напишите в терминале:
+            </p>
+            <div class="bg-dark-900 p-4 rounded border border-dark-600 font-mono text-xs text-green-400 mb-4 select-all">
+                Gemini, проанализируй вчерашний день (24.04) и сохрани отчет в базу.
+            </div>
+            <p class="text-gray-500 text-[10px]">
+                Я увижу эти данные в базе и напишу Senior-разбор прямо здесь на странице.
+            </p>
+        </div>
+    """)
 
 
 @router.get("/recurring", response_class=HTMLResponse)
@@ -881,11 +965,27 @@ async def task_create_htmx(
 ):
     """HTMX: быстрое создание задачи на сегодня"""
     today = date.today()
+    
+    # Парсинг времени из заголовка (например, "12:00 Задача")
+    due_time = None
+    time_match = re.match(r'^(\d{1,2}:\d{2})\s+(.*)$', title)
+    if time_match:
+        try:
+            time_str = time_match.group(1)
+            title = time_match.group(2)
+            # Приводим к формату ЧЧ:ММ (добавляем 0 если надо)
+            if len(time_str.split(':')[0]) == 1:
+                time_str = '0' + time_str
+            due_time = time.fromisoformat(time_str)
+        except ValueError:
+            pass
+
     async with async_session() as db:
         task = Task(
             title=title,
             category_id=int(category_id) if category_id and category_id.isdigit() else None,
             due_date=today,
+            due_time=due_time,
             source="web",
             status="новая",
         )
@@ -978,7 +1078,14 @@ async def complete_task(request: Request, task_id: int):
             task.completed_at = datetime.utcnow()
             task.is_archived = True
             await db.commit()
-            return HTMLResponse(content=await get_tasks_today(db, request))
+
+            tasks_content = await get_tasks_today(db, request)
+            toast_oob = f"""
+                <div id="toast" hx-swap-oob="afterbegin:body" class="fixed top-4 right-4 bg-success text-white px-4 py-2 rounded shadow-lg z-50 animate-fade-in">
+                    ✅ {task.title} — выполнено
+                </div>
+            """
+            return HTMLResponse(content=tasks_content + toast_oob)
     return HTMLResponse('<div class="text-gray-500 p-4">Задача не найдена</div>')
 
 
@@ -1076,13 +1183,39 @@ async def task_status_htmx(
 
 @router.get("/shopping", response_class=HTMLResponse)
 async def shopping_page(request: Request):
-    """Страница списка покупок"""
+    """Страница списка покупок и бытовых задач"""
     async with async_session() as db:
+        # 1. Элементы списка покупок (простые)
         result = await db.execute(
             select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
         )
         items = list(result.scalars().all())
-        
+
+        # 2. Задачи категории "Быт" или "Покупки" из основного списка
+        # Ищем категории по ключевым словам
+        cat_result = await db.execute(
+            select(Category).where(
+                (Category.name.ilike("%быт%")) | 
+                (Category.name.ilike("%покупк%")) | 
+                (Category.name.ilike("%семья%"))
+            )
+        )
+        household_categories = cat_result.scalars().all()
+        household_cat_ids = [c.id for c in household_categories]
+
+        household_tasks = []
+        if household_cat_ids:
+            task_result = await db.execute(
+                select(Task)
+                .options(selectinload(Task.category))
+                .where(
+                    Task.category_id.in_(household_cat_ids),
+                    Task.is_archived == False
+                )
+                .order_by(Task.status.desc(), Task.created_at.desc())
+            )
+            household_tasks = task_result.scalars().all()
+
         total = len(items)
         purchased = sum(1 for item in items if item.is_purchased)
         remaining = total - purchased
@@ -1090,11 +1223,12 @@ async def shopping_page(request: Request):
     return templates.TemplateResponse("shopping.html", {
         "request": request,
         "items": items,
+        "household_tasks": household_tasks,
+        "household_cat_ids": household_cat_ids, # Теперь передаем
         "total": total,
         "purchased": purchased,
         "remaining": remaining,
     })
-
 
 @router.post("/api/shopping/create", response_class=HTMLResponse)
 async def create_shopping_item(
@@ -1369,3 +1503,4 @@ async def bulk_create_shopping_items(
         </script>
     '''
     return HTMLResponse(content=list_template.render(items=items) + stats_html)
+

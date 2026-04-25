@@ -37,7 +37,10 @@ async def main():
         for item in meetings_data:
             title = item['title']
             date_str = item['date']
+            time_str = item.get('time') # Новое поле
+            
             due_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            due_time = datetime.strptime(time_str, '%H:%M').time() if time_str else None
 
             # Check for duplicates
             exists = await db.execute(select(Task).where(Task.title == title, Task.due_date == due_date))
@@ -45,7 +48,8 @@ async def main():
                 task = Task(
                     title=title, 
                     category_id=sub_cat.id, 
-                    due_date=due_date, 
+                    due_date=due_date,
+                    due_time=due_time,
                     source='import', 
                     status='новая'
                 )
