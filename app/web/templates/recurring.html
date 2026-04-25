@@ -2,8 +2,37 @@
 
 {% block title %}Периодические — Task Planner{% endblock %}
 
+{% block extra_head %}
+<!-- Flatpickr -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
+<style>
+    .flatpickr-calendar {
+        background: #1a1a2e !important;
+        border: 1px solid #2f2f4f !important;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4) !important;
+    }
+    .flatpickr-day.selected {
+        background: #3b82f6 !important;
+        border-color: #3b82f6 !important;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="max-w-6xl mx-auto" x-data="{ showCreate: false }">
+<div class="max-w-6xl mx-auto" x-data="{ 
+    showCreate: false,
+    initFlatpickr() {
+        flatpickr('.datepicker', {
+            locale: 'ru',
+            dateFormat: 'Y-m-d',
+            defaultDate: 'today',
+            disableMobile: 'true'
+        });
+    }
+}" x-init="$watch('showCreate', value => { if(value) { $nextTick(() => initFlatpickr()) } })">
     <!-- Header -->
     <div class="flex items-center justify-between mb-8">
         <div>
@@ -76,8 +105,9 @@
 
                 <div>
                     <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Начать с</label>
-                    <input type="date" name="start_date" value="{{ today }}"
-                           class="w-full bg-dark-900 border border-dark-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-accent">
+                    <input type="text" name="start_date" value="{{ today }}"
+                           class="datepicker w-full bg-dark-900 border border-dark-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-accent"
+                           placeholder="Выберите дату...">
                 </div>
 
                 <div class="flex items-end">

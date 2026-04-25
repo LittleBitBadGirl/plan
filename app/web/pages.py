@@ -103,11 +103,25 @@ async def dashboard(request: Request):
         )
         all_recurring = recur_result.scalars().all()
 
+        # Находим названия уже выполненных сегодня периодических задач
+        done_today_result = await db.execute(
+            select(Task.title).where(
+                Task.due_date == today,
+                Task.source == "recurring",
+                Task.status == "выполнена"
+            )
+        )
+        done_today_titles = set(done_today_result.scalars().all())
+
         day_of_week = today.weekday()
         day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
         recurring_today = []
 
         for rt in all_recurring:
+            # Если уже выполнена сегодня — пропускаем
+            if rt.title in done_today_titles:
+                continue
+
             if rt.end_date and today > rt.end_date:
                 continue
             if today < rt.start_date:
@@ -394,7 +408,7 @@ async def make_task_recurring(
             category_id=task.category_id,
             priority=task.priority,
             recurrence_type=recurrence_type,
-            recurrence_days=json.dumps(recurrence_days) if recurrence_type == "weekly" and recurrence_days else None,
+            recurrence_days=recurrence_days if recurrence_type == "weekly" and recurrence_days else None,
             start_date=date.today(),
             is_active=True,
         )
@@ -814,20 +828,29 @@ async def create_recurring_web(
 ):
     """Создать периодическую задачу из веб-интерфейса"""
     async with async_session() as db:
+        # Проверка на дубликат (title + recurrence_type)
+        existing = await db.execute(
+            select(RecurringTask).where(
+                RecurringTask.title == title,
+                RecurringTask.recurrence_type == recurrence_type,
+            )
+        )
+        if existing.scalar_one_or_none():
+            return HTMLResponse(content='<script>alert("Ошибка: Такой шаблон уже существует!"); window.history.back();</script>')
+
         new_rt = RecurringTask(
             title=title,
             category_id=int(category_id) if category_id and category_id.isdigit() else None,
             recurrence_type=recurrence_type,
-            recurrence_days=json.dumps(days) if recurrence_type == "weekly" and days else None,
+            recurrence_days=days if recurrence_type == "weekly" and days else None,
             start_date=date.fromisoformat(start_date) if start_date else date.today(),
             is_active=True,
         )
         db.add(new_rt)
         await db.commit()
-    
+
     # Просто перезагружаем страницу
     return HTMLResponse(content='<script>window.location.reload()</script>')
-
 
 # ---- HTMX эндпоинты ----
 
