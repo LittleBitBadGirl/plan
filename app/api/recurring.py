@@ -205,28 +205,65 @@ async def complete_recurring(
     # Увеличиваем счётчик выполнений
     task.completed_count += 1
     
-    # Создаём обычную задачу на сегодня со статусом "выполнена"
     today = date.today()
-    completed_task = Task(
-        title=task.title,
-        description=task.description,
-        category_id=task.category_id,
-        priority=task.priority,
-        due_date=today,
-        status="выполнена",
-        completed_at=datetime.utcnow(),
-        source="recurring",
-        is_archived=True, # Сразу в архив
+    
+    # Проверяем, нет ли уже созданной "новой" задачи для этого шаблона на сегодня
+    from app.models.task import Task
+    existing_result = await db.execute(
+        select(Task).where(
+            Task.title == task.title,
+            Task.due_date == today,
+            Task.status.in_(["новая", "в_работе"]),
+            Task.is_archived == False
+        )
     )
-    db.add(completed_task)
-    await db.commit() # Нужно закомитить, чтобы статистика увидела новую задачу
+    existing_task = existing_result.scalar_one_or_none()
+    
+    if existing_task:
+        # Если задача уже есть, просто переводим её в "выполнена"
+        existing_task.status = "выполнена"
+        existing_task.completed_at = datetime.utcnow()
+        existing_task.is_archived = True
+    else:
+        # Если задачи нет, создаём новую выполненную
+        completed_task = Task(
+            title=task.title,
+            description=task.description,
+            category_id=task.category_id,
+            priority=task.priority,
+            due_date=today,
+            status="выполнена",
+            completed_at=datetime.utcnow(),
+            source="recurring",
+            is_archived=True,
+        )
+        db.add(completed_task)
+    
+    await db.commit()
     
     # Получаем обновленную статистику для OOB
     completed, total = await get_today_stats(db)
+    
+    # Если мы обновили существующую задачу, нам нужно обновить список задач тоже
+    # так как она пропадет из списка активных. 
+    # Но проще всего вернуть HTMLResponse с OOB для статистики, 
+    # а для списка задач мы можем либо вернуть пустую строку (как сейчас), 
+    # либо спровоцировать перезагрузку списка.
+    
+    # Поскольку hx-target="#recurring-{{ rt.id }}" и hx-swap="outerHTML", 
+    # возвращаемый контент заменит блок периодической задачи.
+    # Если мы также хотим убрать задачу из основного списка, нам нужно OOB для #tasks-list
+    
+    tasks_list_oob = ""
+    if existing_task:
+        # Получаем обновленный список задач для OOB
+        # Альтернатива — hx-trigger="taskUpdated" на клиенте.
+        # Но давай попробуем проще: просто сигнализируем клиенту обновить список
+        tasks_list_oob = '<div hx-get="/tasks/list" hx-trigger="load" hx-target="#tasks-list" hx-swap="innerHTML" hx-swap-oob="true"></div>'
+
     stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
     
-    # Возвращаем пустую строку — задача исчезнет (так как hx-swap="outerHTML")
-    return HTMLResponse(content=f'{stats_oob}')
+    return HTMLResponse(content=f"{stats_oob}{tasks_list_oob}")
 
 
 @router.get("/for-date/{task_date}")

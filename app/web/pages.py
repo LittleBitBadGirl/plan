@@ -135,23 +135,20 @@ async def dashboard(request: Request):
         )
         all_recurring = recur_result.scalars().all()
 
-        # Находим названия уже выполненных сегодня периодических задач
-        done_today_result = await db.execute(
-            select(Task.title).where(
-                Task.due_date == today,
-                Task.source == "recurring",
-                Task.status == "выполнена"
-            )
+        # Находим названия всех задач на сегодня (и активных, и в архиве/выполненных)
+        # Это нужно, чтобы не дублировать периодические задачи, которые уже созданы или выполнены
+        today_titles_result = await db.execute(
+            select(Task.title).where(Task.due_date == today)
         )
-        done_today_titles = set(done_today_result.scalars().all())
+        all_occupied_titles = set(today_titles_result.scalars().all())
 
         day_of_week = today.weekday()
         day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
         recurring_today = []
 
         for rt in all_recurring:
-            # Если уже выполнена сегодня — пропускаем
-            if rt.title in done_today_titles:
+            # Если задача с таким названием уже существует на сегодня — пропускаем
+            if rt.title in all_occupied_titles:
                 continue
 
             if rt.end_date and today > rt.end_date:
@@ -873,22 +870,22 @@ async def prepare_analysis_data(request: Request):
         tasks = result.scalars().all()
 
         if not tasks:
-            return HTMLResponse("""
+            return HTMLResponse(f"""
                 <div class="bg-yellow-900/20 border border-yellow-700/50 p-6 rounded-xl text-center">
-                    <p class="text-yellow-500">За вчера (24.04) не найдено задач в плане.</p>
+                    <p class="text-yellow-500">За вчера ({yesterday.strftime('%d.%m')}) не найдено задач в плане.</p>
                 </div>
             """)
 
         # Формируем отчет для терминала
         summary = f"Данные за {yesterday.strftime('%d.%m.%Y')} готовы.\n"
         summary += f"Всего задействовано задач: {len(tasks)}\n\n"
-        
+
         for t in tasks:
             status_icon = "✅" if t.status == "выполнена" else "❌"
             cat = t.category.name if t.category else "Без категории"
             summary += f"{status_icon} [{cat}] {t.title}\n"
 
-    return HTMLResponse(f"""
+        return HTMLResponse(f"""
         <div class="bg-blue-900/20 border border-blue-500/50 p-6 rounded-xl">
             <h3 class="text-blue-400 font-bold mb-3 flex items-center gap-2">
                 <span>🤖</span> Инструкция для Gemini
@@ -897,14 +894,13 @@ async def prepare_analysis_data(request: Request):
                 Данные за вчерашний день успешно выгружены. Теперь просто напишите в терминале:
             </p>
             <div class="bg-dark-900 p-4 rounded border border-dark-600 font-mono text-xs text-green-400 mb-4 select-all">
-                Gemini, проанализируй вчерашний день (24.04) и сохрани отчет в базу.
+                Gemini, проанализируй вчерашний день ({yesterday.strftime('%d.%m')}) и сохрани отчет в базу.
             </div>
             <p class="text-gray-500 text-[10px]">
                 Я увижу эти данные в базе и напишу Senior-разбор прямо здесь на странице.
             </p>
         </div>
-    """)
-
+        """)
 
 @router.get("/recurring", response_class=HTMLResponse)
 async def recurring_page(request: Request):
@@ -974,16 +970,34 @@ async def tasks_list_htmx(request: Request):
     today = date.today()
     async with async_session() as db:
         result = await db.execute(
-            select(Task).where(
+            select(Task)
+            .options(selectinload(Task.category))
+            .where(
                 Task.due_date == today,
-                Task.is_archived == False
+                Task.is_archived == False,
+                Task.parent_task_id == None
             ).order_by(Task.sort_order.asc(), Task.created_at.asc())
         )
-        tasks = result.scalars().all()
+        tasks = list(result.scalars().all())
+
+        # Загружаем подзадачи
+        subtasks_map = {}
+        if tasks:
+            task_ids = [t.id for t in tasks]
+            subtasks_result = await db.execute(
+                select(Task).where(Task.parent_task_id.in_(task_ids))
+            )
+            all_subtasks = subtasks_result.scalars().all()
+            
+            from collections import defaultdict
+            subtasks_map = defaultdict(list)
+            for st in all_subtasks:
+                subtasks_map[st.parent_task_id].append(st)
 
     return templates.TemplateResponse("partials/tasks_list.html", {
         "request": request,
         "tasks": tasks,
+        "subtasks_map": subtasks_map,
     })
 
 
