@@ -109,10 +109,12 @@ async def create_recurring(
         select(RecurringTask).where(
             RecurringTask.title == task_data.title,
             RecurringTask.recurrence_type == task_data.recurrence_type,
+            RecurringTask.category_id == task_data.category_id,
+            RecurringTask.is_active == True,
         )
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Такой шаблон уже существует")
+        raise HTTPException(status_code=400, detail="Такой активный шаблон уже существует в этой категории")
 
     task = RecurringTask(
         title=task_data.title,
@@ -212,6 +214,7 @@ async def complete_recurring(
     existing_result = await db.execute(
         select(Task).where(
             Task.title == task.title,
+            Task.category_id == task.category_id,
             Task.due_date == today,
             Task.status.in_(["новая", "в_работе"]),
             Task.is_archived == False

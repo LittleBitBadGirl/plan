@@ -135,20 +135,19 @@ async def dashboard(request: Request):
         )
         all_recurring = recur_result.scalars().all()
 
-        # Находим названия всех задач на сегодня (и активных, и в архиве/выполненных)
-        # Это нужно, чтобы не дублировать периодические задачи, которые уже созданы или выполнены
-        today_titles_result = await db.execute(
-            select(Task.title).where(Task.due_date == today)
+        # Находим названия и категории всех задач на сегодня
+        today_tasks_result = await db.execute(
+            select(Task.title, Task.category_id).where(Task.due_date == today)
         )
-        all_occupied_titles = set(today_titles_result.scalars().all())
+        all_occupied = set((t.title, t.category_id) for t in today_tasks_result.all())
 
         day_of_week = today.weekday()
         day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
         recurring_today = []
 
         for rt in all_recurring:
-            # Если задача с таким названием уже существует на сегодня — пропускаем
-            if rt.title in all_occupied_titles:
+            # Если задача с таким названием и категорией уже существует на сегодня — пропускаем
+            if (rt.title, rt.category_id) in all_occupied:
                 continue
 
             if rt.end_date and today > rt.end_date:
@@ -938,19 +937,23 @@ async def create_recurring_web(
 ):
     """Создать периодическую задачу из веб-интерфейса"""
     async with async_session() as db:
-        # Проверка на дубликат (title + recurrence_type)
+        category_id_int = int(category_id) if category_id and category_id.isdigit() else None
+        
+        # Проверка на дубликат (title + recurrence_type + category + is_active)
         existing = await db.execute(
             select(RecurringTask).where(
                 RecurringTask.title == title,
                 RecurringTask.recurrence_type == recurrence_type,
+                RecurringTask.category_id == category_id_int,
+                RecurringTask.is_active == True,
             )
         )
         if existing.scalar_one_or_none():
-            return HTMLResponse(content='<script>alert("Ошибка: Такой шаблон уже существует!"); window.history.back();</script>')
+            return HTMLResponse(content='<script>alert("Ошибка: Такой активный шаблон уже существует в этой категории!"); window.history.back();</script>')
 
         new_rt = RecurringTask(
             title=title,
-            category_id=int(category_id) if category_id and category_id.isdigit() else None,
+            category_id=category_id_int,
             recurrence_type=recurrence_type,
             recurrence_days=days if recurrence_type == "weekly" and days else None,
             start_date=date.fromisoformat(start_date) if start_date else date.today(),
