@@ -73,6 +73,35 @@ async def dashboard(request: Request):
         app_logger.info(f"🔄 Auto-rollover: перенесено {rollover_result['moved']} задач на сегодня")
 
     async with async_session() as db:
+        # Привычки (Habit Tracker)
+        from app.models.habit import Habit
+        from app.models.habit_log import HabitLog
+        from sqlalchemy import and_
+
+        habits_result = await db.execute(
+            select(Habit).where(Habit.is_active == True, Habit.is_archived == False)
+        )
+        habits = habits_result.scalars().all()
+        
+        # Для каждой привычки формируем сетку из 30 дней от её даты старта
+        habits_data = []
+        for h in habits:
+            h_start = h.start_date or today
+            h_dates = [(h_start + timedelta(days=i)) for i in range(h.target_days or 30)]
+            
+            # Логи для этой конкретной привычки
+            h_logs_result = await db.execute(
+                select(HabitLog.date).where(HabitLog.habit_id == h.id)
+            )
+            h_logs = {log_date.isoformat() for log_date in h_logs_result.scalars().all()}
+            
+            habits_data.append({
+                "habit": h,
+                "dates": h_dates,
+                "logs": h_logs,
+                "progress": len(h_logs)
+            })
+
         # Обычные задачи (только корневые)
         result = await db.execute(
             select(Task)
@@ -171,6 +200,7 @@ async def dashboard(request: Request):
         "total": total,
         "today": today,
         "ai_warning": ai_warning,
+        "habits_data": habits_data,
     })
 
 

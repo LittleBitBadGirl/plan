@@ -26,6 +26,75 @@
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div class="md:col-span-2">
 
+            <!-- Habit Trackers Grid -->
+            <div class="mb-8 space-y-6">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <span>✨</span> Трекеры курсов (30 дней)
+                    </h2>
+                    <button onclick="document.getElementById('add-habit-modal').classList.toggle('hidden')" 
+                            class="text-xs bg-dark-700 hover:bg-dark-600 text-gray-300 px-3 py-1.5 rounded-lg border border-dark-500 transition-colors">
+                        + Добавить трекер
+                    </button>
+                </div>
+
+                <!-- Modal for adding habit -->
+                <div id="add-habit-modal" class="hidden bg-dark-800 border border-dark-600 rounded-xl p-4 mb-4 shadow-2xl">
+                    <form action="/api/habits/create" method="POST" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <input type="text" name="title" placeholder="Название (напр. Уход за лицом)" required
+                               class="bg-dark-700 border border-dark-500 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-accent">
+                        <input type="date" name="start_date" value="{{ today.isoformat() }}" required
+                               class="bg-dark-700 border border-dark-500 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-accent">
+                        <button type="submit" class="bg-accent text-white rounded-lg px-4 py-2 font-medium hover:bg-blue-600 transition-colors">
+                            Создать
+                        </button>
+                    </form>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {% for h_item in habits_data %}
+                    <div class="bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg flex flex-col group">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <h3 class="font-bold text-gray-100">{{ h_item.habit.title }}</h3>
+                                <p class="text-[10px] text-gray-500">Старт: {{ h_item.habit.start_date.strftime('%d.%m') }}</p>
+                            </div>
+                            <form action="/api/habits/{{ h_item.habit.id }}/archive" method="POST" onsubmit="return confirm('Архивировать трекер?')">
+                                <button type="submit" class="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
+                                </button>
+                            </form>
+                        </div>
+                        
+                        <!-- 30-day Grid (3 rows x 10 cols) -->
+                        <div class="grid grid-cols-10 gap-1.5 self-center">
+                            {% for dt in h_item.dates %}
+                                {% set date_str = dt.isoformat() %}
+                                {% set is_checked = date_str in h_item.logs %}
+                                {% set is_today = dt == today %}
+                                <button 
+                                    onclick="toggleHabit({{ h_item.habit.id }}, '{{ date_str }}', this)"
+                                    title="{{ dt.strftime('%d.%m') }}"
+                                    class="w-6 h-6 rounded-sm flex items-center justify-center transition-all duration-200 border text-[10px] font-bold
+                                    {{ 'bg-accent border-accent text-white' if is_checked else 'bg-dark-700 border-dark-500 text-gray-600 hover:border-gray-400' }}
+                                    {{ 'ring-2 ring-white/30' if is_today else '' }}">
+                                    {{ loop.index }}
+                                </button>
+                            {% endfor %}
+                        </div>
+
+                        <div class="mt-4 flex justify-between items-end">
+                            <div class="text-[10px] text-gray-500 uppercase tracking-widest">Прогресс</div>
+                            <div class="text-xs font-bold text-accent">{{ h_item.progress }}/30</div>
+                        </div>
+                        <div class="mt-1 w-full bg-dark-700 rounded-full h-1 overflow-hidden">
+                            <div class="bg-accent h-full transition-all duration-500" style="width: {{ (h_item.progress / 30 * 100)|round }}%"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
             <!-- Quick Add -->
             <div class="mb-8 bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg">
                 <form hx-post="/tasks/create"
@@ -134,6 +203,47 @@
                 </p>
             </div>
         </div>
-    </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function toggleHabit(habitId, dateStr, btn) {
+    try {
+        const response = await fetch('/api/habits/toggle', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                habit_id: habitId,
+                date: dateStr
+            })
+        });
+        
+        const data = await response.json();
+        if (data.status === 'success') {
+            if (data.action === 'added') {
+                btn.classList.remove('bg-dark-700', 'border-dark-500', 'text-gray-600');
+                btn.classList.add('bg-accent', 'border-accent', 'text-white');
+            } else {
+                btn.classList.remove('bg-accent', 'border-accent', 'text-white');
+                btn.classList.add('bg-dark-700', 'border-dark-500', 'text-gray-600');
+            }
+            // Update progress bar and text in the same card
+            const card = btn.closest('.group');
+            const progressText = card.querySelector('.text-accent');
+            const progressBar = card.querySelector('.bg-accent.h-full');
+            
+            let [current, total] = progressText.innerText.split('/').map(Number);
+            current = (data.action === 'added') ? current + 1 : current - 1;
+            
+            progressText.innerText = `${current}/${total}`;
+            progressBar.style.width = `${Math.round(current / total * 100)}%`;
+        }
+    } catch (error) {
+        console.error('Error toggling habit:', error);
+    }
+}
+</script>
 {% endblock %}

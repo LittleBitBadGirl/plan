@@ -13,6 +13,7 @@ from app.db.seed import seed_categories
 from app.api.tasks import router as tasks_router
 from app.api.categories import router as categories_router
 from app.api.recurring import router as recurring_router
+from app.api.habits import router as habits_router
 from app.api.ai import router as ai_router
 from app.api.screenshot import router as screenshot_router
 from app.web.pages import router as web_router
@@ -115,6 +116,7 @@ app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 app.include_router(tasks_router)
 app.include_router(categories_router)
 app.include_router(recurring_router)
+app.include_router(habits_router)
 app.include_router(ai_router)
 app.include_router(screenshot_router)
 app.include_router(web_router)
