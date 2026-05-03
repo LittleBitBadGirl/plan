@@ -1,0 +1,76 @@
+<div id="stats-chart-container" class="bg-dark-800 rounded-xl border border-dark-600 p-6 shadow-lg relative">
+    <div class="flex items-center justify-between mb-6">
+        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <span class="text-green-500">📈</span> 
+            Динамика ({{ 'неделя' if period == 'week' else 'месяц' if period == 'month' else 'год' }})
+        </h2>
+        
+        <!-- Toggle Switch -->
+        <div class="flex bg-dark-700 p-1 rounded-lg">
+            <button hx-get="/api/stats/chart?period=week" hx-target="#stats-chart-container" hx-swap="outerHTML"
+                    class="px-3 py-1 text-xs rounded-md transition-all {{ 'bg-accent text-white shadow-md' if period == 'week' else 'text-gray-400 hover:text-gray-200' }}">
+                Нед
+            </button>
+            <button hx-get="/api/stats/chart?period=month" hx-target="#stats-chart-container" hx-swap="outerHTML"
+                    class="px-3 py-1 text-xs rounded-md transition-all {{ 'bg-accent text-white shadow-md' if period == 'month' else 'text-gray-400 hover:text-gray-200' }}">
+                Мес
+            </button>
+            <button hx-get="/api/stats/chart?period=year" hx-target="#stats-chart-container" hx-swap="outerHTML"
+                    class="px-3 py-1 text-xs rounded-md transition-all {{ 'bg-accent text-white shadow-md' if period == 'year' else 'text-gray-400 hover:text-gray-200' }}">
+                Год
+            </button>
+        </div>
+    </div>
+
+    <div class="flex items-end justify-between h-48 gap-1 px-2 relative">
+        {% if period == 'year' %}
+            <!-- Точечный график (SVG) для года -->
+            <svg class="absolute inset-0 w-full h-40 mt-4 px-4 overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
+                {% set count_hist = weekly_history|length %}
+                {% if count_hist > 1 %}
+                    {% set points = [] %}
+                    {% for i in range(count_hist) %}
+                        {% set x = (i / (count_hist - 1)) * 100 %}
+                        {% set y = 100 - (weekly_history[i][1] / max_hist * 100) %}
+                        {% set _ = points.append(x|string + "," + y|string) %}
+                    {% endfor %}
+                    <polyline points="{{ points|join(' ') }}" fill="none" stroke="#3b82f6" stroke-width="2" vector-effect="non-scaling-stroke" />
+                    {% for i in range(count_hist) %}
+                        {% set x = (i / (count_hist - 1)) * 100 %}
+                        {% set y = 100 - (weekly_history[i][1] / max_hist * 100) %}
+                        <circle cx="{{ x }}" cy="{{ y }}" r="3" fill="#3b82f6" class="hover:fill-white transition-colors cursor-pointer">
+                            <title>{{ weekly_history[i][0] }}: {{ weekly_history[i][1] }}</title>
+                        </circle>
+                    {% endfor %}
+                {% endif %}
+            </svg>
+            <div class="absolute bottom-0 left-0 w-full flex justify-between px-4 text-[9px] text-gray-500 uppercase pb-1">
+                {% for date_str, count in weekly_history %}
+                    <span>{{ date_str[-2:] }}</span>
+                {% endfor %}
+            </div>
+        {% else %}
+            <!-- Столбчатая диаграмма для недели/месяца -->
+            {% for date_str, count in weekly_history %}
+            <div class="flex-1 flex flex-col items-center justify-end h-full group min-w-[4px]">
+                <div class="text-[8px] text-white font-bold opacity-0 group-hover:opacity-100 transition-opacity bg-dark-700 px-1 rounded whitespace-nowrap z-10 mb-1">{{ count }}</div>
+                {% set height_percent = (count / max_hist * 100)|int %}
+                {% if count > 0 and height_percent < 5 %}{% set height_percent = 5 %}{% endif %}
+                <div class="w-full bg-green-500/80 hover:bg-green-400 rounded-t transition-all" 
+                     style="height: {{ height_percent }}%" title="{{ date_str }}: {{ count }}"></div>
+                {% if period == 'week' %}
+                    <div class="text-[9px] text-gray-500 uppercase mt-1">{{ date_str[-2:] }}</div>
+                {% elif loop.index % 5 == 0 or loop.first or loop.last %}
+                    <div class="text-[8px] text-gray-500 uppercase mt-1">{{ date_str[-2:] }}</div>
+                {% else %}
+                    <div class="h-4"></div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        {% endif %}
+
+        {% if not weekly_history %}
+        <p class="w-full text-center py-20 text-gray-600 italic">Нет данных за этот период</p>
+        {% endif %}
+    </div>
+</div>

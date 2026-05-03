@@ -32,6 +32,8 @@ async def _rollover_impl(db: AsyncSession):
             continue
 
         # Увеличить счётчик переносов
+        if task.postpones is None:
+            task.postpones = 0
         task.postpones += 1
         task.due_date = today
 

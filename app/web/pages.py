@@ -767,88 +767,104 @@ async def archive_page(request: Request, page: int = 1, limit: int = 50):
 
 
 @router.get("/stats", response_class=HTMLResponse)
-async def stats_page(request: Request):
+async def stats_page(request: Request, period: str = "week"):
     """Статистика"""
     async with async_session() as db:
-        root_filter = Task.parent_task_id == None
-
-        completed_result = await db.execute(
-            select(func.count(Task.id)).where(Task.status == "выполнена", root_filter)
-        )
+        # Общие показатели (всегда за все время)
+        completed_result = await db.execute(select(func.count(Task.id)).where(Task.status == "выполнена"))
         total_completed = completed_result.scalar() or 0
 
-        active_result = await db.execute(
-            select(func.count(Task.id)).where(Task.is_archived == False, Task.status != "выполнена", root_filter)
-        )
+        active_result = await db.execute(select(func.count(Task.id)).where(Task.is_archived == False, Task.status != "выполнена"))
         total_active = active_result.scalar() or 0
 
-        new_result = await db.execute(
-            select(func.count(Task.id)).where(Task.status == "новая", Task.is_archived == False, root_filter)
-        )
-        total_new = new_result.scalar() or 0
-
-        # 1. Задачи без категории
-        no_cat_result = await db.execute(
-            select(func.count(Task.id)).where(
-                Task.category_id == None,
-                Task.is_archived == False,
-                root_filter
-            )
-        )
+        no_cat_result = await db.execute(select(func.count(Task.id)).where(Task.category_id == None, Task.is_archived == False))
         no_category_count = no_cat_result.scalar() or 0
 
-        # 2. Средняя скорость выполнения
         speed_result = await db.execute(
             select(func.avg(func.julianday(Task.completed_at) - func.julianday(Task.created_at))).where(
-                Task.status == "выполнена",
-                Task.completed_at != None,
-                root_filter
+                Task.status == "выполнена", Task.completed_at != None
             )
         )
         avg_speed_days = speed_result.scalar()
         avg_speed = f"{avg_speed_days:.1f} дн." if avg_speed_days else "—"
 
-        # 3. Распределение по категориям (Топ-5)
         cat_stats_query = (
             select(Category.name, func.count(Task.id))
             .join(Task, Task.category_id == Category.id)
-            .where(Task.status == "выполнена", root_filter)
-            .group_by(Category.name)
-            .order_by(func.count(Task.id).desc())
-            .limit(5)
+            .where(Task.status == "выполнена")
+            .group_by(Category.name).order_by(func.count(Task.id).desc()).limit(5)
         )
         cat_stats_result = await db.execute(cat_stats_query)
         category_distribution = cat_stats_result.all()
 
-        # 4. Прогресс за последние 7 дней
-        from datetime import timedelta
-        week_ago = date.today() - timedelta(days=7)
-        weekly_stats_query = (
-            select(func.date(Task.completed_at), func.count(Task.id))
-            .where(Task.completed_at >= week_ago, Task.status == "выполнена", root_filter)
-            .group_by(func.date(Task.completed_at))
-            .order_by(func.date(Task.completed_at).asc())
-        )
-        weekly_result = await db.execute(weekly_stats_query)
-        weekly_history = weekly_result.all()
-
-        # Последний AI отчет
-        report_result = await db.execute(
-            select(AIReport).order_by(AIReport.report_date.desc())
-        )
+        # Динамика (зависит от периода)
+        history_data = await get_history_data(db, period)
+        
+        report_result = await db.execute(select(AIReport).order_by(AIReport.report_date.desc()))
         last_report = report_result.scalars().first()
 
     return templates.TemplateResponse("stats.html", {
         "request": request,
         "total_completed": total_completed,
         "total_active": total_active,
-        "total_new": total_new,
         "no_category_count": no_category_count,
         "avg_speed": avg_speed,
         "category_distribution": category_distribution,
-        "weekly_history": weekly_history,
+        "weekly_history": history_data["history"],
+        "max_hist": history_data["max_val"],
+        "period": period,
         "last_report": last_report,
     })
+
+@router.get("/api/stats/chart", response_class=HTMLResponse)
+async def get_stats_chart(request: Request, period: str = "week"):
+    """Обновление только блока графика через HTMX"""
+    async with async_session() as db:
+        history_data = await get_history_data(db, period)
+        
+    return templates.TemplateResponse("partials/stats_chart.html", {
+        "request": request,
+        "weekly_history": history_data["history"],
+        "max_hist": history_data["max_val"],
+        "period": period,
+    })
+
+async def get_history_data(db, period: str):
+    """Вспомогательная функция для получения данных истории"""
+    from datetime import timedelta
+    today = date.today()
+    
+    if period == "year":
+        # Группировка по месяцам за последний год
+        start_date = today.replace(day=1) - timedelta(days=365)
+        query = (
+            select(func.strftime("%Y-%m", Task.completed_at), func.count(Task.id))
+            .where(Task.completed_at >= start_date, Task.status == "выполнена")
+            .group_by(func.strftime("%Y-%m", Task.completed_at))
+            .order_by(func.strftime("%Y-%m", Task.completed_at).asc())
+        )
+    elif period == "month":
+        # Группировка по дням за последние 30 дней
+        start_date = today - timedelta(days=30)
+        query = (
+            select(func.date(Task.completed_at), func.count(Task.id))
+            .where(Task.completed_at >= start_date, Task.status == "выполнена")
+            .group_by(func.date(Task.completed_at))
+            .order_by(func.date(Task.completed_at).asc())
+        )
+    else: # week
+        start_date = today - timedelta(days=7)
+        query = (
+            select(func.date(Task.completed_at), func.count(Task.id))
+            .where(Task.completed_at >= start_date, Task.status == "выполнена")
+            .group_by(func.date(Task.completed_at))
+            .order_by(func.date(Task.completed_at).asc())
+        )
+
+    result = await db.execute(query)
+    history = result.all()
+    max_val = max([count for _, count in history] + [1])
+    return {"history": history, "max_val": max_val}
 
 
 @router.get("/api/ai/prepare-analysis", response_class=HTMLResponse)

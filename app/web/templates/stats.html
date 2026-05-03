@@ -64,30 +64,8 @@
             </div>
         </div>
 
-        <!-- Динамика за неделю -->
-        <div class="bg-dark-800 rounded-xl border border-dark-600 p-6 shadow-lg">
-            <h2 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
-                <span class="text-green-500">📈</span> Динамика выполнения (7 дней)
-            </h2>
-            <div class="flex items-end justify-between h-48 gap-2 px-2">
-                {% set max_hist = 1 %}
-                {% for date_str, count in weekly_history %}
-                    {% if count > max_hist %}{% set max_hist = count %}{% endif %}
-                {% endfor %}
-
-                {% for date_str, count in weekly_history %}
-                <div class="flex-1 flex flex-col items-center gap-2 group">
-                    <div class="text-[10px] text-white font-bold opacity-0 group-hover:opacity-100 transition-opacity bg-dark-700 px-1 rounded">{{ count }}</div>
-                    <div class="w-full bg-green-500/80 hover:bg-green-400 rounded-t transition-all" 
-                         style="height: {{ (count / max_hist * 100)|int }}%"></div>
-                    <div class="text-[9px] text-gray-500 uppercase">{{ date_str[-2:] }}</div>
-                </div>
-                {% endfor %}
-                {% if not weekly_history %}
-                <p class="w-full text-center py-20 text-gray-600 italic">Статистика появится после выполнения задач</p>
-                {% endif %}
-            </div>
-        </div>
+        <!-- Динамика за период -->
+        {% include "partials/stats_chart.html" %}
     </div>
 
     <!-- AI Анализ (Gemini Report) -->
