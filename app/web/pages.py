@@ -613,12 +613,22 @@ async def categories_page(request: Request):
     global_cats = [c for c in categories if c.is_global]
     sub_cats = {gc.id: [c for c in categories if c.parent_id == gc.id] for gc in global_cats}
 
+    # Агрегировать счетчики для глобальных категорий (сумма подкатегорий)
+    # Создаем копию для итоговых значений
+    final_counts = task_counts.copy()
+    for cat in categories:
+        if not cat.is_global and cat.parent_id:
+            count = task_counts.get(cat.id, 0)
+            if count > 0:
+                final_counts[cat.parent_id] = final_counts.get(cat.parent_id, 0) + count
+
     return templates.TemplateResponse("categories.html", {
         "request": request,
         "global_categories": global_cats,
         "sub_categories": sub_cats,
         "categories": categories,
-        "task_counts": task_counts,
+        "task_counts": final_counts,  # Используем агрегированные счетчики
+        "raw_counts": task_counts,   # Сохраняем оригинальные для подкатегорий
     })
 
 

@@ -65,10 +65,14 @@
                     {% if subs %}
                         {% for sc in subs %}
                         <div class="flex items-center justify-between group/item p-2 hover:bg-dark-700/30 rounded transition-colors" id="cat-title-{{ sc.id }}">
-                            <span class="text-sm text-gray-300 flex items-center gap-2">
-                                <span class="text-gray-600">└</span>
-                                {{ sc.name }}
-                            </span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-gray-600 text-xs">└</span>
+                                <span class="text-sm text-gray-300">{{ sc.name }}</span>
+                                {% set sc_count = raw_counts.get(sc.id, 0) %}
+                                {% if sc_count > 0 %}
+                                <span class="text-[10px] text-gray-500 font-medium ml-1">({{ sc_count }})</span>
+                                {% endif %}
+                            </div>
                             <div class="flex items-center gap-2 opacity-0 group-hover/item:opacity-100 transition-opacity">
                                 <button hx-get="/categories/{{ sc.id }}/edit-form" hx-target="#cat-title-{{ sc.id }}" class="text-xs text-gray-500 hover:text-white" title="Изменить">✏️</button>
                                 <button hx-delete="/api/categories/{{ sc.id }}" hx-target="#cat-title-{{ sc.id }}" hx-swap="delete" hx-confirm="Удалить подкатегорию?" class="text-red-500 hover:text-red-400 text-xs" title="Удалить">🗑</button>
