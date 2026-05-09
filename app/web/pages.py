@@ -187,7 +187,7 @@ async def dashboard(request: Request):
         if len(tasks) > 8:
             ai_warning = f"⚠️ Запланировано {len(tasks)} задач на сегодня. Обычно вы выполняете ~5."
 
-    return templates.TemplateResponse("dashboard.html", {
+    return templates.TemplateResponse(request, "dashboard.html", {
         "request": request,
         "tasks": tasks,
         "subtasks_map": subtasks_map,  # Передаем словарь подзадач
@@ -218,7 +218,7 @@ async def tasks_page(request: Request):
         tasks = result.scalars().all()
         categories = await get_categories_list()
 
-    return templates.TemplateResponse("tasks.html", {
+    return templates.TemplateResponse(request, "tasks.html", {
         "request": request,
         "tasks": tasks,
         "categories": categories,
@@ -254,7 +254,7 @@ async def delete_subtask(request: Request, task_id: int):
             )
             subtasks = subtasks_result.scalars().all()
 
-            return templates.TemplateResponse("partials/subtasks.html", {
+            return templates.TemplateResponse(request, "partials/subtasks.html", {
                 "request": request,
                 "subtasks": subtasks,
                 "parent_id": parent_id,
@@ -382,7 +382,7 @@ async def backlog_page(request: Request):
             for st in all_subtasks:
                 subtasks_map[st.parent_task_id].append(st)
 
-    return templates.TemplateResponse("backlog.html", {
+    return templates.TemplateResponse(request, "backlog.html", {
         "request": request,
         "tasks": tasks,
         "subtasks_map": subtasks_map,  # Передаем словарь подзадач
@@ -501,7 +501,7 @@ async def get_subtasks_htmx(request: Request, task_id: int):
         )
         subtasks = result.scalars().all()
 
-    return templates.TemplateResponse("partials/subtasks.html", {
+    return templates.TemplateResponse(request, "partials/subtasks.html", {
         "request": request,
         "subtasks": subtasks,
         "parent_id": task_id,
@@ -531,7 +531,7 @@ async def create_subtask_htmx(
         )
         subtasks = result.scalars().all()
 
-    return templates.TemplateResponse("partials/subtasks.html", {
+    return templates.TemplateResponse(request, "partials/subtasks.html", {
         "request": request,
         "subtasks": subtasks,
         "parent_id": task_id,
@@ -543,7 +543,7 @@ async def task_form_page(request: Request):
     """Форма создания задачи"""
     categories = await get_categories_list()
 
-    return templates.TemplateResponse("task_form.html", {
+    return templates.TemplateResponse(request, "task_form.html", {
         "request": request,
         "categories": categories,
         "task": None,
@@ -561,7 +561,7 @@ async def task_edit_page(request: Request, task_id: int):
 
         categories = await get_categories_list()
 
-    return templates.TemplateResponse("task_form.html", {
+    return templates.TemplateResponse(request, "task_form.html", {
         "request": request,
         "categories": categories,
         "task": task,
@@ -623,7 +623,7 @@ async def categories_page(request: Request):
             if count > 0:
                 final_counts[cat.parent_id] = final_counts.get(cat.parent_id, 0) + count
 
-    return templates.TemplateResponse("categories.html", {
+    return templates.TemplateResponse(request, "categories.html", {
         "request": request,
         "global_categories": global_cats,
         "sub_categories": sub_cats,
@@ -716,7 +716,7 @@ async def edit_category(category_id: int, name: str = Form(...)):
 @router.get("/calendar", response_class=HTMLResponse)
 async def calendar_page(request: Request):
     """Календарь"""
-    return templates.TemplateResponse("calendar.html", {
+    return templates.TemplateResponse(request, "calendar.html", {
         "request": request,
         "today": date.today().isoformat(),
     })
@@ -764,7 +764,7 @@ async def archive_page(request: Request, page: int = 1, limit: int = 50):
         has_next = offset + limit < total
         has_prev = page > 1
 
-    return templates.TemplateResponse("archive.html", {
+    return templates.TemplateResponse(request, "archive.html", {
         "request": request,
         "tasks": tasks,
         "total": total,
@@ -814,7 +814,7 @@ async def stats_page(request: Request, period: str = "week"):
         report_result = await db.execute(select(AIReport).order_by(AIReport.report_date.desc()))
         last_report = report_result.scalars().first()
 
-    return templates.TemplateResponse("stats.html", {
+    return templates.TemplateResponse(request, "stats.html", {
         "request": request,
         "total_completed": total_completed,
         "total_active": total_active,
@@ -833,7 +833,7 @@ async def get_stats_chart(request: Request, period: str = "week"):
     async with async_session() as db:
         history_data = await get_history_data(db, period)
         
-    return templates.TemplateResponse("partials/stats_chart.html", {
+    return templates.TemplateResponse(request, "partials/stats_chart.html", {
         "request": request,
         "weekly_history": history_data["history"],
         "max_hist": history_data["max_val"],
@@ -946,7 +946,7 @@ async def recurring_page(request: Request):
         )
         categories = cats_result.scalars().all()
 
-    return templates.TemplateResponse("recurring.html", {
+    return templates.TemplateResponse(request, "recurring.html", {
         "request": request,
         "recurring_tasks": recurring_tasks,
         "categories": categories,
@@ -1024,7 +1024,7 @@ async def tasks_list_htmx(request: Request):
             for st in all_subtasks:
                 subtasks_map[st.parent_task_id].append(st)
 
-    return templates.TemplateResponse("partials/tasks_list.html", {
+    return templates.TemplateResponse(request, "partials/tasks_list.html", {
         "request": request,
         "tasks": tasks,
         "subtasks_map": subtasks_map,
@@ -1247,7 +1247,7 @@ async def task_status_htmx(
         )
         tasks = result.scalars().all()
 
-    return templates.TemplateResponse("partials/tasks_list.html", {
+    return templates.TemplateResponse(request, "partials/tasks_list.html", {
         "request": request,
         "tasks": tasks,
     })
@@ -1294,7 +1294,7 @@ async def shopping_page(request: Request):
         purchased = sum(1 for item in items if item.is_purchased)
         remaining = total - purchased
 
-    return templates.TemplateResponse("shopping.html", {
+    return templates.TemplateResponse(request, "shopping.html", {
         "request": request,
         "items": items,
         "household_tasks": household_tasks,
