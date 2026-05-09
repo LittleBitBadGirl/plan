@@ -11,19 +11,13 @@ class Settings(BaseSettings):
     # Аутентификация
     api_token: str
 
-    # HuggingFace
-    hf_token: str = ""
-
     # Пути
     project_dir: Path = Path(__file__).parent.parent
     uploads_dir: Path = Path(__file__).parent.parent / "uploads"
     config_dir: Path = Path(__file__).parent.parent / "config"
-    gigaam_dir: Path = Path(__file__).parent.parent.parent / "transcribe"
 
-    # AI
-    ai_use_local: bool = True
-    ai_model: str = "qwen2.5-7b-instruct"
-    ai_device: str = "mps"  # mps для Mac, cpu или cuda
+    # AI (в будущем внешнее API)
+    ai_use_local: bool = False
 
     # OCR
     ocr_lang: str = "rus+eng"

@@ -20,11 +20,6 @@ httpx>=0.25.0
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
 
-# AI
-transformers>=4.35.0
-torch>=2.0.0
-accelerate>=0.24.0
-
 # Фоновые задачи
 APScheduler>=3.10.0
 
