@@ -23,6 +23,7 @@ router = APIRouter(tags=["web"])
 # Шаблоны
 templates_dir = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(templates_dir))
+templates.env.cache = None  # Отключаем кэш, чтобы избежать ошибок с хэшированием словарей
 
 
 async def get_categories_list():
