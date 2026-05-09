@@ -172,8 +172,23 @@
                     {% endfor %}
                 </div>
             </div>
+        </div>
 
-            <!-- Recurring Tasks -->
+        <!-- COLUMN 3: SHOPPING & HOUSEHOLD -->
+        <div class="space-y-6">
+            <!-- Stats -->
+            <div class="bg-dark-800 rounded-xl p-4 border border-dark-600 shadow-lg">
+                <div class="flex justify-between items-center mb-3 px-1">
+                    <span class="text-xs font-bold text-gray-500 uppercase tracking-widest">Прогресс сегодня</span>
+                    <span class="font-bold text-lg text-green-400" id="today-stats-counter">{{ completed }}/{{ total }}</span>
+                </div>
+                <div class="w-full bg-dark-700 rounded-full h-1.5 overflow-hidden">
+                    {% set progress = (completed / total * 100) if total > 0 else 0 %}
+                    <div class="bg-green-500 h-full transition-all duration-500" style="width: {{ progress }}%"></div>
+                </div>
+            </div>
+
+            <!-- Recurring Tasks (Moved here for better visibility) -->
             {% if recurring_tasks %}
             <div class="space-y-4">
                 <h2 class="text-xl font-bold text-purple-400 flex items-center gap-2 px-1">
@@ -205,21 +220,6 @@
                 </div>
             </div>
             {% endif %}
-        </div>
-
-        <!-- COLUMN 3: SHOPPING & HOUSEHOLD -->
-        <div class="space-y-6">
-            <!-- Stats -->
-            <div class="bg-dark-800 rounded-xl p-4 border border-dark-600 shadow-lg">
-                <div class="flex justify-between items-center mb-3 px-1">
-                    <span class="text-xs font-bold text-gray-500 uppercase tracking-widest">Прогресс сегодня</span>
-                    <span class="font-bold text-lg text-green-400" id="today-stats-counter">{{ completed }}/{{ total }}</span>
-                </div>
-                <div class="w-full bg-dark-700 rounded-full h-1.5 overflow-hidden">
-                    {% set progress = (completed / total * 100) if total > 0 else 0 %}
-                    <div class="bg-green-500 h-full transition-all duration-500" style="width: {{ progress }}%"></div>
-                </div>
-            </div>
 
             <!-- Shopping List -->
             <div class="space-y-4">
