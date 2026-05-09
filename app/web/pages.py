@@ -94,9 +94,12 @@ async def dashboard(request: Request):
             # Определяем смещение (день недели начала: 0=Пн, 1=Вт, ... 6=Вс)
             start_weekday = h_start.weekday()
             
-            # Логи для этой конкретной привычки
+            # Логи для этой конкретной привычки и ТЕКУЩЕГО цикла
             h_logs_result = await db.execute(
-                select(HabitLog.date).where(HabitLog.habit_id == h.id)
+                select(HabitLog.date).where(
+                    HabitLog.habit_id == h.id,
+                    HabitLog.cycle_number == h.current_cycle
+                )
             )
             h_logs = {log_date.isoformat() for log_date in h_logs_result.scalars().all()}
             
@@ -181,13 +184,45 @@ async def dashboard(request: Request):
         # Получаем статистику через хелпер
         completed, total = await get_today_stats(db)
 
-        # Категории для формы (загружаем все для выпадающего списка)
+        # ДАННЫЕ ДЛЯ БЛОКА БЫТА И ПОКУПОК
+        # 1. Элементы списка покупок
+        shop_result = await db.execute(
+            select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
+        )
+        shopping_items = list(shop_result.scalars().all())
+
+        # 2. Задачи категории "Быт", "Покупки", "Семья"
+        cat_result = await db.execute(
+            select(Category).where(
+                (Category.name.ilike("%быт%")) | 
+                (Category.name.ilike("%покупк%")) | 
+                (Category.name.ilike("%семья%"))
+            )
+        )
+        household_categories = cat_result.scalars().all()
+        household_cat_ids = [c.id for c in household_categories]
+
+        household_tasks = []
+        if household_cat_ids:
+            h_task_result = await db.execute(
+                select(Task)
+                .options(selectinload(Task.category))
+                .where(
+                    Task.category_id.in_(household_cat_ids),
+                    Task.is_archived == False,
+                    Task.status.in_(["новая", "в_работе"])
+                )
+                .order_by(Task.status.desc(), Task.created_at.desc())
+            )
+            household_tasks = h_task_result.scalars().all()
+
+        # Категории для формы
         cats_result = await db.execute(
             select(Category).order_by(Category.is_global.desc(), Category.name)
         )
         categories = cats_result.scalars().all()
 
-        # AI предупреждение (заглушка)
+        # AI предупреждение
         ai_warning = None
         if len(tasks) > 8:
             ai_warning = f"⚠️ Запланировано {len(tasks)} задач на сегодня. Обычно вы выполняете ~5."
@@ -195,7 +230,7 @@ async def dashboard(request: Request):
     return templates.TemplateResponse(request, "dashboard.html", {
         "request": request,
         "tasks": tasks,
-        "subtasks_map": subtasks_map,  # Передаем словарь подзадач
+        "subtasks_map": subtasks_map,
         "recurring_tasks": recurring_today,
         "categories": categories,
         "completed": completed,
@@ -203,6 +238,14 @@ async def dashboard(request: Request):
         "today": today,
         "ai_warning": ai_warning,
         "habits_data": habits_data,
+        "shopping_items": shopping_items,
+        "household_tasks": household_tasks,
+        "household_cat_ids": household_cat_ids,
+        "shop_stats": {
+            "total": len(shopping_items),
+            "purchased": sum(1 for i in shopping_items if i.is_purchased),
+            "remaining": len([i for i in shopping_items if not i.is_purchased])
+        }
     })
 
 
@@ -819,6 +862,25 @@ async def stats_page(request: Request, period: str = "week"):
         report_result = await db.execute(select(AIReport).order_by(AIReport.report_date.desc()))
         last_report = report_result.scalars().first()
 
+        # Карьерный капитал (Impacts)
+        from app.models.impact import CareerImpact
+        impact_res = await db.execute(
+            select(CareerImpact).order_by(CareerImpact.period_month.desc(), CareerImpact.created_at.desc())
+        )
+        impacts = impact_res.scalars().all()
+        
+        # Расчет Impact Score (соотношение побед к рутине)
+        # Берем данные за последние 30 дней для актуальности
+        last_30_days = date.today() - timedelta(days=30)
+        impact_count = len([i for i in impacts if i.created_at.date() >= last_30_days])
+        
+        comp_30_res = await db.execute(
+            select(func.count(Task.id)).where(Task.status == "выполнена", Task.completed_at >= last_30_days)
+        )
+        total_30_completed = comp_30_res.scalar() or 0
+        
+        impact_score = round((impact_count / total_30_completed * 100)) if total_30_completed > 0 else 0
+
     return templates.TemplateResponse(request, "stats.html", {
         "request": request,
         "total_completed": total_completed,
@@ -830,6 +892,8 @@ async def stats_page(request: Request, period: str = "week"):
         "max_hist": history_data["max_val"],
         "period": period,
         "last_report": last_report,
+        "career_impacts": impacts,
+        "impact_score": impact_score,
     })
 
 @router.get("/api/stats/chart", response_class=HTMLResponse)
@@ -1251,12 +1315,7 @@ async def delete_task(request: Request, task_id: int):
             await db.commit()
             
             tasks_content = await get_tasks_today(db, request)
-            toast_oob = f"""
-                <div id="toast" hx-swap-oob="afterbegin:body" class="fixed top-4 right-4 bg-red-600 text-white px-4 py-2 rounded shadow-lg z-50 animate-fade-in">
-                    🗑 {task.title} — в архив
-                </div>
-            """
-            return HTMLResponse(content=tasks_content + toast_oob)
+            return HTMLResponse(content=tasks_content)
     return HTMLResponse('<div class="text-gray-500 p-4">Задача не найдена</div>')
 
 
@@ -1641,3 +1700,94 @@ async def bulk_create_shopping_items(
     '''
     return HTMLResponse(content=list_template.render(items=items) + stats_html)
 
+
+@router.get("/api/ai/generate-milestones", response_class=HTMLResponse)
+async def generate_milestones(request: Request):
+    """Генератор Карьерного капитала: выцепляем достижения из всех задач месяца"""
+    today = date.today()
+    first_day = today.replace(day=1)
+    period_str = today.strftime('%Y-%m')
+
+    async with async_session() as db:
+        # Берем ВСЕ выполненные задачи за этот месяц
+        result = await db.execute(
+            select(Task)
+            .options(selectinload(Task.category))
+            .where(
+                Task.status == "выполнена",
+                Task.completed_at >= first_day,
+                Task.is_archived == True
+            )
+        )
+        tasks = result.scalars().all()
+
+        if not tasks:
+            return HTMLResponse('<div class="p-4 bg-yellow-900/20 text-yellow-500 rounded-lg">За этот месяц пока нет выполненных задач.</div>')
+
+        # Готовим данные для Грока
+        tasks_data = [
+            {"title": t.title, "category": t.category.name if t.category else "Без категории"}
+            for t in tasks
+        ]
+
+        # Зовем Грока для фильтрации и переписывания
+        impacts = await ai_service.generate_impact_report(tasks_data)
+        
+        if not impacts:
+            return HTMLResponse('<div class="p-4 bg-red-900/20 text-red-400 rounded-lg">Грок не нашел значимых достижений в списке или произошла ошибка.</div>')
+
+        # Сохраняем результаты в базу
+        from app.models.impact import CareerImpact
+        saved_count = 0
+        for item in impacts:
+            impact_obj = CareerImpact(
+                original_title=item.get("original_title"),
+                impact_description=item.get("impact"),
+                category_name=item.get("category"),
+                period_month=period_str
+            )
+            db.add(impact_obj)
+            saved_count += 1
+        
+        await db.commit()
+
+        return HTMLResponse(f"""
+            <div class="bg-blue-900/20 border border-blue-500/50 p-6 rounded-xl text-center">
+                <p class="text-blue-400 font-bold mb-2 text-lg">🚀 Карьерный капитал пополнен!</p>
+                <p class="text-gray-400 text-sm mb-4">Найдено и обработано достижений: {saved_count}.</p>
+                <button onclick="window.location.reload()" class="px-4 py-2 bg-accent text-white rounded-lg font-bold shadow-lg">Обновить и посмотреть</button>
+            </div>
+        """)
+
+@router.get("/api/career/export", response_class=HTMLResponse)
+async def export_career_capital(request: Request):
+    """Экспорт всех достижений в Markdown"""
+    async with async_session() as db:
+        from app.models.impact import CareerImpact
+        result = await db.execute(
+            select(CareerImpact).order_by(CareerImpact.period_month.desc(), CareerImpact.created_at.desc())
+        )
+        impacts = result.scalars().all()
+
+        if not impacts:
+            return HTMLResponse("Нет данных для экспорта.")
+
+        md_content = "# Мой Карьерный Капитал\n\n"
+        current_month = ""
+        
+        for imp in impacts:
+            if imp.period_month != current_month:
+                current_month = imp.period_month
+                md_content += f"\n## Период: {current_month}\n"
+            
+            md_content += f"### {imp.category_name}\n"
+            md_content += f"**Что сделано:** {imp.original_title}\n"
+            md_content += f"**Impact:** {imp.impact_description}\n"
+            md_content += "---\n"
+
+        from fastapi.responses import Response
+        return Response(
+            content=md_content,
+            media_type="text/markdown",
+            headers={"Content-Disposition": f"attachment; filename=career_capital_{date.today().isoformat()}.md"}
+        )

@@ -174,8 +174,7 @@ class TestBacklogHTMX:
 
         response = await client.request("DELETE", f"/tasks/{task_id}")
         assert response.status_code == 200
-        assert "архив" in response.text.lower() or "🗑" in response.text
-
+        # Раньше мы проверяли уведомление "в архив", теперь его нет для чистоты верстки
     async def test_plan_task_today(self, client):
         """Запланировать задачу на сегодня (пустая дата)"""
         create_resp = await client.post("/api/tasks", json={"title": "Запланировать"})

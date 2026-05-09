@@ -41,11 +41,18 @@ async def create_habit(
 @router.post("/toggle")
 async def toggle_habit(data: HabitToggle):
     async with async_session() as db:
+        # Получаем привычку, чтобы знать текущий цикл
+        habit_res = await db.execute(select(Habit).where(Habit.id == data.habit_id))
+        habit = habit_res.scalar_one_or_none()
+        if not habit:
+            raise HTTPException(status_code=404, detail="Habit not found")
+
         result = await db.execute(
             select(HabitLog).where(
                 and_(
                     HabitLog.habit_id == data.habit_id,
-                    HabitLog.date == data.date
+                    HabitLog.date == data.date,
+                    HabitLog.cycle_number == habit.current_cycle
                 )
             )
         )
@@ -55,7 +62,11 @@ async def toggle_habit(data: HabitToggle):
             await db.delete(existing_log)
             action = "removed"
         else:
-            new_log = HabitLog(habit_id=data.habit_id, date=data.date)
+            new_log = HabitLog(
+                habit_id=data.habit_id, 
+                date=data.date,
+                cycle_number=habit.current_cycle
+            )
             db.add(new_log)
             action = "added"
         
@@ -68,5 +79,21 @@ async def archive_habit(habit_id: int):
         await db.execute(
             update(Habit).where(Habit.id == habit_id).values(is_archived=True)
         )
+        await db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+@router.post("/{habit_id}/next-cycle")
+async def restart_habit_cycle(habit_id: int):
+    """Завершить текущий цикл и начать новый (30 дней)"""
+    async with async_session() as db:
+        habit_res = await db.execute(select(Habit).where(Habit.id == habit_id))
+        habit = habit_res.scalar_one_or_none()
+        if not habit:
+            raise HTTPException(status_code=404, detail="Habit not found")
+        
+        # Переключаем цикл и сбрасываем дату старта на сегодня
+        habit.current_cycle += 1
+        habit.start_date = date.today()
+        
         await db.commit()
     return RedirectResponse(url="/", status_code=303)

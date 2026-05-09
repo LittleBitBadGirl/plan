@@ -85,30 +85,10 @@
                 </div>
             </div>
 
-            <!-- achievement Section -->
-            <div class="pt-6 border-t border-dark-600 mt-6 space-y-4">
-                <div class="flex items-center gap-3">
-                    <input type="checkbox" id="is_milestone" name="is_milestone" 
-                           {% if task and task.is_milestone %}checked{% endif %}
-                           class="w-5 h-5 rounded border-dark-500 bg-dark-700 text-accent focus:ring-accent">
-                    <label for="is_milestone" class="text-sm font-bold text-blue-400 flex items-center gap-2">
-                        <span>🏆</span> Это важное достижение (для резюме/доклада)
-                    </label>
-                </div>
-
-                <div>
-                    <label for="impact_notes" class="block text-sm font-medium text-gray-300 mb-2">
-                        Результат и влияние (почему это важно?)
-                    </label>
-                    <textarea id="impact_notes" name="impact_notes" rows="3"
-                              class="w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white
-                                     placeholder-gray-500 focus:outline-none focus:border-accent"
-                              placeholder="Например: Оптимизировала процесс, сократила время ожидания на 30%...">{{ task.impact_notes if task and task.impact_notes else '' }}</textarea>
-                </div>
             </div>
 
-            <!-- Buttons -->
-            <div class="flex items-center space-x-4 pt-6">
+            <!-- Footer -->
+            <div class="px-8 py-6 bg-dark-700/50 border-t border-dark-600 flex justify-between">
                 <button type="submit"
                         class="px-8 py-3 bg-accent hover:bg-blue-600 text-white font-bold rounded-lg transition-all shadow-lg hover:shadow-accent/20">
                     {% if task %}Сохранить изменения{% else %}Создать задачу{% endif %}

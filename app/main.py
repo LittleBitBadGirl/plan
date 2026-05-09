@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
     await init_db()
 
     # Создание таблиц
-    from app.models.base import Base
+    from app.models import Base
     from app.db.database import engine
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

@@ -14,6 +14,7 @@ class Habit(Base):
     is_archived = Column(Boolean, default=False)
     start_date = Column(Date, nullable=True)
     target_days = Column(Integer, default=30)
+    current_cycle = Column(Integer, default=1) # Номер текущего цикла
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Связи

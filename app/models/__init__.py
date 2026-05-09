@@ -1,8 +1,9 @@
-from app.models.base import Base  # noqa: F401
-from app.models.task import Task  # noqa: F401
-from app.models.category import Category  # noqa: F401
-from app.models.recurring import RecurringTask  # noqa: F401
-from app.models.screenshot import Screenshot  # noqa: F401
-from app.models.missed import MissedMessage  # noqa: F401
-from app.models.habit import Habit  # noqa: F401
-from app.models.habit_log import HabitLog  # noqa: F401
+from .base import Base
+from .task import Task
+from .category import Category
+from .habit import Habit
+from .habit_log import HabitLog
+from .recurring import RecurringTask
+from .report import AIReport
+from .impact import CareerImpact
+from .shopping import ShoppingItem

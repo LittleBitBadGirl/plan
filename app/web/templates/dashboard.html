@@ -24,98 +24,20 @@
     {% endif %}
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div class="lg:col-span-2">
-
-            <!-- Habit Trackers Grid -->
-            <div class="mb-8 space-y-6">
-                <div class="flex items-center justify-between">
-                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
-                        <span>✨</span> Трекеры курсов (30 дней)
-                    </h2>
-                    <button onclick="document.getElementById('add-habit-modal').classList.toggle('hidden')" 
-                            class="text-xs bg-dark-700 hover:bg-dark-600 text-gray-300 px-3 py-1.5 rounded-lg border border-dark-500 transition-colors">
-                        + Добавить
-                    </button>
-                </div>
-
-                <!-- Modal for adding habit -->
-                <div id="add-habit-modal" class="hidden bg-dark-800 border border-dark-600 rounded-xl p-4 mb-4 shadow-2xl">
-                    <form action="/api/habits/create" method="POST" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <input type="text" name="title" placeholder="Название..." required
-                               class="bg-dark-700 border-dark-500 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-accent">
-                        <input type="date" name="start_date" value="{{ today.isoformat() }}" required
-                               class="bg-dark-700 border-dark-500 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-accent">
-                        <button type="submit" class="bg-accent text-white rounded-lg px-4 py-2 font-medium hover:bg-blue-600 transition-colors">
-                            Создать
-                        </button>
-                    </form>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {% for h_item in habits_data %}
-                    <div class="bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg flex flex-col group">
-                        <div class="flex justify-between items-start mb-3">
-                            <div>
-                                <h3 class="font-bold text-gray-100">{{ h_item.habit.title }}</h3>
-                                <p class="text-[10px] text-gray-500">Старт: {{ h_item.habit.start_date.strftime('%d.%m') }}</p>
-                            </div>
-                            <form action="/api/habits/{{ h_item.habit.id }}/archive" method="POST" onsubmit="return confirm('Архивировать трекер?')">
-                                <button type="submit" class="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
-                                </button>
-                            </form>
-                        </div>
-                        
-                        <!-- 7-day Calendar Grid -->
-                        <div class="grid grid-cols-7 gap-1 md:gap-1.5 self-center">
-                            <!-- Weekday Labels -->
-                            <div class="text-[8px] md:text-[10px] text-gray-600 text-center font-bold">ПН</div>
-                            <div class="text-[8px] md:text-[10px] text-gray-600 text-center font-bold">ВТ</div>
-                            <div class="text-[8px] md:text-[10px] text-gray-600 text-center font-bold">СР</div>
-                            <div class="text-[8px] md:text-[10px] text-gray-600 text-center font-bold">ЧТ</div>
-                            <div class="text-[8px] md:text-[10px] text-gray-600 text-center font-bold">ПТ</div>
-                            <div class="text-[8px] md:text-[10px] text-gray-600 text-center font-bold">СБ</div>
-                            <div class="text-[8px] md:text-[10px] text-gray-600 text-center font-bold">ВС</div>
-
-                            <!-- Spacer for the first week -->
-                            {% for _ in range(h_item.start_weekday) %}
-                                <div class="w-7 h-7 md:w-8 md:h-8"></div>
-                            {% endfor %}
-
-                            {% for dt in h_item.dates %}
-                                {% set date_str = dt.isoformat() %}
-                                {% set is_checked = date_str in h_item.logs %}
-                                {% set is_today = dt == today %}
-                                <button 
-                                    onclick="toggleHabit({{ h_item.habit.id }}, '{{ date_str }}', this)"
-                                    title="{{ dt.strftime('%d.%m') }} (День {{ loop.index }})"
-                                    class="w-7 h-7 md:w-8 md:h-8 rounded-sm flex items-center justify-center transition-all duration-200 border text-[10px] md:text-xs font-bold
-                                    {{ 'bg-accent border-accent text-white' if is_checked else 'bg-dark-700 border-dark-500 text-gray-600 hover:border-gray-400' }}
-                                    {{ 'ring-2 ring-white/30' if is_today else '' }}">
-                                    {{ loop.index }}
-                                </button>
-                            {% endfor %}
-                        </div>
-
-                        <div class="mt-4 flex justify-between items-end">
-                            <div class="text-[10px] text-gray-500 uppercase tracking-widest">Прогресс</div>
-                            <div class="text-xs font-bold text-accent">{{ h_item.progress }}/30</div>
-                        </div>
-                        <div class="mt-1 w-full bg-dark-700 rounded-full h-1 overflow-hidden">
-                            <div class="bg-accent h-full transition-all duration-500" style="width: {{ (h_item.progress / 30 * 100)|round }}%"></div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
+        
+        <!-- COLUMN 1: TASKS -->
+        <div class="space-y-6">
+            <h2 class="text-xl font-bold text-white flex items-center gap-2 px-1">
+                <span>📋</span> Задачи на сегодня
+            </h2>
 
             <!-- Quick Add -->
-            <div class="mb-8 bg-dark-800 rounded-xl border border-dark-600 p-3 lg:p-4 shadow-lg">
+            <div class="bg-dark-800 rounded-xl border border-dark-600 p-3 shadow-lg">
                 <form hx-post="/tasks/create"
                       hx-target="#tasks-list"
                       hx-swap="innerHTML"
                       hx-on::after-request="this.reset(); this.querySelector('textarea').style.height = 'auto';"
-                      class="flex flex-col sm:flex-row gap-2 sm:gap-3"
+                      class="flex flex-col gap-2"
                       x-data="{ 
                           resize() { 
                               const el = $el.querySelector('textarea');
@@ -123,14 +45,14 @@
                               el.style.height = el.scrollHeight + 'px'; 
                           } 
                       }">
-                    <div class="flex-1 flex gap-2">
+                    <div class="flex gap-2">
                         <textarea name="title" required
                                   rows="1"
                                   @input="resize()"
-                                  placeholder="⚡️ Что нужно сделать сегодня?"
-                                  class="flex-1 bg-dark-700 border border-dark-500 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-all resize-none min-h-[48px]"></textarea>
+                                  placeholder="⚡️ Что нужно сделать?"
+                                  class="flex-1 bg-dark-700 border border-dark-500 rounded-lg px-3 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-all resize-none min-h-[44px] text-sm"></textarea>
                         
-                        <div class="relative sm:hidden">
+                        <div class="relative">
                             <select name="category_id" 
                                     class="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer">
                                 <option value="">📁</option>
@@ -146,67 +68,136 @@
                                     {% endif %}
                                 {% endfor %}
                             </select>
-                            <div class="bg-dark-700 border border-dark-500 rounded-lg w-12 h-full flex items-center justify-center text-xl">
+                            <div class="bg-dark-700 border border-dark-500 rounded-lg w-10 h-full flex items-center justify-center text-lg">
                                 📁
                             </div>
                         </div>
                     </div>
                     
-                    <div class="hidden sm:block">
-                        <select name="category_id" 
-                                class="bg-dark-700 border border-dark-500 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-accent appearance-none cursor-pointer">
-                            <option value="">📁 Категория...</option>
-                            {% for cat in categories %}
-                                {% if cat.is_global %}
-                                    <optgroup label="{{ cat.name }}">
-                                        {% for subcat in categories %}
-                                            {% if subcat.parent_id == cat.id %}
-                                            <option value="{{ subcat.id }}">{{ subcat.name }}</option>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </optgroup>
-                                {% endif %}
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <button type="submit" class="bg-accent hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition-all flex items-center justify-center gap-2">
-                        <span class="sm:hidden text-sm uppercase tracking-wider">Добавить</span>
-                        <span class="hidden sm:inline text-xl">+</span>
+                    <button type="submit" class="bg-accent hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2 text-sm">
+                        <span>Добавить</span>
                     </button>
                 </form>
             </div>
 
-            <!-- Периодические задачи (если есть) -->
+            <div id="tasks-list">
+                {% include "partials/tasks_list.html" %}
+            </div>
+        </div>
+
+        <!-- COLUMN 2: HABITS & RECURRING -->
+        <div class="space-y-8">
+            <!-- Habit Trackers -->
+            <div class="space-y-4">
+                <div class="flex items-center justify-between px-1">
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <span>✨</span> Трекеры
+                    </h2>
+                    <button onclick="document.getElementById('add-habit-modal').classList.toggle('hidden')" 
+                            class="text-[10px] bg-dark-700 hover:bg-dark-600 text-gray-400 px-2 py-1 rounded-lg border border-dark-500 transition-colors uppercase font-bold">
+                        + Добавить
+                    </button>
+                </div>
+
+                <div id="add-habit-modal" class="hidden bg-dark-800 border border-dark-600 rounded-xl p-4 shadow-2xl">
+                    <form action="/api/habits/create" method="POST" class="flex flex-col gap-3">
+                        <input type="text" name="title" placeholder="Название..." required
+                               class="bg-dark-700 border border-dark-500 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-accent">
+                        <input type="date" name="start_date" value="{{ today.isoformat() }}" required
+                               class="bg-dark-700 border border-dark-500 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-accent">
+                        <button type="submit" class="bg-accent text-white rounded-lg px-4 py-2 text-sm font-bold">Создать</button>
+                    </form>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4">
+                    {% for h_item in habits_data %}
+                    <div class="bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg flex flex-col group">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <h3 class="font-bold text-gray-100 text-sm">{{ h_item.habit.title }}</h3>
+                                <div class="flex items-center gap-2 mt-0.5">
+                                    <span class="text-[9px] text-gray-500">Старт: {{ h_item.habit.start_date.strftime('%d.%m') }}</span>
+                                    <span class="text-[9px] bg-dark-700 px-1.5 py-0.5 rounded text-gray-400 font-bold uppercase">Цикл {{ h_item.habit.current_cycle }}</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <form action="/api/habits/{{ h_item.habit.id }}/next-cycle" method="POST" onsubmit="return confirm('Начать следующие 30 дней?')">
+                                    <button type="submit" class="text-[10px] bg-blue-600/20 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30 hover:bg-blue-600 hover:text-white transition-all font-bold uppercase opacity-0 group-hover:opacity-100">
+                                        След. 30 дней
+                                    </button>
+                                </form>
+                                <form action="/api/habits/{{ h_item.habit.id }}/archive" method="POST" onsubmit="return confirm('Архивировать трекер?')">
+                                    <button type="submit" class="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-7 gap-1 self-center">
+                            <div class="text-[7px] text-gray-600 text-center font-bold">ПН</div>
+                            <div class="text-[7px] text-gray-600 text-center font-bold">ВТ</div>
+                            <div class="text-[7px] text-gray-600 text-center font-bold">СР</div>
+                            <div class="text-[7px] text-gray-600 text-center font-bold">ЧТ</div>
+                            <div class="text-[7px] text-gray-600 text-center font-bold">ПТ</div>
+                            <div class="text-[7px] text-gray-600 text-center font-bold">СБ</div>
+                            <div class="text-[7px] text-gray-600 text-center font-bold">ВС</div>
+
+                            {% for _ in range(h_item.start_weekday) %}
+                                <div class="w-6 h-6"></div>
+                            {% endfor %}
+
+                            {% for dt in h_item.dates %}
+                                {% set date_str = dt.isoformat() %}
+                                {% set is_checked = date_str in h_item.logs %}
+                                {% set is_today = dt == today %}
+                                <button 
+                                    onclick="toggleHabit({{ h_item.habit.id }}, '{{ date_str }}', this)"
+                                    class="w-6 h-6 rounded-sm flex items-center justify-center transition-all border text-[9px] font-bold
+                                    {{ 'bg-accent border-accent text-white' if is_checked else 'bg-dark-700 border-dark-500 text-gray-600 hover:border-gray-400' }}
+                                    {{ 'ring-1 ring-white/30' if is_today else '' }}">
+                                    {{ loop.index }}
+                                </button>
+                            {% endfor %}
+                        </div>
+
+                        <div class="mt-3 flex justify-between items-end">
+                            <div class="text-[8px] text-gray-500 uppercase tracking-widest">Прогресс</div>
+                            <div class="text-[10px] font-bold text-accent">{{ h_item.progress }}/30</div>
+                        </div>
+                        <div class="mt-1 w-full bg-dark-700 rounded-full h-1 overflow-hidden">
+                            <div class="bg-accent h-full transition-all duration-500" style="width: {{ (h_item.progress / 30 * 100)|round }}%"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Recurring Tasks -->
             {% if recurring_tasks %}
-            <div class="mb-8">
-                <h2 class="text-xl font-bold mb-4 flex items-center gap-2 text-purple-400 px-1">
-                    <span>🔄</span> Периодические
+            <div class="space-y-4">
+                <h2 class="text-xl font-bold text-purple-400 flex items-center gap-2 px-1">
+                    <span>🔄</span> Регулярные
                 </h2>
                 <div class="space-y-3">
                     {% for rt in recurring_tasks %}
-                    <div class="bg-purple-900/10 rounded-lg p-4 border border-purple-700/30 hover:border-purple-500 transition group" id="recurring-{{ rt.id }}">
+                    <div class="bg-purple-900/10 rounded-xl p-3 border border-purple-700/30 hover:border-purple-500 transition group" id="recurring-{{ rt.id }}">
                         <div class="flex justify-between items-start">
                             <div class="flex-1">
-                                <h3 class="font-semibold text-purple-200">🔄 {{ rt.title }}</h3>
+                                <h3 class="font-semibold text-purple-200 text-sm">{{ rt.title }}</h3>
                                 <div class="flex items-center gap-2 mt-1">
-                                    <span class="text-[10px] uppercase tracking-wider text-purple-400 font-bold">
+                                    <span class="text-[8px] uppercase tracking-wider text-purple-400 font-bold">
                                         {% if rt.recurrence_type == 'daily' %}ежедневно
                                         {% elif rt.recurrence_type == 'weekly' %}еженедельно
                                         {% else %}ежемесячно{% endif %}
                                     </span>
-                                    {% if rt.completed_count > 0 %}
-                                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">
-                                        ✅ выполнено {{ rt.completed_count }} раз
-                                    </span>
-                                    {% endif %}
                                 </div>
                             </div>
                             <form hx-post="/api/recurring/{{ rt.id }}/complete"
                                   hx-target="#recurring-{{ rt.id }}"
                                   hx-swap="outerHTML"
                                   class="inline lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                                <button type="submit" class="text-green-400 hover:text-green-300 text-2xl p-1" title="Отметить выполненной">✅</button>
+                                <button type="submit" class="text-green-400 hover:text-green-300 text-xl p-1">✅</button>
                             </form>
                         </div>
                     </div>
@@ -214,42 +205,95 @@
                 </div>
             </div>
             {% endif %}
-
-            <!-- Список задач -->
-            <div class="flex items-center justify-between mb-4">
-                <h2 class="text-xl font-bold text-white">📋 Список задач</h2>
-            </div>
-            
-            <div id="tasks-list">
-                {% include "partials/tasks_list.html" %}
-            </div>
         </div>
 
-        <!-- Sidebar -->
+        <!-- COLUMN 3: SHOPPING & HOUSEHOLD -->
         <div class="space-y-6">
-            <h2 class="text-xl font-bold text-white">📊 Статистика</h2>
-            <div class="bg-dark-800 rounded-xl p-6 border border-dark-600 shadow-lg">
-                <div id="today-stats" class="flex flex-col gap-4">
-                    <div class="flex justify-between items-center">
-                        <span class="text-gray-400">Прогресс сегодня:</span>
-                        <span class="font-bold text-2xl text-green-400" id="today-stats-counter">{{ completed }}/{{ total }}</span>
-                    </div>
-                    <!-- Прогресс-бар -->
-                    <div class="w-full bg-dark-700 rounded-full h-2 overflow-hidden">
-                        {% set progress = (completed / total * 100) if total > 0 else 0 %}
-                        <div class="bg-green-500 h-full transition-all duration-500" style="width: {{ progress }}%"></div>
+            <!-- Stats -->
+            <div class="bg-dark-800 rounded-xl p-4 border border-dark-600 shadow-lg">
+                <div class="flex justify-between items-center mb-3 px-1">
+                    <span class="text-xs font-bold text-gray-500 uppercase tracking-widest">Прогресс сегодня</span>
+                    <span class="font-bold text-lg text-green-400" id="today-stats-counter">{{ completed }}/{{ total }}</span>
+                </div>
+                <div class="w-full bg-dark-700 rounded-full h-1.5 overflow-hidden">
+                    {% set progress = (completed / total * 100) if total > 0 else 0 %}
+                    <div class="bg-green-500 h-full transition-all duration-500" style="width: {{ progress }}%"></div>
+                </div>
+            </div>
+
+            <!-- Shopping List -->
+            <div class="space-y-4">
+                <div class="flex items-center justify-between px-1">
+                    <h2 class="text-xl font-bold text-yellow-400 flex items-center gap-2">
+                        <span>🛒</span> Покупки
+                    </h2>
+                    <button onclick="alert('Скоро здесь будет отправка в Telegram!')" 
+                            class="text-[9px] bg-[#229ED9]/20 hover:bg-[#229ED9]/40 text-[#229ED9] px-2 py-1 rounded-lg border border-[#229ED9]/30 transition-all font-bold uppercase">
+                        В ТГ
+                    </button>
+                </div>
+
+                <div class="bg-dark-800 rounded-xl p-3 border border-dark-600 shadow-lg">
+                    <form hx-post="/api/shopping/create"
+                          hx-target="#shopping-list"
+                          hx-swap="innerHTML"
+                          hx-on::after-request="this.reset()"
+                          class="flex gap-2 mb-3">
+                        <input type="text" name="title" placeholder="+ Продукт..." required
+                               class="flex-1 bg-dark-700 border border-dark-500 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-yellow-500">
+                        <button type="submit" class="bg-yellow-600 hover:bg-yellow-500 text-white font-bold px-3 rounded-lg text-sm transition-all">+</button>
+                    </form>
+                    
+                    <div id="shopping-list" class="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
+                        {% set items = shopping_items %}
+                        {% include "partials/shopping_list.html" %}
                     </div>
                 </div>
             </div>
-            
-            <!-- Инфо-панель -->
-            <div class="bg-dark-800 rounded-xl p-4 border border-blue-900/30 text-xs text-gray-500">
-                <p class="flex items-center gap-2">
-                    <span>💡</span> Используй быстрый ввод, чтобы экономить время. Категория сохранится для отчетов.
-                </p>
+
+            <!-- Household -->
+            <div class="space-y-4">
+                <h2 class="text-xl font-bold text-orange-400 flex items-center gap-2 px-1">
+                    <span>🏠</span> Быт
+                </h2>
+                <div class="bg-dark-800 rounded-xl border border-dark-600 shadow-lg overflow-hidden">
+                    <div class="p-3 space-y-3 max-h-[400px] overflow-y-auto">
+                        {% if household_tasks %}
+                            {% for h_task in household_tasks %}
+                            <div class="bg-dark-900 rounded-lg p-3 border border-dark-700 hover:border-orange-500 transition group" id="task-{{ h_task.id }}">
+                                <div class="flex justify-between items-start">
+                                    <div class="flex-1 min-w-0">
+                                        <h3 class="font-medium text-white text-xs truncate">{{ h_task.title }}</h3>
+                                        <p class="text-[8px] text-gray-500 mt-1 uppercase">{{ h_task.category.name if h_task.category else 'Быт' }}</p>
+                                    </div>
+                                    <form hx-post="/tasks/{{ h_task.id }}/complete" hx-target="#task-{{ h_task.id }}" hx-swap="outerHTML">
+                                        <button type="submit" class="text-green-500 hover:text-green-400 text-lg p-1">✅</button>
+                                    </form>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-center py-6 text-gray-600 italic text-[10px]">Домашних дел пока нет</p>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="p-3 bg-dark-700/20 border-t border-dark-600">
+                        <form hx-post="/tasks/create" 
+                              hx-target="this" 
+                              hx-swap="outerHTML" 
+                              hx-on::after-request="window.location.reload()"
+                              class="flex gap-2">
+                            <input type="hidden" name="category_id" value="{{ household_cat_ids[0] if household_cat_ids else '' }}">
+                            <input type="text" name="title" placeholder="+ Новое дело..." 
+                                   class="flex-1 bg-dark-900 border border-dark-600 rounded px-3 py-1.5 text-[10px] text-white focus:outline-none focus:border-orange-500">
+                            <button type="submit" class="bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-bold px-2 rounded transition-all">Ок</button>
+                        </form>
+                    </div>
+                </div>
             </div>
         </div>
-</div>
+
+    </div>
 {% endblock %}
 
 {% block extra_scripts %}

@@ -47,7 +47,6 @@ class AIService:
             return {"category_id": None}
 
         import httpx
-        from app.utils.logger import app_logger
         
         # Формируем текстовое описание категорий для промта
         cat_desc = []
@@ -101,6 +100,60 @@ class AIService:
             print(f"❌ AI Categorization Error: {e}")
         
         return {"category_id": None}
+
+    async def generate_impact_report(self, tasks_data: list) -> list:
+        """Генерация достижений для Карьерного капитала через Groq"""
+        if not settings.groq_api_key:
+            return []
+
+        import httpx
+        
+        # Формируем список задач для промта
+        tasks_text = "\n".join([f"- {t['title']} (Категория: {t['category']})" for t in tasks_data])
+        
+        system_prompt = """Ты — эксперт по HR и карьере (Senior Career Coach).
+Твоя задача: прочитать список выполненных задач пользователя и ВЫБРАТЬ только те, которые имеют профессиональную ценность.
+
+ПРАВИЛА:
+1. ИГНОРИРУЙ бытовую рутину (купила еду, помыла пол, сходила в спортзал).
+2. ОСТАВЛЯЙ только рабочие задачи, обучение, пет-проекты и важные созвоны.
+3. ПЕРЕПИШИ каждую выбранную задачу в стиле 'Impact Statement' (Результат и Влияние). 
+   Используй сильные глаголы (Оптимизировала, Внедрила, Разработала).
+4. Ответ давай СТРОГО в JSON: [{"original_title": "...", "impact": "...", "category": "..."}]
+"""
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.groq_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "llama-3.3-70b-versatile",
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": f"Список задач:\n{tasks_text}"}
+                        ],
+                        "temperature": 0.3,
+                        "response_format": {"type": "json_object"}
+                    },
+                    timeout=30.0
+                )
+                
+                if response.status_code == 200:
+                    raw_res = response.json()['choices'][0]['message']['content']
+                    data = json.loads(raw_res)
+                    if isinstance(data, dict):
+                        for val in data.values():
+                            if isinstance(val, list):
+                                return val
+                    return data if isinstance(data, list) else []
+        except Exception as e:
+            print(f"❌ Impact Generation Error: {e}")
+        
+        return []
 
     def _simple_categorize(self, text: str) -> Dict[str, str]:
         """Простая категоризация по ключевым словам (fallback)"""
