@@ -90,6 +90,9 @@ async def dashboard(request: Request):
             h_start = h.start_date or today
             h_dates = [(h_start + timedelta(days=i)) for i in range(h.target_days or 30)]
             
+            # Определяем смещение (день недели начала: 0=Пн, 1=Вт, ... 6=Вс)
+            start_weekday = h_start.weekday()
+            
             # Логи для этой конкретной привычки
             h_logs_result = await db.execute(
                 select(HabitLog.date).where(HabitLog.habit_id == h.id)
@@ -100,7 +103,8 @@ async def dashboard(request: Request):
                 "habit": h,
                 "dates": h_dates,
                 "logs": h_logs,
-                "progress": len(h_logs)
+                "progress": len(h_logs),
+                "start_weekday": start_weekday
             })
 
         # Обычные задачи (только корневые)
