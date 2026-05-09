@@ -34,14 +34,19 @@
     }
 }" x-init="$watch('showCreate', value => { if(value) { $nextTick(() => initFlatpickr()) } })">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-8">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 px-1">
         <div>
-            <h1 class="text-3xl font-bold text-white">🔄 Периодические</h1>
-            <p class="text-gray-400 mt-1">Шаблоны регулярных задач</p>
+            <h1 class="text-2xl lg:text-3xl font-bold text-white flex items-center gap-2">
+                <span>🔄</span> Периодические
+            </h1>
+            <p class="text-gray-400 mt-1 text-sm lg:text-base">Шаблоны регулярных задач</p>
         </div>
         <button @click="showCreate = !showCreate" type="button"
-                class="px-6 py-3 bg-accent hover:bg-blue-600 text-white font-medium rounded-lg transition-colors shadow-lg min-w-[160px]">
-            <span x-show="!showCreate">+ Новый шаблон</span>
+                class="w-full sm:w-auto px-6 py-3 bg-accent hover:bg-blue-600 text-white font-medium rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 active:scale-95">
+            <span x-show="!showCreate" class="flex items-center gap-2">
+                <span class="text-xl">+</span>
+                <span>Новый шаблон</span>
+            </span>
             <span x-show="showCreate" x-cloak>Скрыть форму</span>
         </button>
     </div>

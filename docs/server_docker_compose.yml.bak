@@ -1,0 +1,20 @@
+services:
+  planner:
+    build: .
+    container_name: task_planner
+    volumes:
+      - .:/app
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    environment:
+      - API_TOKEN=huCPuDdFBC7P
+      - DATABASE_URL=sqlite+aiosqlite:////app/planner.db
+      - AI_USE_LOCAL=False
+      - TZ=Europe/Moscow
+    networks:
+      - npm_default
+    restart: unless-stopped
+
+networks:
+  npm_default:
+    external: true

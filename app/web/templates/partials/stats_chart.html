@@ -22,7 +22,7 @@
         </div>
     </div>
 
-    <div class="flex items-end justify-between h-48 gap-1 px-2 relative">
+    <div class="flex items-end justify-between h-48 gap-1 px-2 relative" x-data="{ activeYearPoint: null }">
         {% if period == 'year' %}
             <!-- Точечный график (SVG) для года -->
             <svg class="absolute inset-0 w-full h-40 mt-4 px-4 overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -38,13 +38,27 @@
                     {% for i in range(count_hist) %}
                         {% set x = (i / (count_hist - 1)) * 100 %}
                         {% set y = 100 - (weekly_history[i][1] / max_hist * 100) %}
-                        <circle cx="{{ x }}" cy="{{ y }}" r="3" fill="#3b82f6" class="hover:fill-white transition-colors cursor-pointer">
-                            <title>{{ weekly_history[i][0] }}: {{ weekly_history[i][1] }}</title>
-                        </circle>
+                        
+                        <!-- Count Label (Animated) -->
+                        <g :class="activeYearPoint === {{ i }} ? 'opacity-100' : 'opacity-0'" class="transition-opacity duration-200">
+                            <rect x="{{ x - 5 }}" y="{{ y - 18 }}" width="10" height="12" rx="2" fill="#1a1a2e" class="stroke-accent/30" vector-effect="non-scaling-stroke"></rect>
+                            <text x="{{ x }}" y="{{ y - 10 }}" text-anchor="middle" class="fill-white text-[10px] font-bold" vector-effect="non-scaling-stroke">{{ weekly_history[i][1] }}</text>
+                        </g>
+
+                        <!-- Invisible large touch area -->
+                        <circle cx="{{ x }}" cy="{{ y }}" r="8" fill="transparent" class="cursor-pointer"
+                                @mouseover="activeYearPoint = {{ i }}"
+                                @mouseleave="activeYearPoint = null"
+                                @click="activeYearPoint = (activeYearPoint === {{ i }} ? null : {{ i }})"></circle>
+                        
+                        <!-- Visible Point -->
+                        <circle cx="{{ x }}" cy="{{ y }}" r="4" fill="#3b82f6" 
+                                :class="activeYearPoint === {{ i }} ? 'fill-white r-5' : 'fill-[#3b82f6]'"
+                                class="transition-all pointer-events-none"></circle>
                     {% endfor %}
                 {% endif %}
             </svg>
-            <div class="absolute bottom-0 left-0 w-full flex justify-between px-4 text-[9px] text-gray-500 uppercase pb-1">
+            <div class="absolute bottom-0 left-0 w-full flex justify-between px-4 text-[10px] text-gray-600 font-bold uppercase pb-1">
                 {% for date_str, count in weekly_history %}
                     <span>{{ date_str[-2:] }}</span>
                 {% endfor %}

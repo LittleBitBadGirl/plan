@@ -41,11 +41,67 @@ class AIService:
         with open(feedback_file, "a", encoding="utf-8") as f:
             f.write(entry)
     
-    async def categorize(self, task_text: str) -> Dict[str, str]:
-        """Категоризировать задачу (MVP: использует простые правила)"""
-        # В будущем здесь будет вызов внешнего API (Groq/OpenRouter)
-        return self._simple_categorize(task_text)
-    
+    async def categorize(self, task_text: str, categories_list: list) -> Dict[str, any]:
+        """Категоризировать задачу через Groq API, используя список ID категорий"""
+        if not settings.groq_api_key:
+            return {"category_id": None}
+
+        import httpx
+        from app.utils.logger import app_logger
+        
+        # Формируем текстовое описание категорий для промта
+        cat_desc = []
+        for c in categories_list:
+            prefix = "📁 " if c['is_global'] else "  └ "
+            cat_desc.append(f"ID: {c['id']} | {prefix}{c['name']}")
+        
+        context_str = "\n".join(cat_desc)
+        
+        system_prompt = f"""Ты — эксперт по категоризации задач.
+Твоя цель: проанализировать задачу и вернуть ID наиболее подходящей категории из списка ниже.
+
+СПИСОК КАТЕГОРИЙ (ID и Название):
+{context_str}
+
+ПРАВИЛА:
+1. Если задача про покупки (купить, стейки, еда, угли), выбирай ID категории 'Покупки'.
+2. Если задача про работу, выбирай наиболее подходящую подкатегорию из блока 'Работа'.
+3. Ответ давай СТРОГО в формате JSON: {{"category_id": номер_или_null}}
+"""
+
+        try:
+            print(f"🔍 Sending task to Groq: '{task_text}'")
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.groq_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "llama-3.3-70b-versatile",
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": f"Задача: '{task_text}'"}
+                        ],
+                        "temperature": 0.0,
+                        "response_format": {"type": "json_object"}
+                    },
+                    timeout=10.0
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()['choices'][0]['message']['content']
+                    data = json.loads(result)
+                    print(f"🤖 Groq matched ID: {data.get('category_id')}")
+                    return data
+                else:
+                    print(f"⚠️ Groq API Error: {response.status_code}")
+        except Exception as e:
+            print(f"❌ AI Categorization Error: {e}")
+        
+        return {"category_id": None}
+
     def _simple_categorize(self, text: str) -> Dict[str, str]:
         """Простая категоризация по ключевым словам (fallback)"""
         text_lower = text.lower()

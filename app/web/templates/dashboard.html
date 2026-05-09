@@ -11,8 +11,8 @@
             <p class="text-gray-400 mt-1">Задачи на сегодня — {{ today.strftime('%d.%m.%Y') }}</p>
         </div>
         <a href="/tasks/new"
-           class="px-6 py-3 bg-accent hover:bg-blue-600 text-white font-medium rounded-lg transition-colors flex items-center shadow-lg hover:shadow-accent/20">
-            <span class="mr-2">+</span> Новая задача
+           class="px-4 py-2 lg:px-6 lg:py-3 bg-accent hover:bg-blue-600 text-white text-sm lg:text-base font-bold rounded-xl transition-all flex items-center shadow-lg active:scale-95">
+            <span class="mr-2 text-xl">+</span> <span class="hidden sm:inline">Новая задача</span><span class="sm:hidden">Задача</span>
         </a>
     </div>
 
@@ -110,37 +110,69 @@
             </div>
 
             <!-- Quick Add -->
-            <div class="mb-8 bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg">
+            <div class="mb-8 bg-dark-800 rounded-xl border border-dark-600 p-3 lg:p-4 shadow-lg">
                 <form hx-post="/tasks/create"
                       hx-target="#tasks-list"
                       hx-swap="innerHTML"
-                      hx-on::after-request="this.reset()"
-                      class="flex gap-3">
-                    <div class="flex-1">
-                        <input type="text" name="title" required
-                               placeholder="⚡️ Что нужно сделать сегодня? (Напиши и нажми Enter)"
-                               class="w-full bg-dark-700 border border-dark-500 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-all">
+                      hx-on::after-request="this.reset(); this.querySelector('textarea').style.height = 'auto';"
+                      class="flex flex-col sm:flex-row gap-2 sm:gap-3"
+                      x-data="{ 
+                          resize() { 
+                              const el = $el.querySelector('textarea');
+                              el.style.height = 'auto'; 
+                              el.style.height = el.scrollHeight + 'px'; 
+                          } 
+                      }">
+                    <div class="flex-1 flex gap-2">
+                        <textarea name="title" required
+                                  rows="1"
+                                  @input="resize()"
+                                  placeholder="⚡️ Что нужно сделать сегодня?"
+                                  class="flex-1 bg-dark-700 border border-dark-500 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-all resize-none min-h-[48px]"></textarea>
+                        
+                        <div class="relative sm:hidden">
+                            <select name="category_id" 
+                                    class="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer">
+                                <option value="">📁</option>
+                                {% for cat in categories %}
+                                    {% if cat.is_global %}
+                                        <optgroup label="{{ cat.name }}">
+                                            {% for subcat in categories %}
+                                                {% if subcat.parent_id == cat.id %}
+                                                <option value="{{ subcat.id }}">{{ subcat.name }}</option>
+                                                {% endif %}
+                                            {% endfor %}
+                                        </optgroup>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                            <div class="bg-dark-700 border border-dark-500 rounded-lg w-12 h-full flex items-center justify-center text-xl">
+                                📁
+                            </div>
+                        </div>
                     </div>
                     
-                    <select name="category_id" 
-                            class="bg-dark-700 border border-dark-500 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-accent appearance-none cursor-pointer">
-                        <option value="">📁 Категория...</option>
-                        {% for cat in categories %}
-                            {% if cat.is_global %}
-                                <optgroup label="{{ cat.name }}">
-                                    {% for subcat in categories %}
-                                        {% if subcat.parent_id == cat.id %}
-                                        <option value="{{ subcat.id }}">{{ subcat.name }}</option>
-                                        {% endif %}
-                                    {% endfor %}
-                                </optgroup>
-                            {% endif %}
-                        {% endfor %}
-                    </select>
+                    <div class="hidden sm:block">
+                        <select name="category_id" 
+                                class="bg-dark-700 border border-dark-500 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-accent appearance-none cursor-pointer">
+                            <option value="">📁 Категория...</option>
+                            {% for cat in categories %}
+                                {% if cat.is_global %}
+                                    <optgroup label="{{ cat.name }}">
+                                        {% for subcat in categories %}
+                                            {% if subcat.parent_id == cat.id %}
+                                            <option value="{{ subcat.id }}">{{ subcat.name }}</option>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </optgroup>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
 
-                    <button type="submit" 
-                            class="px-6 py-3 bg-accent hover:bg-blue-600 text-white font-medium rounded-lg transition-colors shadow-lg">
-                        Добавить
+                    <button type="submit" class="bg-accent hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition-all flex items-center justify-center gap-2">
+                        <span class="sm:hidden text-sm uppercase tracking-wider">Добавить</span>
+                        <span class="hidden sm:inline text-xl">+</span>
                     </button>
                 </form>
             </div>
@@ -148,7 +180,7 @@
             <!-- Периодические задачи (если есть) -->
             {% if recurring_tasks %}
             <div class="mb-8">
-                <h2 class="text-xl font-bold mb-4 flex items-center gap-2 text-purple-400">
+                <h2 class="text-xl font-bold mb-4 flex items-center gap-2 text-purple-400 px-1">
                     <span>🔄</span> Периодические
                 </h2>
                 <div class="space-y-3">
@@ -173,8 +205,8 @@
                             <form hx-post="/api/recurring/{{ rt.id }}/complete"
                                   hx-target="#recurring-{{ rt.id }}"
                                   hx-swap="outerHTML"
-                                  class="inline opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button type="submit" class="text-green-400 hover:text-green-300 text-xl" title="Отметить выполненной">✅</button>
+                                  class="inline lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                                <button type="submit" class="text-green-400 hover:text-green-300 text-2xl p-1" title="Отметить выполненной">✅</button>
                             </form>
                         </div>
                     </div>

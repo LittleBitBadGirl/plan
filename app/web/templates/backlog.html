@@ -38,19 +38,19 @@
             </div>
             
             <!-- Действия -->
-            <div class="flex gap-2 items-center">
+            <div class="flex flex-wrap gap-3 items-center justify-end">
                 <!-- 📅 Запланировать -->
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1">
                     <form hx-post="/tasks/{{ task.id }}/plan"
                           hx-target="#task-{{ task.id }}"
                           hx-swap="outerHTML"
                           class="flex items-center gap-1">
                         <input type="text" name="due_date" id="date-input-{{ task.id }}" placeholder="ДД.ММ" maxlength="5"
-                               class="bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white hidden w-16"
+                               class="bg-dark-900 border border-dark-700 rounded px-2 py-1 text-[10px] text-white hidden w-14"
                                onkeypress="if(event.key==='Enter'){event.preventDefault(); this.form.requestSubmit()}">
                         <button type="button"
                                 onclick="document.getElementById('date-input-{{ task.id }}').classList.toggle('hidden'); document.getElementById('date-input-{{ task.id }}').focus()"
-                                class="text-blue-400 hover:text-blue-300 transition-colors" title="Запланировать на дату">
+                                class="text-blue-400 hover:text-blue-300 transition-colors p-1" title="Запланировать">
                             📅
                         </button>
                     </form>
@@ -58,25 +58,25 @@
                 
                 <!-- ⚡️ На сегодня -->
                 <form hx-post="/backlog/{{ task.id }}/plan-today" hx-target="#task-{{ task.id }}" hx-swap="outerHTML">
-                    <button type="submit" class="text-orange-400 hover:text-orange-300 transition-colors" title="На сегодня">⚡</button>
+                    <button type="submit" class="text-orange-400 hover:text-orange-300 transition-colors p-1 text-xl" title="На сегодня">⚡</button>
                 </form>
 
                 <!-- 🔄 Периодическая -->
                 <form hx-post="/backlog/{{ task.id }}/make-recurring-form" hx-target="#task-{{ task.id }}" hx-swap="outerHTML">
-                    <button type="submit" class="text-purple-400 hover:text-purple-300 transition-colors" title="Превратить в шаблон">🔄</button>
+                    <button type="submit" class="text-purple-400 hover:text-purple-300 transition-colors p-1 text-xl" title="В шаблон">🔄</button>
                 </form>
-
-                <!-- ✏️ Правка -->
-                <a href="/tasks/{{ task.id }}/edit" class="text-gray-500 hover:text-white transition-colors" title="Редактировать">✏️</a>
 
                 <!-- ✅ Выполнено -->
                 <form hx-post="/tasks/{{ task.id }}/complete" hx-target="#task-{{ task.id }}" hx-swap="outerHTML">
-                    <button type="submit" class="text-green-500 hover:text-green-400 transition-colors" title="Выполнено">✅</button>
+                    <button type="submit" class="text-green-500 hover:text-green-400 transition-colors p-1 text-xl" title="Выполнено">✅</button>
                 </form>
+
+                <!-- ✏️ Правка -->
+                <a href="/tasks/{{ task.id }}/edit" class="text-gray-500 hover:text-white transition-colors p-1" title="Редактировать">✏️</a>
 
                 <!-- 🗑 Удалить -->
                 <form hx-delete="/tasks/{{ task.id }}" hx-target="#task-{{ task.id }}" hx-swap="outerHTML">
-                    <button type="submit" class="text-gray-700 hover:text-red-500 transition-colors" title="В архив">🗑</button>
+                    <button type="submit" class="text-gray-700 hover:text-red-500 transition-colors p-1 text-xl" title="В архив">🗑</button>
                 </form>
             </div>
         </div>

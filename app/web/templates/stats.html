@@ -14,8 +14,8 @@
         <!-- Кнопка подготовки данных для анализа -->
         <button hx-get="/api/ai/prepare-analysis" 
                 hx-target="#ai-analysis-container"
-                class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-lg transition shadow-lg flex items-center gap-2">
-            <span>🧠</span> Подготовить данные для Gemini
+                class="px-4 py-2 lg:px-5 lg:py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs lg:text-sm font-bold rounded-xl transition-all shadow-lg flex items-center gap-2 active:scale-95">
+            <span>🧠</span> <span class="hidden sm:inline">Подготовить для Groq</span><span class="sm:hidden">Анализ Groq</span>
         </button>
     </div>
 
@@ -68,13 +68,13 @@
         {% include "partials/stats_chart.html" %}
     </div>
 
-    <!-- AI Анализ (Gemini Report) -->
+    <!-- AI Анализ (Groq Report) -->
     <div id="ai-analysis-container">
         {% if last_report %}
         <div class="bg-dark-800 rounded-2xl border border-blue-500/30 overflow-hidden shadow-2xl">
             <div class="p-6 bg-blue-600/10 border-b border-blue-500/20 flex items-center justify-between">
                 <h2 class="text-xl font-bold text-white flex items-center gap-3">
-                    <span class="text-2xl">✨</span> Анализ продуктивности от Gemini
+                    <span class="text-2xl">✨</span> Анализ продуктивности от Groq
                 </h2>
                 <span class="text-xs text-blue-400 font-mono">за {{ last_report.report_date.strftime('%d.%m.%Y') }}</span>
             </div>
@@ -90,7 +90,7 @@
             <span class="text-5xl mb-6 block grayscale">🧠</span>
             <h2 class="text-xl font-bold text-white mb-2">Здесь появится ваш AI-анализ</h2>
             <p class="text-gray-500 max-w-md mx-auto mb-6 text-sm">
-                Нажмите кнопку выше, чтобы собрать данные за предыдущий день, а затем попросите Gemini в терминале провести разбор.
+                Нажмите кнопку выше, чтобы собрать данные за предыдущий день, а затем попросите меня (в терминале) провести разбор.
             </p>
         </div>
         {% endif %}

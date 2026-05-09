@@ -15,6 +15,7 @@ from pathlib import Path
 import json
 from typing import List
 from app.services.rollover_service import rollover_overdue_tasks
+from app.services.ai_service import ai_service
 
 import re
 
@@ -883,8 +884,8 @@ async def get_history_data(db, period: str):
 
 
 @router.get("/api/ai/prepare-analysis", response_class=HTMLResponse)
-async def prepare_analysis_data(request: Request):
-    """Подготовить текстовый дамп задач за вчера для Gemini"""
+async def run_ai_analysis(request: Request):
+    """Автоматический запуск анализа задач за вчера через Groq"""
     yesterday = date.today() - timedelta(days=1)
     
     async with async_session() as db:
@@ -902,35 +903,83 @@ async def prepare_analysis_data(request: Request):
         if not tasks:
             return HTMLResponse(f"""
                 <div class="bg-yellow-900/20 border border-yellow-700/50 p-6 rounded-xl text-center">
-                    <p class="text-yellow-500">За вчера ({yesterday.strftime('%d.%m')}) не найдено задач в плане.</p>
+                    <p class="text-yellow-500">За вчера ({yesterday.strftime('%d.%m')}) не найдено задач для анализа.</p>
                 </div>
             """)
 
-        # Формируем отчет для терминала
-        summary = f"Данные за {yesterday.strftime('%d.%m.%Y')} готовы.\n"
-        summary += f"Всего задействовано задач: {len(tasks)}\n\n"
-
+        # Формируем контекст для Грока
+        tasks_list = []
         for t in tasks:
-            status_icon = "✅" if t.status == "выполнена" else "❌"
+            status = "ВЫПОЛНЕНО" if t.status == "выполнена" else "ПРОСРОЧЕНО/НОВАЯ"
             cat = t.category.name if t.category else "Без категории"
-            summary += f"{status_icon} [{cat}] {t.title}\n"
+            tasks_list.append(f"- [{status}] [{cat}] {t.title}")
 
-        return HTMLResponse(f"""
-        <div class="bg-blue-900/20 border border-blue-500/50 p-6 rounded-xl">
-            <h3 class="text-blue-400 font-bold mb-3 flex items-center gap-2">
-                <span>🤖</span> Инструкция для Gemini
-            </h3>
-            <p class="text-gray-300 text-sm mb-4">
-                Данные за вчерашний день успешно выгружены. Теперь просто напишите в терминале:
-            </p>
-            <div class="bg-dark-900 p-4 rounded border border-dark-600 font-mono text-xs text-green-400 mb-4 select-all">
-                Gemini, проанализируй вчерашний день ({yesterday.strftime('%d.%m')}) и сохрани отчет в базу.
-            </div>
-            <p class="text-gray-500 text-[10px]">
-                Я увижу эти данные в базе и напишу Senior-разбор прямо здесь на странице.
-            </p>
-        </div>
-        """)
+        tasks_context = "\n".join(tasks_list)
+        
+        prompt = f"""Ты — Senior Project Manager и коуч по продуктивности. 
+Проанализируй итоги дня пользователя за {yesterday.strftime('%d.%m.%Y')}.
+
+СПИСОК ЗАДАЧ:
+{tasks_context}
+
+ТВОЯ ЗАДАЧА:
+1. Дай краткий, но емкий Senior-анализ дня (что было сделано круто, где просадка).
+2. Выдели ключевые фокусы дня (на какие проекты ушло больше всего сил).
+3. Дай одну конкретную рекомендацию на будущее.
+
+СТИЛЬ: Профессиональный, прямой, без воды, мотивирующий, но критичный. 
+Используй Markdown разметку (заголовки ###, жирный текст).
+"""
+
+        # Вызываем Groq напрямую
+        import httpx
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.groq_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "llama-3.3-70b-versatile",
+                        "messages": [
+                            {"role": "system", "content": "Ты — профессиональный аналитик продуктивности."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "temperature": 0.3
+                    },
+                    timeout=20.0
+                )
+                
+                if response.status_code == 200:
+                    analysis_content = response.json()['choices'][0]['message']['content']
+                    
+                    # Сохраняем в базу
+                    from app.models.report import AIReport
+                    # Проверяем, есть ли уже отчет за этот день
+                    existing = await db.execute(select(AIReport).where(AIReport.report_date == yesterday))
+                    report = existing.scalar_one_or_none()
+                    
+                    if report:
+                        report.content = analysis_content
+                    else:
+                        report = AIReport(report_date=yesterday, content=analysis_content)
+                        db.add(report)
+                    
+                    await db.commit()
+                    
+                    return HTMLResponse(f"""
+                        <div class="bg-green-900/20 border border-green-500/50 p-6 rounded-xl text-center">
+                            <p class="text-green-400 font-bold mb-2 text-lg">✅ Анализ завершен!</p>
+                            <p class="text-gray-400 text-sm mb-4">Senior-разбор за {yesterday.strftime('%d.%m')} готов и сохранен.</p>
+                            <button onclick="window.location.reload()" class="px-4 py-2 bg-accent text-white rounded-lg font-bold">Посмотреть результат</button>
+                        </div>
+                    """)
+                else:
+                    return HTMLResponse(f"""<div class="p-4 bg-red-900/20 text-red-400 rounded-lg">Ошибка API Groq: {response.status_code}</div>""")
+        except Exception as e:
+            return HTMLResponse(f"""<div class="p-4 bg-red-900/20 text-red-400 rounded-lg">Ошибка: {str(e)}</div>""")
 
 @router.get("/recurring", response_class=HTMLResponse)
 async def recurring_page(request: Request):
@@ -1059,9 +1108,24 @@ async def task_create_htmx(
             pass
 
     async with async_session() as db:
+        # Автоматическая категоризация через AI, если категория не выбрана
+        final_category_id = None
+        if category_id and category_id.isdigit():
+            final_category_id = int(category_id)
+        else:
+            # Пытаемся определить категорию через AI
+            # Сначала получаем список всех категорий для контекста
+            cat_stmt = select(Category).order_by(Category.is_global.desc(), Category.name)
+            cat_res = await db.execute(cat_stmt)
+            all_cats = [{"id": c.id, "name": c.name, "is_global": c.is_global} for c in cat_res.scalars().all()]
+            
+            ai_result = await ai_service.categorize(title, all_cats)
+            if ai_result and ai_result.get("category_id"):
+                final_category_id = int(ai_result["category_id"])
+
         task = Task(
             title=title,
-            category_id=int(category_id) if category_id and category_id.isdigit() else None,
+            category_id=final_category_id,
             due_date=today,
             due_time=due_time,
             source="web",
@@ -1158,12 +1222,7 @@ async def complete_task(request: Request, task_id: int):
             await db.commit()
 
             tasks_content = await get_tasks_today(db, request)
-            toast_oob = f"""
-                <div id="toast" hx-swap-oob="afterbegin:body" class="fixed top-4 right-4 bg-success text-white px-4 py-2 rounded shadow-lg z-50 animate-fade-in">
-                    ✅ {task.title} — выполнено
-                </div>
-            """
-            return HTMLResponse(content=tasks_content + toast_oob)
+            return HTMLResponse(content=tasks_content)
     return HTMLResponse('<div class="text-gray-500 p-4">Задача не найдена</div>')
 
 

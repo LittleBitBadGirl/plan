@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # AI (в будущем внешнее API)
     ai_use_local: bool = False
+    groq_api_key: str = ""
 
     # OCR
     ocr_lang: str = "rus+eng"
