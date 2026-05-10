@@ -1874,7 +1874,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         
         yearly_res = await db.execute(
             select(
-                func.sum(case((Transaction.amount < 0, abs(Transaction.amount)), else_=0)).label('income'),
+                func.sum(case((Transaction.amount < 0, func.abs(Transaction.amount)), else_=0)).label('income'),
                 func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0)).label('expense')
             )
             .where(Transaction.date >= year_start, Transaction.date < year_end)
