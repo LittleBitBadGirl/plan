@@ -245,11 +245,22 @@ async def handle_photo(message: Message, bot: Bot):
         file_path = uploads_dir / f"{file_id}.jpg"
         await bot.download_file(file.file_path, destination=file_path)
         
-        result = await ocr_service.process_screenshot(str(file_path))
+                result = await ocr_service.process_screenshot(str(file_path))
         full_text = result.get("text", "").lower()
+        app_logger.info(f"📸 OCR Text: {full_text[:200]}...")
         
         # ЛОГИКА РАЗДЕЛЕНИЯ ЧЕРЕЗ AI
-        classify_prompt = f"Это текст банковского скриншота/чека или календаря? ТЕКСТ: {full_text[:1000]}"
+        classify_prompt = f"""Ты — диспетчер данных. Проанализируй текст и реши, к какому типу относится картинка.
+ТИПЫ:
+- 'finance': Если это банковское приложение, список трат, чек, перевод, баланс, выписка.
+- 'calendar': Если это расписание, календарь, план встреч на неделю.
+- 'other': Если ничего из вышеперечисленного.
+
+ТЕКСТ С КАРТИНКИ:
+{full_text[:2000]}
+
+Ответь СТРОГО в формате JSON: {{"type": "тип"}} """
+
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
@@ -319,10 +330,13 @@ async def handle_photo(message: Message, bot: Bot):
                     db.add(Task(title=event["title"], due_date=date.today(), due_time=due_time, source="screenshot"))
                     text_resp += f"🔸 {event['time']} - {event['title']}\n"
                 await db.commit()
+            if file_path.exists(): os.remove(file_path)
             await msg.edit_text(text_resp)
         else:
+            if file_path.exists(): os.remove(file_path)
             await msg.edit_text("🧐 Не смог точно определить тип изображения. Сохранил как скриншот.")
             
     except Exception as e:
         app_logger.error(f"❌ Ошибка обработки фото: {e}", exc_info=True)
+        if file_path.exists(): os.remove(file_path)
         await msg.edit_text(f"❌ Ошибка при обработке: {e}")
