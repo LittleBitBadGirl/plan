@@ -1792,7 +1792,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
     """Страница финансов (Excel-вид)"""
     import datetime as dt
     today = dt.date.today()
-    from sqlalchemy import desc
+    from sqlalchemy import desc, case
     from app.models.goal import FinancialGoal
     
     MONTH_NAMES = {
@@ -1868,7 +1868,23 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         goals_res = await db.execute(select(FinancialGoal))
         goals = goals_res.scalars().all()
         
+        # ИТОГИ ГОДА (для view_year)
+        year_start = dt.date(view_year, 1, 1)
+        year_end = dt.date(view_year + 1, 1, 1)
+        
+        yearly_res = await db.execute(
+            select(
+                func.sum(case((Transaction.amount < 0, abs(Transaction.amount)), else_=0)).label('income'),
+                func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0)).label('expense')
+            )
+            .where(Transaction.date >= year_start, Transaction.date < year_end)
+        )
+        yearly_row = yearly_res.first()
+        yearly_income = yearly_row.income or 0
+        yearly_expense = yearly_row.expense or 0
+        
         # Расчет итогов
+
         total_income = sum(abs(tx.amount) for tx in transactions if tx.amount < 0)
         total_expense = sum(tx.amount for tx in transactions if tx.amount > 0)
         
@@ -1881,6 +1897,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         "transactions": transactions,
         "grouped_summary": grouped_summary,
         "goals": goals,
+        "yearly_stats": {"income": yearly_income, "expense": yearly_expense, "balance": yearly_income - yearly_expense},
         "month_tabs": month_tabs,
         "current_month": view_month,
         "current_year": view_year,
