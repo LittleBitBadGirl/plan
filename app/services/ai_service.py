@@ -201,7 +201,7 @@ class AIService:
             return {"type": "other"}
 
         # 2. Промпт для Vision
-        import datetime
+        from datetime import date
         current_year = date.today().year
         
         system_prompt = f"""Ты — эксперт по анализу банковских интерфейсов (Альфа, Т-Банк, Сбер). 
