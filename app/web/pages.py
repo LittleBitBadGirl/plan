@@ -136,7 +136,7 @@ async def dashboard(request: Request):
                 Task.is_archived == False,
                 Task.status.in_(["новая", "в_работе"]),
                 Task.parent_task_id == None,  # Только корневые задачи
-                Task.source != "recurring",  # Исключаем периодические
+                Task.source.is_distinct_from("recurring"),
                 not_(Task.category_id.in_(household_cat_ids)) if household_cat_ids else True
             ).order_by(Task.sort_order.asc())
         )
@@ -162,15 +162,11 @@ async def dashboard(request: Request):
         )
         all_recurring = recur_result.scalars().all()
 
-        # Находим названия и категории РУЧНЫХ задач на сегодня
-        # (чтобы не скрывать шаблон, если задача создана автоматически)
+                # Находим названия и категории ВСЕХ задач на сегодня (чтобы скрыть шаблоны в правой колонке)
         today_tasks_result = await db.execute(
-            select(Task.title, Task.category_id).where(
-                Task.due_date == today,
-                Task.source != "recurring"
-            )
+            select(Task.title, Task.category_id).where(Task.due_date == today)
         )
-        all_occupied = set((t.title, t.category_id) for t in today_tasks_result.all())
+        all_occupied = set((t.title, t.category_id) for t in today_tasks_result.all()) for t in today_tasks_result.all())
 
         day_of_week = today.weekday()
         day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
@@ -223,7 +219,7 @@ async def dashboard(request: Request):
                     Task.category_id.in_(household_cat_ids),
                     Task.is_archived == False,
                     Task.status.in_(["новая", "в_работе"]),
-                    Task.source != "recurring"  # Исключаем периодические из быта
+                    True  # Исключаем периодические из быта
                 )
                 .order_by(Task.status.desc(), Task.created_at.desc())
             )
@@ -1260,13 +1256,28 @@ async def task_create_htmx(
 async def get_tasks_today(db: AsyncSession, request: Request):
     """Вспомогательная функция для получения списка задач на сегодня и их отрисовки"""
     today = date.today()
+    
+    # Определяем бытовые категории
+    cat_result = await db.execute(
+        select(Category).where(
+            (Category.name.ilike("%быт%")) | 
+            (Category.name.ilike("%покупк%")) | 
+            (Category.name.ilike("%семья%"))
+        )
+    )
+    household_cat_ids = [c.id for c in cat_result.scalars().all()]
+    
+    from sqlalchemy import not_
     result = await db.execute(
         select(Task)
         .options(selectinload(Task.category).selectinload(Category.parent))
         .where(
             Task.due_date == today,
             Task.is_archived == False,
-            Task.parent_task_id == None
+            Task.status.in_(["новая", "в_работе"]),
+            Task.parent_task_id == None,
+            Task.source.is_distinct_from("recurring"),
+            not_(Task.category_id.in_(household_cat_ids)) if household_cat_ids else True
         ).order_by(Task.sort_order.asc(), Task.created_at.asc())
     )
     tasks = result.scalars().all()
@@ -1285,7 +1296,7 @@ async def get_tasks_today(db: AsyncSession, request: Request):
 
     template = templates.get_template("partials/tasks_list.html")
     content = template.render({"request": request, "tasks": tasks, "subtasks_map": subtasks_map})
-    
+
     completed, total = await get_today_stats(db)
     stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
     return content + stats_oob
