@@ -65,7 +65,8 @@ class AIService:
 ПРАВИЛА:
 1. Если задача про покупки (купить, стейки, еда, угли), выбирай ID категории 'Покупки'.
 2. Если задача про работу, выбирай наиболее подходящую подкатегорию из блока 'Работа'.
-3. Ответ давай СТРОГО в формате JSON: {{"category_id": номер_или_null}}
+3. Если в тексте упоминаются люди, проекты или компании (Антон, Сбер, Атолл и т.д.), выдели их как теги (без символа #).
+4. Ответ давай СТРОГО в формате JSON: {"category_id": номер_или_null, "tags": ["tag1", "tag2"]}
 """
 
         try:
@@ -92,7 +93,7 @@ class AIService:
                 if response.status_code == 200:
                     result = response.json()['choices'][0]['message']['content']
                     data = json.loads(result)
-                    print(f"🤖 Groq matched ID: {data.get('category_id')}")
+                    print(f"🤖 Groq matched ID: {data.get('category_id')} | Tags: {data.get('tags')}")
                     return data
                 else:
                     print(f"⚠️ Groq API Error: {response.status_code}")
@@ -115,14 +116,14 @@ class AIService:
 Твоя задача: прочитать список выполненных задач пользователя и ВЫБРАТЬ только те, которые имеют профессиональную ценность.
 
 ПРАВИЛА:
-1. ИГНОРИРУЙ бытовую рутину (купила еду, помыла пол, сходила в спортзал).
-2. ОСТАВЛЯЙ только рабочие задачи, обучение, пет-проекты и важные созвоны.
-3. ПЕРЕПИШИ каждую выбранную задачу в стиле 'Impact Statement' (Результат и Влияние). 
-   Используй сильные глаголы (Оптимизировала, Внедрила, Разработала).
-4. Ответ давай СТРОГО в JSON: [{"original_title": "...", "impact": "...", "category": "..."}]
+1. Если задача про покупки (купить, стейки, еда, угли), выбирай ID категории 'Покупки'.
+2. Если задача про работу, выбирай наиболее подходящую подкатегорию из блока 'Работа'.
+3. Если в тексте упоминаются люди, проекты или компании (Антон, Сбер, Атолл и т.д.), выдели их как теги (без символа #).
+4. Ответ давай СТРОГО в формате JSON: {"category_id": номер_или_null, "tags": ["tag1", "tag2"]}
 """
 
         try:
+            print(f"🔍 Sending task to Groq: '{task_text}'")
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     "https://api.groq.com/openai/v1/chat/completions",
@@ -134,21 +135,18 @@ class AIService:
                         "model": "llama-3.3-70b-versatile",
                         "messages": [
                             {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": f"Список задач:\n{tasks_text}"}
+                            {"role": "user", "content": f"Задача: '{task_text}'"}
                         ],
-                        "temperature": 0.3,
+                        "temperature": 0.0,
                         "response_format": {"type": "json_object"}
                     },
-                    timeout=30.0
+                    timeout=10.0
                 )
                 
                 if response.status_code == 200:
-                    raw_res = response.json()['choices'][0]['message']['content']
-                    data = json.loads(raw_res)
-                    if isinstance(data, dict):
-                        for val in data.values():
-                            if isinstance(val, list):
-                                return val
+                    result = response.json()['choices'][0]['message']['content']
+                    data = json.loads(result)
+                    print(f"🤖 Groq matched ID: {data.get('category_id')} | Tags: {data.get('tags')}")
                     return data if isinstance(data, list) else []
         except Exception as e:
             print(f"❌ Impact Generation Error: {e}")

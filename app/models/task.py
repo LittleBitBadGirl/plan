@@ -26,6 +26,7 @@ class Task(Base):
     postpones = Column(Integer, default=0)
     chronic_task = Column(Boolean, default=False, index=True)
     chronic_reviewed = Column(Boolean, default=False)
+    tags = Column(String(500), nullable=True) # Теги проекта или контекста (#Антон, #Сбер)
     
     # Карьерный капитал и аналитика
     impact_notes = Column(Text, nullable=True) # Заметки о результате/влиянии

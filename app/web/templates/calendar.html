@@ -56,18 +56,13 @@
         </div>
     </div>
 
-    <!-- Selected Date Header -->
-    <div id="selected-date-header" class="bg-dark-800 rounded-xl border border-dark-600 p-6 mb-6">
-        <h2 class="text-lg font-semibold text-white">
-            📅 <span id="selected-date-title">Выберите дату в календаре</span>
-        </h2>
-    </div>
-
     <!-- Selected Date Tasks -->
     <div class="bg-dark-800 rounded-xl border border-dark-600 p-6">
-        <h2 class="text-lg font-semibold text-white mb-4">Задачи на дату</h2>
+        <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <span>📅</span> Задачи на <span id="selected-date-title" class="text-accent">дату...</span>
+        </h2>
         <div id="date-tasks-list" class="text-gray-400">
-            <p>Нажмите на день в календаре</p>
+            <p>Нажмите на день в календаре для просмотра деталей</p>
         </div>
     </div>
 </div>

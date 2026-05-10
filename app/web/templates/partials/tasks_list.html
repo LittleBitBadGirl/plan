@@ -1,93 +1,53 @@
 {% if tasks %}
 <div class="space-y-3">
     {% for task in tasks %}
-    <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition" id="task-{{ task.id }}">
-        <div class="flex justify-between items-start">
-            <div class="flex-1">
-                <div class="flex items-center gap-2">
-                    {% if task.due_time %}
-                        <span class="bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded text-xs font-mono border border-purple-700/50">
-                            {{ task.due_time.strftime('%H:%M') }}
-                        </span>
-                    {% endif %}
-                    <h3 class="font-semibold text-white">{{ task.title }}</h3>
-                </div>
+    <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition flex flex-col gap-3" id="task-{{ task.id }}">
+        <!-- Header (Full Width) -->
+        <div class="flex items-center gap-2">
+            {% if task.due_time %}
+                <span class="bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded text-xs font-mono border border-purple-700/50">
+                    {{ task.due_time.strftime('%H:%M') }}
+                </span>
+            {% endif %}
+            <h3 class="font-semibold text-white flex-1">{{ task.title }}</h3>
+        </div>
+        
+        <div class="flex flex-wrap items-center justify-between mt-auto pt-2 border-t border-dark-700/30">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                {% set current_subtasks = subtasks_map.get(task.id, []) if subtasks_map else [] %}
                 
-                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs">
-                    {% set current_subtasks = subtasks_map.get(task.id, []) if subtasks_map else [] %}
-                    
-                    <!-- Категория -->
-                    {% if task.category %}
-                        {% if task.category.parent %}
-                            <span class="text-gray-500">{{ task.category.parent.name }}</span>
-                            <span class="text-gray-600">→</span>
-                            <span class="text-gray-300">{{ task.category.name }}</span>
-                        {% else %}
-                            <span class="text-gray-400">{{ task.category.name }}</span>
-                        {% endif %}
-                    {% endif %}
-                    
-                    <!-- Переносы -->
-                    {% if task.postpones and task.postpones > 0 %}
-                    <span class="text-yellow-500/80 flex items-center gap-1" title="Перенесена {{ task.postpones }} раз(а)">
-                        ⏱ ×{{ task.postpones }}
-                    </span>
-                    {% endif %}
+                <!-- Категория -->
+                {% if task.category %}
+                    <span class="text-gray-500 font-medium">{{ task.category.name }}</span>
+                {% endif %}
+                
+                <!-- Переносы -->
+                {% if task.postpones and task.postpones > 0 %}
+                <span class="text-yellow-500/80 flex items-center gap-1" title="Перенесена {{ task.postpones }} раз(а)">
+                    ⏱ ×{{ task.postpones }}
+                </span>
+                {% endif %}
 
-                    <!-- Подзадачи -->
-                    <span onclick="document.getElementById('subtasks-{{ task.id }}').classList.toggle('hidden')"
-                          class="text-purple-400 cursor-pointer hover:text-purple-300 font-medium transition-colors flex items-center gap-1">
-                        📂 
-                        {% if current_subtasks and current_subtasks|length > 0 %}
-                            {% set done = current_subtasks | selectattr("status", "equalto", "выполнена") | list | length %}
-                            {{ done }}/{{ current_subtasks|length }}
-                        {% else %}
-                            <span class="text-[10px] opacity-50">+</span>
-                        {% endif %}
-                    </span>
-                </div>
-
-                <!-- Подзадачи (скрыто) -->
-                <div id="subtasks-{{ task.id }}" class="hidden mt-2 pt-2 border-t border-dark-700/50">
+                <!-- Подзадачи -->
+                <span onclick="document.getElementById('subtasks-{{ task.id }}').classList.toggle('hidden')"
+                      class="text-purple-400 cursor-pointer hover:text-purple-300 font-medium transition-colors flex items-center gap-1">
+                    📂 
                     {% if current_subtasks and current_subtasks|length > 0 %}
-                        <div class="space-y-1 mb-2">
-                            {% for sub in current_subtasks %}
-                            <div class="flex items-center gap-2 text-sm {{ 'opacity-50 line-through text-gray-600' if sub.status == 'выполнена' else '' }}">
-                                <form hx-post="/tasks/{{ sub.id }}/complete"
-                                      hx-target="#tasks-list"
-                                      hx-swap="innerHTML"
-                                      class="inline">
-                                    <button type="submit" class="text-xs text-green-500 hover:text-green-400">✅</button>
-                                </form>
-                                <span class="flex-1 truncate text-gray-300">{{ sub.title }}</span>
-                                <form hx-delete="/tasks/{{ sub.id }}/subtask"
-                                      hx-target="#subtasks-{{ task.id }}"
-                                      hx-swap="innerHTML"
-                                      class="inline">
-                                    <button type="submit" class="text-xs text-red-400 hover:text-red-300">🗑</button>
-                                </form>
-                            </div>
-                            {% endfor %}
-                        </div>
+                        {% set done = current_subtasks | selectattr("status", "equalto", "выполнена") | list | length %}
+                        {{ done }}/{{ current_subtasks|length }}
+                    {% else %}
+                        <span class="text-[10px] opacity-50">+</span>
                     {% endif %}
-
-                    <form hx-post="/tasks/{{ task.id }}/subtasks"
-                          hx-target="#subtasks-{{ task.id }}"
-                          hx-swap="innerHTML"
-                          class="mt-1">
-                        <input type="text" name="title" placeholder="+ Добавить подзадачу..." required
-                               class="w-full bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500/50">
-                    </form>
-                </div>
+                </span>
             </div>
 
-            <!-- Действия -->
-            <div class="flex gap-2 items-center">
+            <!-- Действия (Нижняя строка) -->
+            <div class="flex gap-3 items-center">
                 <form hx-post="/tasks/{{ task.id }}/complete"
                       hx-target="#tasks-list"
                       hx-swap="innerHTML"
                       class="inline">
-                    <button type="submit" class="text-green-400 hover:text-green-300">✅</button>
+                    <button type="submit" class="text-green-400 hover:text-green-300 text-lg">✅</button>
                 </form>
                 
                 <div class="relative">
@@ -100,7 +60,7 @@
                                onkeypress="if(event.key==='Enter'){event.preventDefault(); this.form.requestSubmit()}">
                         <button type="button"
                                 onclick="document.getElementById('date-input-{{ task.id }}').classList.toggle('hidden'); document.getElementById('date-input-{{ task.id }}').focus()"
-                                class="text-blue-400 hover:text-blue-300">📅</button>
+                                class="text-blue-400 hover:text-blue-300 text-lg">📅</button>
                     </form>
                 </div>
 
@@ -108,11 +68,44 @@
                       hx-target="#tasks-list"
                       hx-swap="innerHTML"
                       class="inline">
-                    <button type="submit" class="text-yellow-400 hover:text-yellow-300">📥</button>
+                    <button type="submit" class="text-yellow-400 hover:text-yellow-300 text-lg">📥</button>
                 </form>
 
-                <a href="/tasks/{{ task.id }}/edit" class="text-gray-500 hover:text-white text-xs">✏️</a>
+                <a href="/tasks/{{ task.id }}/edit" class="text-gray-500 hover:text-white">✏️</a>
             </div>
+        </div>
+
+        <!-- Подзадачи (скрыто) -->
+        <div id="subtasks-{{ task.id }}" class="hidden mt-2 pt-2 border-t border-dark-700/50">
+            {% if current_subtasks and current_subtasks|length > 0 %}
+                <div class="space-y-1 mb-2">
+                    {% for sub in current_subtasks %}
+                    <div class="flex items-center gap-2 text-sm {{ 'opacity-50 line-through text-gray-600' if sub.status == 'выполнена' else '' }}">
+                        <form hx-post="/tasks/{{ sub.id }}/complete"
+                              hx-target="#tasks-list"
+                              hx-swap="innerHTML"
+                              class="inline">
+                            <button type="submit" class="text-xs text-green-500 hover:text-green-400">✅</button>
+                        </form>
+                        <span class="flex-1 truncate text-gray-300">{{ sub.title }}</span>
+                        <form hx-delete="/tasks/{{ sub.id }}/subtask"
+                              hx-target="#subtasks-{{ task.id }}"
+                              hx-swap="innerHTML"
+                              class="inline">
+                            <button type="submit" class="text-xs text-red-400 hover:text-red-300">🗑</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <form hx-post="/tasks/{{ task.id }}/subtasks"
+                  hx-target="#subtasks-{{ task.id }}"
+                  hx-swap="innerHTML"
+                  class="mt-1">
+                <input type="text" name="title" placeholder="+ Добавить подзадачу..." required
+                       class="w-full bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500/50">
+            </form>
         </div>
     </div>
     {% endfor %}

@@ -53,9 +53,17 @@ async def save_report(
 
 
 @router.post("/categorize")
-async def categorize_task(data: CategorizeRequest):
+async def categorize_task(
+    data: CategorizeRequest,
+    db: AsyncSession = Depends(get_db_session),
+):
     """AI категоризация текста"""
-    result = await ai_service.categorize(data.text)
+    from app.models.category import Category
+    cat_result = await db.execute(select(Category).where(Category.type == "task"))
+    categories = cat_result.scalars().all()
+    cat_list = [{"id": c.id, "name": c.name, "is_global": c.is_global} for c in categories]
+    
+    result = await ai_service.categorize(data.text, cat_list)
     return result
 
 

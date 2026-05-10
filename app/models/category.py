@@ -11,6 +11,7 @@ class Category(Base):
     name = Column(String(100), nullable=False, index=True)
     is_global = Column(Boolean, default=False, index=True)
     parent_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    type = Column(String(20), default="task", index=True)  # task / finance
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Связи

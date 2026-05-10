@@ -10,12 +10,14 @@ from app.models.category import Category
 from app.models.recurring import RecurringTask
 from app.models.shopping import ShoppingItem
 from app.models.report import AIReport
+from app.models.finance import Transaction
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 import json
-from typing import List
+from typing import List, Optional
 from app.services.rollover_service import rollover_overdue_tasks
 from app.services.ai_service import ai_service
+from app.config import settings
 
 import re
 
@@ -28,10 +30,10 @@ templates.env.cache = None  # Отключаем кэш, чтобы избежа
 
 
 async def get_categories_list():
-    """Получить список категорий"""
+    """Получить список категорий только для задач"""
     async with async_session() as db:
         result = await db.execute(
-            select(Category).order_by(Category.is_global.desc(), Category.name)
+            select(Category).where(Category.type == 'task').order_by(Category.is_global.desc(), Category.name)
         )
         return result.scalars().all()
 
@@ -111,7 +113,21 @@ async def dashboard(request: Request):
                 "start_weekday": start_weekday
             })
 
+        # ДАННЫЕ ДЛЯ БЛОКА БЫТА И ПОКУПОК
+        # Сначала определяем ID категорий "быта", чтобы исключить их из основного списка
+        cat_result = await db.execute(
+            select(Category).where(
+                (Category.name.ilike("%быт%")) | 
+                (Category.name.ilike("%покупк%")) | 
+                (Category.name.ilike("%семья%"))
+            )
+        )
+        household_categories = cat_result.scalars().all()
+        household_cat_ids = [c.id for c in household_categories]
+
         # Обычные задачи (только корневые)
+        # Исключаем периодические (source=recurring) и бытовые категории
+        from sqlalchemy import not_
         result = await db.execute(
             select(Task)
             .options(selectinload(Task.category).selectinload(Category.parent))
@@ -119,7 +135,9 @@ async def dashboard(request: Request):
                 Task.due_date == today,
                 Task.is_archived == False,
                 Task.status.in_(["новая", "в_работе"]),
-                Task.parent_task_id == None  # Только корневые задачи
+                Task.parent_task_id == None,  # Только корневые задачи
+                Task.source != "recurring",  # Исключаем периодические
+                not_(Task.category_id.in_(household_cat_ids)) if household_cat_ids else True
             ).order_by(Task.sort_order.asc())
         )
         tasks = list(result.scalars().all())
@@ -144,9 +162,13 @@ async def dashboard(request: Request):
         )
         all_recurring = recur_result.scalars().all()
 
-        # Находим названия и категории всех задач на сегодня
+        # Находим названия и категории РУЧНЫХ задач на сегодня
+        # (чтобы не скрывать шаблон, если задача создана автоматически)
         today_tasks_result = await db.execute(
-            select(Task.title, Task.category_id).where(Task.due_date == today)
+            select(Task.title, Task.category_id).where(
+                Task.due_date == today,
+                Task.source != "recurring"
+            )
         )
         all_occupied = set((t.title, t.category_id) for t in today_tasks_result.all())
 
@@ -191,17 +213,7 @@ async def dashboard(request: Request):
         )
         shopping_items = list(shop_result.scalars().all())
 
-        # 2. Задачи категории "Быт", "Покупки", "Семья"
-        cat_result = await db.execute(
-            select(Category).where(
-                (Category.name.ilike("%быт%")) | 
-                (Category.name.ilike("%покупк%")) | 
-                (Category.name.ilike("%семья%"))
-            )
-        )
-        household_categories = cat_result.scalars().all()
-        household_cat_ids = [c.id for c in household_categories]
-
+        # 2. Задачи категории "Быт", "Покупки", "Семья" (используем ID, вычисленные выше)
         household_tasks = []
         if household_cat_ids:
             h_task_result = await db.execute(
@@ -210,7 +222,8 @@ async def dashboard(request: Request):
                 .where(
                     Task.category_id.in_(household_cat_ids),
                     Task.is_archived == False,
-                    Task.status.in_(["новая", "в_работе"])
+                    Task.status.in_(["новая", "в_работе"]),
+                    Task.source != "recurring"  # Исключаем периодические из быта
                 )
                 .order_by(Task.status.desc(), Task.created_at.desc())
             )
@@ -632,6 +645,7 @@ async def create_category_from_form(
             name=name,
             is_global=is_global,
             parent_id=final_parent_id,
+            type=request.query_params.get("type", "task")
         )
         db.add(category)
         await db.commit()
@@ -650,7 +664,6 @@ async def categories_page(request: Request):
         )
         categories = result.scalars().all()
 
-        # Подсчитать задачи по категориям
         counts_result = await db.execute(
             select(Task.category_id, func.count(Task.id))
             .where(Task.is_archived == False)
@@ -658,12 +671,16 @@ async def categories_page(request: Request):
         )
         task_counts = {row[0]: row[1] for row in counts_result.all()}
 
-    # Сгруппировать по глобальным
-    global_cats = [c for c in categories if c.is_global]
-    sub_cats = {gc.id: [c for c in categories if c.parent_id == gc.id] for gc in global_cats}
+    # Разделяем категории по ТИПУ
+    task_cats = [c for c in categories if c.type == 'task']
+    finance_cats = [c for c in categories if c.type == 'finance']
+    
+    global_cats = [c for c in task_cats if c.is_global]
+    sub_cats = {gc.id: [c for c in task_cats if c.parent_id == gc.id] for gc in global_cats}
 
-    # Агрегировать счетчики для глобальных категорий (сумма подкатегорий)
-    # Создаем копию для итоговых значений
+    # Для финансов просто плоский список для визуализации (или сгруппированный)
+    # Но так как мы их разделили, в основной сетке покажем только TASK_CATS
+    
     final_counts = task_counts.copy()
     for cat in categories:
         if not cat.is_global and cat.parent_id:
@@ -675,9 +692,10 @@ async def categories_page(request: Request):
         "request": request,
         "global_categories": global_cats,
         "sub_categories": sub_cats,
+        "finance_categories": finance_cats,
         "categories": categories,
-        "task_counts": final_counts,  # Используем агрегированные счетчики
-        "raw_counts": task_counts,   # Сохраняем оригинальные для подкатегорий
+        "task_counts": final_counts,
+        "raw_counts": task_counts,
     })
 
 
@@ -1791,3 +1809,131 @@ async def export_career_capital(request: Request):
             media_type="text/markdown",
             headers={"Content-Disposition": f"attachment; filename=career_capital_{date.today().isoformat()}.md"}
         )
+
+@router.get("/finance", response_class=HTMLResponse)
+async def finance_page(request: Request, month: Optional[int] = None, year: Optional[int] = None):
+    """Страница финансов (Excel-вид)"""
+    import datetime as dt
+    today = dt.date.today()
+    from sqlalchemy import desc
+    from app.models.goal import FinancialGoal
+    
+    MONTH_NAMES = {
+        1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+        5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+        9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
+    }
+    
+    async with async_session() as db:
+        available_months_res = await db.execute(
+            select(
+                func.strftime('%Y', Transaction.date).label('year'),
+                func.strftime('%m', Transaction.date).label('month')
+            )
+            .group_by('year', 'month')
+            .order_by(desc('year'), desc('month'))
+        )
+        available_months = available_months_res.all()
+        
+        month_tabs = []
+        for row in available_months:
+            y, m = int(row.year), int(row.month)
+            month_tabs.append({"month": m, "year": y, "name": f"{MONTH_NAMES[m]} {y}"})
+            
+        if not month_tabs:
+            month_tabs.append({"month": today.month, "year": today.year, "name": f"{MONTH_NAMES[today.month]} {today.year}"})
+
+        view_month = month or month_tabs[0]["month"]
+        view_year = year or month_tabs[0]["year"]
+        
+        start_date = dt.date(view_year, view_month, 1)
+        if view_month == 12:
+            end_date = dt.date(view_year + 1, 1, 1)
+        else:
+            end_date = dt.date(view_year, view_month + 1, 1)
+
+        # Транзакции за месяц
+        result = await db.execute(
+            select(Transaction)
+            .options(selectinload(Transaction.category).selectinload(Category.parent))
+            .where(Transaction.date >= start_date, Transaction.date < end_date)
+            .order_by(Transaction.date.desc())
+        )
+        transactions = result.scalars().all()
+        
+        # СВОДКА (Трехуровневая группировка: Месяц -> Глобальная Кат -> Подкат)
+        summary_result = await db.execute(
+            select(
+                Category.name.label('cat_name'),
+                func.sum(Transaction.amount).label('total'),
+                Category.parent_id
+            )
+            .join(Transaction)
+            .where(Transaction.date >= start_date, Transaction.date < end_date, Transaction.amount > 0)
+            .group_by(Category.id)
+            .order_by(desc(func.sum(Transaction.amount)))
+        )
+        raw_summary = summary_result.all()
+        
+        # Группируем по родителям
+        grouped_summary = {}
+        parent_ids = list(set([r.parent_id for r in raw_summary if r.parent_id]))
+        parents_res = await db.execute(select(Category).where(Category.id.in_(parent_ids)))
+        parents_map = {p.id: p.name for p in parents_res.scalars().all()}
+        
+        for r in raw_summary:
+            p_name = parents_map.get(r.parent_id, "Прочее")
+            if p_name not in grouped_summary: grouped_summary[p_name] = {"total": 0, "sub_items": []}
+            grouped_summary[p_name]["sub_items"].append({"name": r.cat_name, "amount": r.total})
+            grouped_summary[p_name]["total"] += r.total
+
+        # ЦЕЛИ
+        goals_res = await db.execute(select(FinancialGoal))
+        goals = goals_res.scalars().all()
+        
+        # Расчет итогов
+        total_income = sum(abs(tx.amount) for tx in transactions if tx.amount < 0)
+        total_expense = sum(tx.amount for tx in transactions if tx.amount > 0)
+        
+        # Список категорий для модалки
+        fin_cats_res = await db.execute(select(Category).where(Category.type == 'finance').order_by(Category.name))
+        fin_categories = fin_cats_res.scalars().all()
+        
+    return templates.TemplateResponse(request, "finance.html", {
+        "request": request,
+        "transactions": transactions,
+        "grouped_summary": grouped_summary,
+        "goals": goals,
+        "month_tabs": month_tabs,
+        "current_month": view_month,
+        "current_year": view_year,
+        "fin_categories": fin_categories,
+        "stats": {"income": total_income, "expense": total_expense, "balance": total_income - total_expense},
+        "today": today
+    })
+
+
+@router.post("/finance/create")
+async def create_transaction(
+    amount: float = Form(...),
+    description: str = Form(""),
+    date: str = Form(...),
+    category_id: Optional[int] = Form(None)
+):
+    """Создать транзакцию вручную"""
+    from app.models.finance import Transaction
+    from datetime import date as py_date
+    async with async_session() as db:
+        tx = Transaction(
+            amount=amount,
+            description=description,
+            date=py_date.fromisoformat(date),
+            category_id=category_id,
+            source="manual"
+        )
+        db.add(tx)
+        await db.commit()
+    
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/finance", status_code=303)
+

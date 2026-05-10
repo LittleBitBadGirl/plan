@@ -20,6 +20,9 @@ httpx>=0.25.0
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
 
+# Telegram Bot
+aiogram>=3.4.1
+
 # Фоновые задачи
 APScheduler>=3.10.0
 

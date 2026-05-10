@@ -33,6 +33,7 @@ class TestCreateTask:
             "priority": "высокий",
             "due_date": tomorrow,
             "source": "web",
+            "tags": "Антон, Сбер"
         })
         assert response.status_code == 200
         data = response.json()
@@ -40,6 +41,7 @@ class TestCreateTask:
         assert data["description"] == "Подробное описание"
         assert data["priority"] == "высокий"
         assert data["due_date"] == tomorrow
+        assert data["tags"] == "Антон, Сбер"
 
     async def test_create_task_empty_title(self, client):
         """Создание задачи с пустым названием должно вернуть ошибку"""

@@ -34,6 +34,7 @@ class TaskResponse(BaseModel):
     postpones: int
     chronic_task: Optional[bool]
     chronic_reviewed: Optional[bool]
+    tags: Optional[str] = None
 
 
 class TaskCreate(BaseModel):
@@ -49,6 +50,7 @@ class TaskCreate(BaseModel):
     priority: str = "средний"
     due_date: Optional[date] = None
     source: str = "web"
+    tags: Optional[str] = None
 
 
 class TaskUpdate(BaseModel):
@@ -107,6 +109,7 @@ async def create_task(
         due_date=task_data.due_date,
         source=task_data.source,
         parent_task_id=task_data.parent_task_id,
+        tags=task_data.tags
     )
     db.add(task)
     await db.flush()

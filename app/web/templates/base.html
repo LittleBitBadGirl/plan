@@ -138,6 +138,13 @@
                     <span class="mr-3 text-xl lg:text-base">🗄️</span>
                     <span class="font-medium lg:font-normal">Архив</span>
                 </a>
+
+                <a href="/finance" @click="sidebarOpen = false"
+                   class="flex items-center px-4 py-4 lg:py-3 rounded-lg transition-colors
+                          {% if request.url.path == '/finance' %}bg-accent text-white{% else %}text-gray-400 hover:bg-dark-700 hover:text-white{% endif %}">
+                    <span class="mr-3 text-xl lg:text-base">💰</span>
+                    <span class="font-medium lg:font-normal">Финансы</span>
+                </a>
             </nav>
         </aside>
 
