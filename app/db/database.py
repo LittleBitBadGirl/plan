@@ -15,12 +15,31 @@ async_session = async_sessionmaker(
 )
 
 
+
+from app.models.base import Base
+import sqlalchemy
+from sqlalchemy import text
+
 async def init_db():
-    """Инициализация БД с WAL режимом"""
+    """Инициализация БД, миграции и WAL режим"""
     async with engine.begin() as conn:
-        await conn.execute(sqlalchemy.text("PRAGMA journal_mode=WAL"))
-        await conn.execute(sqlalchemy.text("PRAGMA busy_timeout=5000"))
-        await conn.execute(sqlalchemy.text("PRAGMA synchronous=NORMAL"))
+        # 1. Создаем новые таблицы (transactions, financial_goals и т.д.)
+        await conn.run_sync(Base.metadata.create_all)
+        
+        # 2. Настройки SQLite
+        await conn.execute(text("PRAGMA journal_mode=WAL"))
+        await conn.execute(text("PRAGMA busy_timeout=5000"))
+        await conn.execute(text("PRAGMA synchronous=NORMAL"))
+
+        # 3. Ручные миграции для существующих таблиц
+        try:
+            await conn.execute(text("ALTER TABLE categories ADD COLUMN type VARCHAR(20) DEFAULT 'task';"))
+        except Exception: pass
+            
+        try:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN tags VARCHAR(500);"))
+        except Exception: pass
+
 
 
 async def get_db():
