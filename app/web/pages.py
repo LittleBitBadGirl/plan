@@ -667,16 +667,18 @@ async def categories_page(request: Request):
         )
         task_counts = {row[0]: row[1] for row in counts_result.all()}
 
-    # Разделяем категории по ТИПУ
+        # Разделяем категории по ТИПУ
     task_cats = [c for c in categories if c.type == 'task']
     finance_cats = [c for c in categories if c.type == 'finance']
     
+    # Иерархия задач
     global_cats = [c for c in task_cats if c.is_global]
     sub_cats = {gc.id: [c for c in task_cats if c.parent_id == gc.id] for gc in global_cats}
 
-    # Для финансов просто плоский список для визуализации (или сгруппированный)
-    # Но так как мы их разделили, в основной сетке покажем только TASK_CATS
-    
+    # Иерархия финансов (Группы -> Категории)
+    fin_global_cats = [c for c in finance_cats if c.is_global]
+    fin_sub_cats = {gc.id: [c for c in finance_cats if c.parent_id == gc.id] for gc in fin_global_cats}
+
     final_counts = task_counts.copy()
     for cat in categories:
         if not cat.is_global and cat.parent_id:
@@ -688,7 +690,8 @@ async def categories_page(request: Request):
         "request": request,
         "global_categories": global_cats,
         "sub_categories": sub_cats,
-        "finance_categories": finance_cats,
+        "fin_global_categories": fin_global_cats,
+        "fin_sub_categories": fin_sub_cats,
         "categories": categories,
         "task_counts": final_counts,
         "raw_counts": task_counts,
