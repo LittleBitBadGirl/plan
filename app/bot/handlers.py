@@ -21,6 +21,7 @@ from app.config import settings
 
 import httpx
 import json
+import re
 
 router = Router()
 
@@ -28,7 +29,6 @@ async def send_daily_plan(bot: Bot):
     """Отправка плана на день в 09:00"""
     async with async_session() as db:
         today = date.today()
-        # ADMIN_ID из вашей памяти
         admin_id = 163394712
         
         result = await db.execute(select(Task).where(Task.due_date == today, Task.status != "выполнена"))
@@ -53,19 +53,11 @@ async def transcribe_audio_groq(file_path: Path) -> str:
         raise ValueError("GROQ_API_KEY не установлен")
         
     url = "https://api.groq.com/openai/v1/audio/transcriptions"
-    headers = {
-        "Authorization": f"Bearer {settings.groq_api_key}"
-    }
+    headers = {"Authorization": f"Bearer {settings.groq_api_key}"}
     
     with open(file_path, "rb") as audio_file:
-        files = {
-            "file": (file_path.name, audio_file, "audio/ogg")
-        }
-        data = {
-            "model": "whisper-large-v3",
-            "temperature": "0.0",
-            "language": "ru"
-        }
+        files = {"file": (file_path.name, audio_file, "audio/ogg")}
+        data = {"model": "whisper-large-v3", "temperature": "0.0", "language": "ru"}
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(url, headers=headers, files=files, data=data)
@@ -149,7 +141,7 @@ async def cmd_stats(message: Message):
         today = date.today()
         result_total = await db.execute(select(Task).where(Task.due_date == today))
         tasks = result_total.scalars().all()
-        completed = sum(1 for t in tasks if t.is_completed)
+        completed = sum(1 for t in tasks if t.status == "выполнена")
         total = len(tasks)
         
         await message.answer(
@@ -184,22 +176,13 @@ async def _process_and_create_task(text: str, message: Message, source: str = "t
             tags_list = result.get("tags", [])
             tags_str = ", ".join(tags_list) if tags_list else None
             
-            # Извлекаем дату из AI или ставим сегодня
             due_date_str = result.get("due_date")
-            if due_date_str:
-                try:
-                    task_due_date = date.fromisoformat(due_date_str)
-                except ValueError:
-                    task_due_date = date.today()
-            else:
-                task_due_date = date.today()
+            task_due_date = date.fromisoformat(due_date_str) if due_date_str else date.today()
 
-            # Чистим заголовок от "завтра", "сегодня", "послезавтра"
             clean_title = text
             for word in ["завтра", "сегодня", "послезавтра"]:
                 clean_title = clean_title.replace(word, "").replace(word.capitalize(), "").strip()
 
-            # Создаем задачу
             task = Task(
                 title=clean_title,
                 category_id=category_id,
@@ -210,17 +193,14 @@ async def _process_and_create_task(text: str, message: Message, source: str = "t
             db.add(task)
             await db.commit()
             
-            # Получаем имя категории для ответа
             cat_name = "Без категории"
             if category_id:
                 cat_obj = next((c for c in categories if c.id == category_id), None)
-                if cat_obj:
-                    cat_name = cat_obj.name
+                if cat_obj: cat_name = cat_obj.name
 
-            app_logger.info(f"✅ Задача создана: ID={task.id} \"{clean_title}\" → {cat_name} | Date: {task_due_date} | Tags: {tags_str}")
+            app_logger.info(f"✅ Задача создана: ID={task.id} \"{clean_title}\" → {cat_name} | Date: {task_due_date}")
             resp_text = f"✅ Добавлено: {clean_title}\n📂 Категория: {cat_name}\n📅 Дата: {task_due_date.strftime('%d.%m.%Y')}"
-            if tags_str:
-                resp_text += f"\n🏷️ Теги: {tags_str}"
+            if tags_str: resp_text += f"\n🏷️ Теги: {tags_str}"
             await message.answer(resp_text)
             
     except Exception as e:
@@ -229,11 +209,9 @@ async def _process_and_create_task(text: str, message: Message, source: str = "t
 
 @router.message(F.text)
 async def handle_text(message: Message):
-    """Обработка текстового сообщения — создать задачу"""
+    """Обработка текстового сообщения"""
     text = message.text.strip()
-    if text.startswith("/"):
-        return
-        
+    if text.startswith("/"): return
     await _process_and_create_task(text, message, source="telegram")
 
 @router.message(F.voice)
@@ -243,192 +221,108 @@ async def handle_voice(message: Message, bot: Bot):
     try:
         file_id = message.voice.file_id
         file = await bot.get_file(file_id)
-        
-        # Скачиваем во временную папку
         uploads_dir = settings.uploads_dir / "voice"
         uploads_dir.mkdir(parents=True, exist_ok=True)
         file_path = uploads_dir / f"{file_id}.ogg"
-        
         await bot.download_file(file.file_path, destination=file_path)
-        
-        # Транскрибируем
         text = await transcribe_audio_groq(file_path)
         await msg.edit_text(f"📝 Распознано:\n_{text}_", parse_mode="Markdown")
-        
-        # Создаем задачу
-        if text.strip():
-            await _process_and_create_task(text, message, source="voice")
-        else:
-            await message.answer("Не удалось распознать текст из голосового.")
-            
-        # Удаляем файл
-        if file_path.exists():
-            os.remove(file_path)
-            
+        if text.strip(): await _process_and_create_task(text, message, source="voice")
+        if file_path.exists(): os.remove(file_path)
     except Exception as e:
         app_logger.error(f"❌ Ошибка обработки голосового: {e}", exc_info=True)
-        await msg.edit_text("❌ Ошибка при транскрибации голосового сообщения.")
+        await msg.edit_text("❌ Ошибка при транскрибации.")
 
 @router.message(F.photo)
 async def handle_photo(message: Message, bot: Bot):
     """Обработка фото (скриншот календаря ИЛИ банковский чек)"""
     msg = await message.answer("📸 Обрабатываю изображение...")
     try:
-        file_id = message.photo[-1].file_id # Берем самое высокое разрешение
+        file_id = message.photo[-1].file_id
         file = await bot.get_file(file_id)
-        
         uploads_dir = settings.uploads_dir / "screenshots"
         uploads_dir.mkdir(parents=True, exist_ok=True)
         file_path = uploads_dir / f"{file_id}.jpg"
-        
         await bot.download_file(file.file_path, destination=file_path)
         
-        # Запускаем OCR
         result = await ocr_service.process_screenshot(str(file_path))
         full_text = result.get("text", "").lower()
         
-        # Ключевые слова для финансов
-        fin_keywords = [
-            "чек", "оплата", "сумма", "итого", "₽", "руб", "карта", "списание", 
-            "перевод", "ао", "баланс", "выписка", "история", "операция", 
-            "пополнение", "дебет", "кредит", "альфа", "сбер", "банк", "тинко", "т-банк"
-        ]
-        # Ключевые слова для календаря
-        cal_keywords = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье", "январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"]
-        
-        events = result.get("events", [])
-        
-        is_finance = any(k in full_text for k in fin_keywords)
-        is_calendar = len(events) > 0 or any(k in full_text for k in cal_keywords)
-        
-        # ЕСЛИ НЕПОНЯТНО - СПРАШИВАЕМ AI
-        if not is_finance and not is_calendar and len(full_text) > 10:
-             # Попробуем спросить Groq, похож ли текст на чек
-             classify_prompt = f"Это текст банковского чека или скриншота трат? Ответь только 'finance' или 'other'. ТЕКСТ: {full_text[:500]}"
-             try:
-                 async with httpx.AsyncClient() as client:
-                    resp = await client.post(
-                        "https://api.groq.com/openai/v1/chat/completions",
-                        headers={"Authorization": f"Bearer {settings.groq_api_key}", "Content-Type": "application/json"},
-                        json={
-                            "model": "llama-3.3-70b-versatile",
-                            "messages": [{"role": "user", "content": classify_prompt}],
-                            "temperature": 0.0
-                        },
-                        timeout=5.0
-                    )
-                    verdict = resp.json()['choices'][0]['message']['content'].lower()
-                    if 'finance' in verdict: is_finance = True
-             except: pass
+        # ЛОГИКА РАЗДЕЛЕНИЯ ЧЕРЕЗ AI
+        classify_prompt = f"Это текст банковского скриншота/чека или календаря? ТЕКСТ: {full_text[:1000]}"
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {settings.groq_api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [
+                        {"role": "system", "content": "Ответь строго JSON: {'type': 'finance'|'calendar'|'other'}"},
+                        {"role": "user", "content": classify_prompt}
+                    ],
+                    "temperature": 0.0,
+                    "response_format": {"type": "json_object"}
+                },
+                timeout=10.0
+            )
+            v_data = resp.json()['choices'][0]['message']['content']
+            verdict = json.loads(v_data).get("type")
 
-        if is_finance and not is_calendar:
-            # Обработка как финансового скрина через Groq для вытаскивания данных
-            await msg.edit_text("💰 Анализирую чек через AI...")
-            
-            extract_prompt = f"""Проанализируй текст чека и вытащи:
-1. СУММА (число).
-2. ДАТА (в формате YYYY-MM-DD).
-3. ОПИСАНИЕ (коротко, что купили или где).
-
-ПРАВИЛА КАТЕГОРИЗАЦИИ:
-- Переводы между своими счетами -> НЕ считаем расходом (игнорируй или ставь 0).
-- Озон, Wildberries -> Вещи.
-- БКС Банк -> Подушка.
-- Сбербанк (перевод) -> Ипотека.
-- Совкомбанк -> ИИС.
-- Татнефть (суммы 240, 255, 510) -> Табак.
-- Татнефть (другие суммы) -> Бензин.
-
-ТЕКСТ ЧЕКА:
-{full_text}
-
-Ответ дай СТРОГО в JSON: {{"amount": число, "date": "гггг-мм-дд", "desc": "...", "category_name": "..."}}
-"""
-            try:
-                async with httpx.AsyncClient() as client:
-                    resp = await client.post(
-                        "https://api.groq.com/openai/v1/chat/completions",
-                        headers={"Authorization": f"Bearer {settings.groq_api_key}", "Content-Type": "application/json"},
-                        json={
-                            "model": "llama-3.3-70b-versatile",
-                            "messages": [{"role": "system", "content": "Ты — экстрактор данных из чеков."}, {"role": "user", "content": extract_prompt}],
-                            "temperature": 0.0,
-                            "response_format": {"type": "json_object"}
-                        },
-                        timeout=20.0
-                    )
-                    fin_data = resp.json()['choices'][0]['message']['content']
-                    data_obj = json.loads(fin_data)
-                    
-                    amount = float(data_obj.get("amount", 0))
-                    tx_date_raw = data_obj.get("date")
-                    try:
-                        tx_date = datetime.strptime(tx_date_raw, "%Y-%m-%d").date() if tx_date_raw else date.today()
-                    except:
-                        tx_date = date.today()
-                        
-                    desc = data_obj.get("desc", "Чек")
-                    cat_name_extracted = data_obj.get("category_name")
-
-                    async with async_session() as db:
+        if verdict == 'finance':
+            await msg.edit_text("💰 Анализирую список операций через AI...")
+            extract_prompt = f"Вытащи СПИСОК всех трат. JSON формат: {{'items': [{{'amount': число, 'date': 'гггг-мм-дд', 'desc': '...', 'category_name': '...'}}]}}. ТЕКСТ: {full_text}"
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {settings.groq_api_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": "llama-3.3-70b-versatile",
+                        "messages": [{"role": "system", "content": "Ты экстрактор финансов."}, {"role": "user", "content": extract_prompt}],
+                        "temperature": 0.0,
+                        "response_format": {"type": "json_object"}
+                    },
+                    timeout=20.0
+                )
+                data_obj = json.loads(resp.json()['choices'][0]['message']['content'])
+                items = data_obj.get("items", [])
+                count = 0
+                async with async_session() as db:
+                    for item in items:
+                        amount = float(item.get("amount", 0))
+                        if amount == 0: continue
+                        tx_date = datetime.strptime(item.get("date"), "%Y-%m-%d").date() if item.get("date") else date.today()
+                        desc = item.get("desc", "Чек")
+                        cat_name = item.get("category_name")
                         cat_id = None
-                        if cat_name_extracted:
-                            cat_res = await db.execute(select(Category).where(Category.name.ilike(f"%{cat_name_extracted}%")))
+                        if cat_name:
+                            cat_res = await db.execute(select(Category).where(Category.name.ilike(f"%{cat_name}%")))
                             cat_obj = cat_res.scalar_one_or_none()
                             if cat_obj: cat_id = cat_obj.id
-
-                        transaction = Transaction(
-                            date=tx_date,
-                            amount=amount,
-                            description=desc,
-                            category_id=cat_id,
-                            source="bank_screenshot"
-                        )
-                        db.add(transaction)
-                        
-                        # Обновляем цели если это было пополнение
-                        if cat_name_extracted and amount > 0:
-                             await db.execute(
-                                 update(FinancialGoal)
-                                 .where(FinancialGoal.name.ilike(f"%{cat_name_extracted}%"))
-                                 .values(current_amount=FinancialGoal.current_amount + amount)
-                             )
-                        
-                        await db.commit()
-                    
-                    await msg.edit_text(f"✅ Чек обработан!\n💰 Сумма: {amount} ₽\n📅 Дата: {tx_date.strftime('%d.%m.%y')}\n📝: {desc}")
-            except Exception as e:
-                app_logger.error(f"❌ Groq OCR error: {e}")
-                await msg.edit_text("⚠️ Не удалось вытащить данные через AI, сохранил как нераспознанный расход.")
+                        db.add(Transaction(date=tx_date, amount=amount, description=desc, category_id=cat_id, source="bank_screenshot"))
+                        count += 1
+                    await db.commit()
+                await msg.edit_text(f"✅ Обработано операций: {count}\n💰 Все данные внесены в Финансы!")
             
-        elif is_calendar:
-            # Обработка как календаря
+        elif verdict == 'calendar':
+            events = result.get("events", [])
             if not events:
                 await msg.edit_text("📅 Скриншот календаря, но событий не найдено.")
                 return
-                
             text_resp = f"📅 Найдено событий: {len(events)}\n\n"
             async with async_session() as db:
                 for event in events:
+                    due_time = None
                     try:
                         time_parts = event['time'].split(":")
                         due_time = datetime.strptime(f"{time_parts[0]}:{time_parts[1]}", "%H:%M").time()
-                    except:
-                        due_time = None
-                        
-                    task = Task(
-                        title=event["title"],
-                        due_date=date.today(),
-                        due_time=due_time,
-                        source="screenshot",
-                    )
-                    db.add(task)
+                    except: pass
+                    db.add(Task(title=event["title"], due_date=date.today(), due_time=due_time, source="screenshot"))
                     text_resp += f"🔸 {event['time']} - {event['title']}\n"
                 await db.commit()
             await msg.edit_text(text_resp)
         else:
-            await msg.edit_text("🧐 Не смог точно определить тип изображения (чек или календарь). Сохранил как скриншот.")
+            await msg.edit_text("🧐 Не смог точно определить тип изображения. Сохранил как скриншот.")
             
     except Exception as e:
         app_logger.error(f"❌ Ошибка обработки фото: {e}", exc_info=True)
-        await msg.edit_text("❌ Ошибка при обработке изображения.")
+        await msg.edit_text(f"❌ Ошибка при обработке: {e}")
