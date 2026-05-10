@@ -245,7 +245,7 @@ async def handle_photo(message: Message, bot: Bot):
         file_path = uploads_dir / f"{file_id}.jpg"
         await bot.download_file(file.file_path, destination=file_path)
         
-                result = await ocr_service.process_screenshot(str(file_path))
+        result = await ocr_service.process_screenshot(str(file_path))
         full_text = result.get("text", "").lower()
         app_logger.info(f"📸 OCR Text: {full_text[:200]}...")
         
