@@ -180,14 +180,28 @@ async def _process_and_create_task(text: str, message: Message, source: str = "t
             category_id = result.get("category_id")
             tags_list = result.get("tags", [])
             tags_str = ", ".join(tags_list) if tags_list else None
+            
+            # Извлекаем дату из AI или ставим сегодня
+            due_date_str = result.get("due_date")
+            if due_date_str:
+                try:
+                    task_due_date = date.fromisoformat(due_date_str)
+                except ValueError:
+                    task_due_date = date.today()
+            else:
+                task_due_date = date.today()
 
-            # Пытаемся вытащить время из текста (очень простая логика, в идеале тоже через AI)
-            # В данном MVP сохраним только заголовок и категорию (плюс дату = сегодня)
+            # Чистим заголовок от "завтра", "послезавтра" и т.д.
+            clean_title = text
+            for word in ["завтра", "сегодня", "послезавтра"]:
+                clean_title = clean_title.replace(word, "").replace(word.capitalize(), "").strip()
+
+            # Создаем задачу
             task = Task(
-                title=text,
+                title=clean_title,
                 category_id=category_id,
                 source=source,
-                due_date=date.today(),
+                due_date=task_due_date,
                 tags=tags_str
             )
             db.add(task)
@@ -200,8 +214,8 @@ async def _process_and_create_task(text: str, message: Message, source: str = "t
                 if cat_obj:
                     cat_name = cat_obj.name
 
-            app_logger.info(f"✅ Задача создана: ID={task.id} \"{text}\" → {cat_name} | Tags: {tags_str}")
-            resp_text = f"✅ Добавлено: {text}\n📂 Категория: {cat_name}"
+            app_logger.info(f"✅ Задача создана: ID={task.id} \"{clean_title}\" → {cat_name} | Date: {task_due_date} | Tags: {tags_str}")
+            resp_text = f"✅ Добавлено: {clean_title}\n📂 Категория: {cat_name}\n📅 Дата: {task_due_date.strftime('%d.%m.%Y')}"
             if tags_str:
                 resp_text += f"\n🏷️ Теги: {tags_str}"
             await message.answer(resp_text)
