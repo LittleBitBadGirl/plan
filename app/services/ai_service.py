@@ -41,10 +41,78 @@ class AIService:
         with open(feedback_file, "a", encoding="utf-8") as f:
             f.write(entry)
     
-    async def categorize(self, task_text: str, categories_list: list) -> Dict[str, any]:
-        """Категоризировать задачу через Groq API, используя список ID категорий"""
+        async def categorize(self, task_text: str, categories_list: list) -> Dict[str, any]:
+        """Категоризировать задачу через Groq API"""
         if not settings.groq_api_key:
             return {"category_id": None}
+
+        import httpx
+        from app.db.database import async_session
+        from app.models.task import Task
+        from sqlalchemy import select
+
+        # 0. Поиск в истории (Broad match)
+        async with async_session() as db:
+            hist_res = await db.execute(
+                select(Task.category_id, Task.tags)
+                .where((Task.title.ilike(task_text)) | (Task.title.ilike(f"%{task_text}%")))
+                .order_by(Task.created_at.desc())
+                .limit(1)
+            )
+            hist = hist_res.first()
+            if hist and hist[0]:
+                print(f"📌 History Match: ID {hist[0]}")
+                return {"category_id": hist[0], "tags": (hist[1].split(', ') if hist[1] else [])}
+
+        # 1. Формируем промпт
+        cat_desc = []
+        for c in categories_list:
+            prefix = "📁 " if c['is_global'] else "  └ "
+            cat_desc.append(f"ID: {c['id']} | {prefix}{c['name']}")
+        context_str = "
+".join(cat_desc)
+
+        system_prompt = """Ты — Senior PM. Твоя цель: идеально разложить задачу по категориям.
+СПИСОК КАТЕГОРИЙ (ID и Название):
+{context_str}
+
+ПРАВИЛА:
+1. КАТЕГОРИЯ: Выбери ОДИН ID из списка. Если сомневаешься — 'Личное'.
+2. ПРЕДПОЧТЕНИЯ: 
+   - 'шашлыки', 'отдых', 'кино' -> 'Отдых' или 'Развлечения'.
+   - 'купить', 'еда' -> 'Покупки'.
+   - 'выехать', 'дорога' -> 'Транспорт'.
+3. ТЕГИ: Выдели ТОЛЬКО проекты или людей (Антон, Сбер, Атолл). Не тегируй предметы (собака, хлеб - это НЕ теги).
+4. ДАТА: Вычисли дату. Сегодня: {today_str}
+
+Ответ дай СТРОГО в формате JSON: {"category_id": номер_или_null, "tags": ["tag1", "tag2"], "due_date": "YYYY-MM-DD"_или_null}
+"""
+        system_prompt = system_prompt.replace("{context_str}", context_str).replace("{today_str}", "2026-05-10")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {settings.groq_api_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": "llama-3.3-70b-versatile",
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": f"Задача: '{task_text}'"}
+                        ],
+                        "temperature": 0.0,
+                        "response_format": {"type": "json_object"}
+                    },
+                    timeout=10.0
+                )
+                if response.status_code == 200:
+                    data = json.loads(response.json()['choices'][0]['message']['content'])
+                    return data
+        except Exception as e:
+            print(f"❌ AI Error: {e}")
+        
+        return {"category_id": None}
+
 
         import httpx
         

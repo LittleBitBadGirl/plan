@@ -31,7 +31,7 @@ async def send_daily_plan(bot: Bot):
         # ADMIN_ID из вашей памяти
         admin_id = 163394712
         
-        result = await db.execute(select(Task).where(Task.due_date == today, Task.is_completed == False))
+        result = await db.execute(select(Task).where(Task.due_date == today, Task.status != "выполнена"))
         tasks = result.scalars().all()
         
         if not tasks:
@@ -92,7 +92,7 @@ async def cmd_plan(message: Message):
     """Утренний план (сводка на день)"""
     async with async_session() as db:
         today = date.today()
-        result = await db.execute(select(Task).where(Task.due_date == today, Task.is_completed == False))
+        result = await db.execute(select(Task).where(Task.due_date == today, Task.status != "выполнена"))
         tasks = result.scalars().all()
         
         if not tasks:
@@ -111,7 +111,7 @@ async def cmd_tasks(message: Message):
     """Список задач с кнопками для выполнения"""
     async with async_session() as db:
         today = date.today()
-        result = await db.execute(select(Task).where(Task.due_date == today, Task.is_completed == False))
+        result = await db.execute(select(Task).where(Task.due_date == today, Task.status != "выполнена"))
         tasks = result.scalars().all()
         
         if not tasks:
@@ -133,8 +133,9 @@ async def process_task_done(callback: CallbackQuery):
     async with async_session() as db:
         task_res = await db.execute(select(Task).where(Task.id == task_id))
         task = task_res.scalar_one_or_none()
-        if task and not task.is_completed:
-            task.is_completed = True
+        if task and task.status != "выполнена":
+            task.status = "выполнена"
+            task.completed_at = datetime.now()
             await db.commit()
             await callback.message.edit_text(f"✅ ~~{task.title}~~ (Выполнено)")
         else:
@@ -287,15 +288,39 @@ async def handle_photo(message: Message, bot: Bot):
         full_text = result.get("text", "").lower()
         
         # Ключевые слова для финансов
-        fin_keywords = ["чек", "оплата", "сумма", "итого", "₽", "руб", "карта", "списание", "перевод", "ао", "баланс", "выписка"]
+        fin_keywords = [
+            "чек", "оплата", "сумма", "итого", "₽", "руб", "карта", "списание", 
+            "перевод", "ао", "баланс", "выписка", "история", "операция", 
+            "пополнение", "дебет", "кредит", "альфа", "сбер", "банк", "тинко", "т-банк"
+        ]
         # Ключевые слова для календаря
-        cal_keywords = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье", "январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август"]
+        cal_keywords = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье", "январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"]
         
         events = result.get("events", [])
         
         is_finance = any(k in full_text for k in fin_keywords)
         is_calendar = len(events) > 0 or any(k in full_text for k in cal_keywords)
         
+        # ЕСЛИ НЕПОНЯТНО - СПРАШИВАЕМ AI
+        if not is_finance and not is_calendar and len(full_text) > 10:
+             # Попробуем спросить Groq, похож ли текст на чек
+             classify_prompt = f"Это текст банковского чека или скриншота трат? Ответь только 'finance' или 'other'. ТЕКСТ: {full_text[:500]}"
+             try:
+                 async with httpx.AsyncClient() as client:
+                    resp = await client.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {settings.groq_api_key}", "Content-Type": "application/json"},
+                        json={
+                            "model": "llama-3.3-70b-versatile",
+                            "messages": [{"role": "user", "content": classify_prompt}],
+                            "temperature": 0.0
+                        },
+                        timeout=5.0
+                    )
+                    verdict = resp.json()['choices'][0]['message']['content'].lower()
+                    if 'finance' in verdict: is_finance = True
+             except: pass
+
         if is_finance and not is_calendar:
             # Обработка как финансового скрина через Groq для вытаскивания данных
             await msg.edit_text("💰 Анализирую чек через AI...")
