@@ -215,41 +215,54 @@ class AIService:
 """
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {settings.groq_api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": "llama-3.2-90b-vision-preview",
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": system_prompt},
+            # Модели для Vision (в порядке приоритета)
+            vision_models = [
+                "meta-llama/llama-4-scout-17b-16e-instruct",
+                "llama-3.2-11b-vision-preview"
+            ]
+            
+            for model_id in vision_models:
+                try:
+                    async with httpx.AsyncClient() as client:
+                        response = await client.post(
+                            "https://api.groq.com/openai/v1/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {settings.groq_api_key}",
+                                "Content-Type": "application/json"
+                            },
+                            json={
+                                "model": model_id,
+                                "messages": [
                                     {
-                                        "type": "image_url",
-                                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                                        "role": "user",
+                                        "content": [
+                                            {"type": "text", "text": system_prompt},
+                                            {
+                                                "type": "image_url",
+                                                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                                            }
+                                        ]
                                     }
-                                ]
-                            }
-                        ],
-                        "temperature": 0.0,
-                        "response_format": {"type": "json_object"}
-                    },
-                    timeout=30.0
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()['choices'][0]['message']['content']
-                    return json.loads(result)
-                else:
-                    app_logger.error(f"❌ Groq Vision API Error ({response.status_code}): {response.text}")
+                                ],
+                                "temperature": 0.0,
+                                "response_format": {"type": "json_object"}
+                            },
+                            timeout=30.0
+                        )
+                        
+                        if response.status_code == 200:
+                            result = response.json()['choices'][0]['message']['content']
+                            app_logger.info(f"✅ Vision success with model: {model_id}")
+                            return json.loads(result)
+                        else:
+                            app_logger.error(f"❌ Groq Vision API Error ({model_id}, {response.status_code}): {response.text}")
+                            continue # Пробуем следующую модель
+                except Exception as e:
+                    app_logger.error(f"❌ Vision exception with {model_id}: {e}")
+                    continue
                     
         except Exception as e:
-            app_logger.error(f"❌ Vision Exception: {e}")
+            app_logger.error(f"❌ Global Vision Exception: {e}")
         
         return {"type": "other"}
 
