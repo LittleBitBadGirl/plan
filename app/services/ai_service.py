@@ -3,6 +3,7 @@ import json
 import re
 from typing import Dict, List
 from app.config import settings
+from app.utils.logger import app_logger
 
 
 class AIService:
