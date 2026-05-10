@@ -23,6 +23,9 @@ passlib[bcrypt]>=1.7.4
 # Telegram Bot
 aiogram>=3.4.1
 
+# Обработка изображений
+Pillow>=10.0.0
+
 # Фоновые задачи
 APScheduler>=3.10.0
 

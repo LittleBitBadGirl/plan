@@ -160,31 +160,55 @@ class AIService:
         return []
 
     async def vision_analyze_screenshot(self, image_path: str) -> Dict[str, any]:
-        """Прямой анализ скриншота через Vision-модель (Llama 3.2 Vision на Groq)"""
+        """Прямой анализ скриншота через Vision-модель (сжатие для Groq API)"""
         if not settings.groq_api_key:
             return {"type": "other"}
 
         import httpx
         import base64
+        import io
         from pathlib import Path
+        from PIL import Image
 
-        # 1. Подготовка изображения (Base64)
+        # 1. Обработка изображения (Сжатие если > 4MB)
         path = Path(image_path)
         if not path.exists():
             return {"type": "other"}
         
-        with open(path, "rb") as image_file:
-            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+        try:
+            with Image.open(path) as img:
+                # Если изображение слишком большое (Groq лимит ~4MB для base64)
+                # Или просто для оптимизации
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                
+                # Сохраняем в буфер с сжатием
+                output = io.BytesIO()
+                # Ресайзим если ширина > 2000px для экономии токенов и попадания в лимиты
+                if img.width > 2000:
+                    ratio = 2000 / float(img.width)
+                    new_height = int(float(img.height) * ratio)
+                    img = img.resize((2000, new_height), Image.LANCZOS)
+                
+                img.save(output, format="JPEG", quality=85, optimize=True)
+                base64_image = base64.b64encode(output.getvalue()).decode('utf-8')
+                
+                img_size_kb = len(output.getvalue()) / 1024
+                app_logger.info(f"📸 Image compressed: {img_size_kb:.1f} KB")
+        except Exception as e:
+            app_logger.error(f"❌ Image compression error: {e}")
+            return {"type": "other"}
 
         # 2. Промпт для Vision
-        system_prompt = """Ты — эксперт по анализу интерфейсов. Твоя задача — "увидеть" скриншот и извлечь данные.
+        system_prompt = """Ты — эксперт по анализу банковских интерфейсов и календарей. 
+Твоя задача — "увидеть" скриншот и извлечь данные.
 Определи тип:
-1. 'finance': Банковские приложения, история транзакций, чеки.
-2. 'calendar': Календарь, список встреч со временем.
+1. 'finance': История транзакций, чеки, баланс.
+2. 'calendar': Календарь, список встреч.
 3. 'other': Все остальное.
 
-Если это 'finance', извлеки список трат: {"items": [{"amount": число (траты > 0, доходы < 0), "date": "YYYY-MM-DD", "desc": "магазин/имя", "category_hint": "еда/такси/перевод"}]}
-Если это 'calendar', извлеки события: {"events": [{"title": "название", "time": "HH:MM", "end_time": "HH:MM"}]}
+Если 'finance', извлеки: {"items": [{"amount": число (траты > 0, доходы < 0), "date": "YYYY-MM-DD", "desc": "магазин/имя", "category_hint": "категория"}]}
+Если 'calendar', извлеки: {"events": [{"title": "название", "time": "HH:MM"}]}
 
 Ответ дай СТРОГО в формате JSON: {"type": "finance|calendar|other", "data": {...}}
 """
@@ -220,9 +244,11 @@ class AIService:
                 if response.status_code == 200:
                     result = response.json()['choices'][0]['message']['content']
                     return json.loads(result)
+                else:
+                    app_logger.error(f"❌ Groq Vision API Error ({response.status_code}): {response.text}")
                     
         except Exception as e:
-            print(f"❌ Vision Error: {e}")
+            app_logger.error(f"❌ Vision Exception: {e}")
         
         return {"type": "other"}
 
