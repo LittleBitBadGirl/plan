@@ -1314,49 +1314,32 @@ async def complete_task(request: Request, task_id: int):
             task.is_archived = True
             await db.commit()
 
-            # Если запрос пришел с целью #task-ID, значит это Бэклог или одиночное удаление
-            # В этом случае возвращаем пустоту, чтобы элемент удалился (hx-swap=outerHTML)
             target = request.headers.get("HX-Target", "")
             if target.startswith("task-"):
-                # Для бэклога: просто убираем карточку
                 return HTMLResponse("")
 
-            # Для дашборда: возвращаем весь список (т.к. таргет #tasks-list)
-            tasks_content = await get_tasks_today(db, request)
-            return HTMLResponse(content=tasks_content)
-    return HTMLResponse("")
-
-
-@router.post("/tasks/{task_id}/backlog", response_class=HTMLResponse)
-async def move_to_backlog(request: Request, task_id: int):
-    """Переместить задачу в бэклог (убрать дату)"""
-    async with async_session() as db:
-        result = await db.execute(select(Task).where(Task.id == task_id))
-        task = result.scalar_one_or_none()
-        if task:
-            task.due_date = None
-            task.status = "новая"
-            await db.commit()
             return HTMLResponse(content=await get_tasks_today(db, request))
-    return HTMLResponse('<div class="text-gray-500 p-4">Задача не найдена</div>')
+    return HTMLResponse("")
 
 
 @router.delete("/tasks/{task_id}", response_class=HTMLResponse)
 async def delete_task(request: Request, task_id: int):
-    """Удалить задачу"""
+    """Удалить задачу (полное удаление если из бэклога)"""
     async with async_session() as db:
         result = await db.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
         if task:
-            task.is_archived = True
+            if task.due_date is None:
+                await db.delete(task)
+            else:
+                task.is_archived = True
             await db.commit()
             
             target = request.headers.get("HX-Target", "")
             if target.startswith("task-"):
                 return HTMLResponse("")
 
-            tasks_content = await get_tasks_today(db, request)
-            return HTMLResponse(content=tasks_content)
+            return HTMLResponse(content=await get_tasks_today(db, request))
     return HTMLResponse("")
 
 
@@ -1375,48 +1358,16 @@ async def plan_task(request: Request, task_id: int, due_date: str = Form(None)):
                 else:
                     task.due_date = date.today()
                 await db.commit()
+
+                target = request.headers.get("HX-Target", "")
+                if target.startswith("task-"):
+                    return HTMLResponse("")
+
                 return HTMLResponse(content=await get_tasks_today(db, request))
-            except Exception as e:
-                return HTMLResponse(content=f'<div class="text-red-400 p-4">❌ Ошибка: {e}</div>', status_code=400)
-    return HTMLResponse(content='<div class="text-gray-500 p-4">Задача не найдена</div>', status_code=404)
+            except:
+                return HTMLResponse('<div class="text-red-400">Ошибка даты</div>')
+    return HTMLResponse("")
 
-
-
-@router.post("/tasks/{task_id}/status", response_class=HTMLResponse)
-async def task_status_htmx(
-    request: Request,
-    task_id: int,
-    status: str = Form(...),
-):
-    """HTMX: изменить статус задачи"""
-    async with async_session() as db:
-        result = await db.execute(select(Task).where(Task.id == task_id))
-        task = result.scalar_one_or_none()
-        if not task:
-            return HTMLResponse(status_code=404, content="Задача не найдена")
-
-        task.status = status
-        if status == "выполнена":
-            task.completed_at = datetime.utcnow()
-        await db.flush()
-
-        # Вернуть обновлённый список
-        today = date.today()
-        result = await db.execute(
-            select(Task).where(
-                Task.due_date == today,
-                Task.is_archived == False
-            ).order_by(Task.sort_order.asc(), Task.created_at.asc())
-        )
-        tasks = result.scalars().all()
-
-    return templates.TemplateResponse(request, "partials/tasks_list.html", {
-        "request": request,
-        "tasks": tasks,
-    })
-
-
-# ---- Список покупок (Shopping List) ----
 
 @router.get("/shopping", response_class=HTMLResponse)
 async def shopping_page(request: Request):
