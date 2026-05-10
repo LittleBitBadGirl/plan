@@ -16,9 +16,11 @@ from app.models.missed import MissedMessage
 from app.models.task import Task
 from app.models.category import Category
 from app.models.finance import Transaction
+from app.models.goal import FinancialGoal
 from app.config import settings
 
 import httpx
+import json
 
 router = Router()
 
@@ -43,6 +45,7 @@ async def send_daily_plan(bot: Bot):
         
         text += "\nХорошего дня! 🚀"
         await bot.send_message(admin_id, text)
+
 
 async def transcribe_audio_groq(file_path: Path) -> str:
     """Транскрибация аудио через Groq API (Whisper)"""
@@ -142,7 +145,6 @@ async def process_task_done(callback: CallbackQuery):
 async def cmd_stats(message: Message):
     """Команда /stats — статистика"""
     async with async_session() as db:
-        # Простая статистика
         today = date.today()
         result_total = await db.execute(select(Task).where(Task.due_date == today))
         tasks = result_total.scalars().all()
@@ -171,7 +173,7 @@ async def _process_and_create_task(text: str, message: Message, source: str = "t
             await db.flush()
 
             # Получаем все категории для Groq
-            cat_result = await db.execute(select(Category))
+            cat_result = await db.execute(select(Category).where(Category.type == 'task'))
             categories = cat_result.scalars().all()
             cat_list = [{"id": c.id, "name": c.name, "is_global": c.is_global} for c in categories]
 
@@ -191,7 +193,7 @@ async def _process_and_create_task(text: str, message: Message, source: str = "t
             else:
                 task_due_date = date.today()
 
-            # Чистим заголовок от "завтра", "послезавтра" и т.д.
+            # Чистим заголовок от "завтра", "сегодня", "послезавтра"
             clean_title = text
             for word in ["завтра", "сегодня", "послезавтра"]:
                 clean_title = clean_title.replace(word, "").replace(word.capitalize(), "").strip()
@@ -298,7 +300,7 @@ async def handle_photo(message: Message, bot: Bot):
             # Обработка как финансового скрина через Groq для вытаскивания данных
             await msg.edit_text("💰 Анализирую чек через AI...")
             
-                        extract_prompt = f"""Проанализируй текст чека и вытащи:
+            extract_prompt = f"""Проанализируй текст чека и вытащи:
 1. СУММА (число).
 2. ДАТА (в формате YYYY-MM-DD).
 3. ОПИСАНИЕ (коротко, что купили или где).
@@ -315,7 +317,7 @@ async def handle_photo(message: Message, bot: Bot):
 ТЕКСТ ЧЕКА:
 {full_text}
 
-Ответ дай СТРОГО в JSON: {"amount": число, "date": "гггг-мм-дд", "desc": "...", "category_name": "..."}
+Ответ дай СТРОГО в JSON: {{"amount": число, "date": "гггг-мм-дд", "desc": "...", "category_name": "..."}}
 """
             try:
                 async with httpx.AsyncClient() as client:
@@ -333,8 +335,13 @@ async def handle_photo(message: Message, bot: Bot):
                     fin_data = resp.json()['choices'][0]['message']['content']
                     data_obj = json.loads(fin_data)
                     
-                                        amount = float(data_obj.get("amount", 0))
-                    tx_date = datetime.strptime(data_obj.get("date"), "%Y-%m-%d").date() if data_obj.get("date") else date.today()
+                    amount = float(data_obj.get("amount", 0))
+                    tx_date_raw = data_obj.get("date")
+                    try:
+                        tx_date = datetime.strptime(tx_date_raw, "%Y-%m-%d").date() if tx_date_raw else date.today()
+                    except:
+                        tx_date = date.today()
+                        
                     desc = data_obj.get("desc", "Чек")
                     cat_name_extracted = data_obj.get("category_name")
 

@@ -8,16 +8,15 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
-      - ./planner.db:/app/planner.db
-      - ./uploads:/app/uploads
-      - ./config:/app/config
-      - ./backups:/app/backups
-      - ./logs:/app/logs
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     env_file:
       - .env
     environment:
       - DATABASE_URL=sqlite+aiosqlite:////app/planner.db
       - AI_DEVICE=cpu
+    networks:
+      - npm_default
     restart: unless-stopped
 
   bot:
@@ -26,16 +25,16 @@ services:
     command: python run_bot.py
     volumes:
       - .:/app
-      - ./planner.db:/app/planner.db
-      - ./uploads:/app/uploads
-      - ./config:/app/config
-      - ./logs:/app/logs
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     env_file:
       - .env
     environment:
       - DATABASE_URL=sqlite+aiosqlite:////app/planner.db
+    networks:
+      - npm_default
     restart: unless-stopped
 
 networks:
-  default:
-    name: planner_network
+  npm_default:
+    external: true
