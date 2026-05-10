@@ -20,6 +20,22 @@ services:
       - AI_DEVICE=cpu
     restart: unless-stopped
 
+  bot:
+    build: .
+    container_name: telegram_bot
+    command: python run_bot.py
+    volumes:
+      - .:/app
+      - ./planner.db:/app/planner.db
+      - ./uploads:/app/uploads
+      - ./config:/app/config
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:////app/planner.db
+    restart: unless-stopped
+
 networks:
   default:
     name: planner_network
