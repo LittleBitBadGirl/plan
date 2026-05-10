@@ -1304,7 +1304,7 @@ async def get_tasks_today(db: AsyncSession, request: Request):
 
 @router.post("/tasks/{task_id}/complete", response_class=HTMLResponse)
 async def complete_task(request: Request, task_id: int):
-    """Отметить задачу выполненной → перемещает в архив"""
+    """Отметить задачу выполненной"""
     async with async_session() as db:
         result = await db.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
@@ -1314,9 +1314,17 @@ async def complete_task(request: Request, task_id: int):
             task.is_archived = True
             await db.commit()
 
+            # Если запрос пришел с целью #task-ID, значит это Бэклог или одиночное удаление
+            # В этом случае возвращаем пустоту, чтобы элемент удалился (hx-swap=outerHTML)
+            target = request.headers.get("HX-Target", "")
+            if target.startswith("task-"):
+                # Для бэклога: просто убираем карточку
+                return HTMLResponse("")
+
+            # Для дашборда: возвращаем весь список (т.к. таргет #tasks-list)
             tasks_content = await get_tasks_today(db, request)
             return HTMLResponse(content=tasks_content)
-    return HTMLResponse('<div class="text-gray-500 p-4">Задача не найдена</div>')
+    return HTMLResponse("")
 
 
 @router.post("/tasks/{task_id}/backlog", response_class=HTMLResponse)
@@ -1335,7 +1343,7 @@ async def move_to_backlog(request: Request, task_id: int):
 
 @router.delete("/tasks/{task_id}", response_class=HTMLResponse)
 async def delete_task(request: Request, task_id: int):
-    """Удалить задачу (soft delete → архив)"""
+    """Удалить задачу"""
     async with async_session() as db:
         result = await db.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
@@ -1343,9 +1351,13 @@ async def delete_task(request: Request, task_id: int):
             task.is_archived = True
             await db.commit()
             
+            target = request.headers.get("HX-Target", "")
+            if target.startswith("task-"):
+                return HTMLResponse("")
+
             tasks_content = await get_tasks_today(db, request)
             return HTMLResponse(content=tasks_content)
-    return HTMLResponse('<div class="text-gray-500 p-4">Задача не найдена</div>')
+    return HTMLResponse("")
 
 
 @router.post("/tasks/{task_id}/plan", response_class=HTMLResponse)
