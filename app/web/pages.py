@@ -166,7 +166,7 @@ async def dashboard(request: Request):
         today_tasks_result = await db.execute(
             select(Task.title, Task.category_id).where(Task.due_date == today)
         )
-        all_occupied = set((t.title, t.category_id) for t in today_tasks_result.all()) for t in today_tasks_result.all())
+        all_occupied = set((t.title, t.category_id) for t in today_tasks_result.all())
 
         day_of_week = today.weekday()
         day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
