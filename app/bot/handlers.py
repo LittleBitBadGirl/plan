@@ -10,7 +10,6 @@ from sqlalchemy import select, update
 
 from app.utils.logger import app_logger
 from app.services.ai_service import ai_service
-from app.services.ocr_service import ocr_service
 from app.db.database import async_session
 from app.models.missed import MissedMessage
 from app.models.task import Task
@@ -235,91 +234,70 @@ async def handle_voice(message: Message, bot: Bot):
 
 @router.message(F.photo)
 async def handle_photo(message: Message, bot: Bot):
-    """Обработка фото (скриншот календаря ИЛИ банковский чек)"""
-    msg = await message.answer("📸 Обрабатываю изображение...")
+    """Обработка фото через Vision-модель (прямое зрение ИИ)"""
+    msg = await message.answer("👁 Бот внимательно смотрит на картинку...")
+    file_path = None
     try:
         file_id = message.photo[-1].file_id
         file = await bot.get_file(file_id)
         uploads_dir = settings.uploads_dir / "screenshots"
         uploads_dir.mkdir(parents=True, exist_ok=True)
-        file_path = uploads_dir / f"{file_id}.jpg"
+        
+        file_ext = file.file_path.split('.')[-1] if '.' in file.file_path else 'jpg'
+        filename = f"{file_id}.{file_ext}"
+        file_path = uploads_dir / filename
         await bot.download_file(file.file_path, destination=file_path)
         
-        result = await ocr_service.process_screenshot(str(file_path))
-        full_text = result.get("text", "").lower()
-        app_logger.info(f"📸 OCR Text: {full_text[:200]}...")
+        # Прямой анализ зрения через Vision-модель
+        vision_result = await ai_service.vision_analyze_screenshot(str(file_path))
+        verdict = vision_result.get("type", "other")
+        data = vision_result.get("data", {})
         
-        # ЛОГИКА РАЗДЕЛЕНИЯ ЧЕРЕЗ AI
-        classify_prompt = f"""Ты — диспетчер данных. Проанализируй текст и реши, к какому типу относится картинка.
-ТИПЫ:
-- 'finance': Если это банковское приложение, список трат, чек, перевод, баланс, выписка.
-- 'calendar': Если это расписание, календарь, план встреч на неделю.
-- 'other': Если ничего из вышеперечисленного.
-
-ТЕКСТ С КАРТИНКИ:
-{full_text[:2000]}
-
-Ответь СТРОГО в формате JSON: {{"type": "тип"}} """
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {settings.groq_api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": "llama-3.3-70b-versatile",
-                    "messages": [
-                        {"role": "system", "content": "Ответь строго JSON: {'type': 'finance'|'calendar'|'other'}"},
-                        {"role": "user", "content": classify_prompt}
-                    ],
-                    "temperature": 0.0,
-                    "response_format": {"type": "json_object"}
-                },
-                timeout=10.0
-            )
-            v_data = resp.json()['choices'][0]['message']['content']
-            verdict = json.loads(v_data).get("type")
+        app_logger.info(f"👁 Vision Verdict: {verdict}")
 
         if verdict == 'finance':
-            await msg.edit_text("💰 Анализирую список операций через AI...")
-            extract_prompt = f"Вытащи СПИСОК всех трат. JSON формат: {{'items': [{{'amount': число, 'date': 'гггг-мм-дд', 'desc': '...', 'category_name': '...'}}]}}. ТЕКСТ: {full_text}"
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {settings.groq_api_key}", "Content-Type": "application/json"},
-                    json={
-                        "model": "llama-3.3-70b-versatile",
-                        "messages": [{"role": "system", "content": "Ты экстрактор финансов."}, {"role": "user", "content": extract_prompt}],
-                        "temperature": 0.0,
-                        "response_format": {"type": "json_object"}
-                    },
-                    timeout=20.0
-                )
-                data_obj = json.loads(resp.json()['choices'][0]['message']['content'])
-                items = data_obj.get("items", [])
+            items = data.get("items", [])
+            if not items:
+                await msg.edit_text("💰 Похоже на финансы, но я не смог разобрать детали. Сохранил для ручного ввода.")
+                await _save_screenshot_to_db(file_path, "vision_finance_empty", message)
+                return
+
+            async with async_session() as db:
                 count = 0
-                async with async_session() as db:
-                    for item in items:
-                        amount = float(item.get("amount", 0))
-                        if amount == 0: continue
-                        tx_date = datetime.strptime(item.get("date"), "%Y-%m-%d").date() if item.get("date") else date.today()
-                        desc = item.get("desc", "Чек")
-                        cat_name = item.get("category_name")
-                        cat_id = None
-                        if cat_name:
-                            cat_res = await db.execute(select(Category).where(Category.name.ilike(f"%{cat_name}%")))
-                            cat_obj = cat_res.scalar_one_or_none()
-                            if cat_obj: cat_id = cat_obj.id
-                        db.add(Transaction(date=tx_date, amount=amount, description=desc, category_id=cat_id, source="bank_screenshot"))
-                        count += 1
-                    await db.commit()
-                await msg.edit_text(f"✅ Обработано операций: {count}\n💰 Все данные внесены в Финансы!")
+                for item in items:
+                    amount = float(item.get("amount", 0))
+                    if amount == 0: continue
+                    
+                    tx_date_str = item.get("date")
+                    try:
+                        tx_date = date.fromisoformat(tx_date_str) if tx_date_str else date.today()
+                    except:
+                        tx_date = date.today()
+                        
+                    desc = item.get("desc", "Операция из Vision")
+                    cat_hint = item.get("category_hint")
+                    cat_id = None
+                    
+                    if cat_hint:
+                        cat_res = await db.execute(select(Category).where(Category.name.ilike(f"%{cat_hint}%")))
+                        cat_obj = cat_res.scalar_one_or_none()
+                        if cat_obj: cat_id = cat_obj.id
+                        
+                    db.add(Transaction(date=tx_date, amount=amount, description=desc, category_id=cat_id, source="vision_screenshot"))
+                    count += 1
+                await db.commit()
+            
+            await msg.edit_text(f"✅ Успешно «увидел» операций: {count}\n💰 Все данные внесены в Финансы. Скриншот удален.")
+            if file_path and file_path.exists(): os.remove(file_path)
             
         elif verdict == 'calendar':
-            events = result.get("events", [])
+            events = data.get("events", [])
             if not events:
-                await msg.edit_text("📅 Скриншот календаря, но событий не найдено.")
+                await msg.edit_text("📅 Похоже на календарь, но я не разглядел событий. Сохранил в базу.")
+                await _save_screenshot_to_db(file_path, "vision_calendar_empty", message)
                 return
-            text_resp = f"📅 Найдено событий: {len(events)}\n\n"
+                
+            text_resp = f"📅 Вижу событий: {len(events)}\n\n"
             async with async_session() as db:
                 for event in events:
                     due_time = None
@@ -327,16 +305,35 @@ async def handle_photo(message: Message, bot: Bot):
                         time_parts = event['time'].split(":")
                         due_time = datetime.strptime(f"{time_parts[0]}:{time_parts[1]}", "%H:%M").time()
                     except: pass
-                    db.add(Task(title=event["title"], due_date=date.today(), due_time=due_time, source="screenshot"))
+                    db.add(Task(title=event["title"], due_date=date.today(), due_time=due_time, source="vision"))
                     text_resp += f"🔸 {event['time']} - {event['title']}\n"
                 await db.commit()
-            if file_path.exists(): os.remove(file_path)
-            await msg.edit_text(text_resp)
+            
+            await msg.edit_text(text_resp + "\n✅ Задачи добавлены. Скриншот удален.")
+            if file_path and file_path.exists(): os.remove(file_path)
         else:
-            if file_path.exists(): os.remove(file_path)
-            await msg.edit_text("🧐 Не смог точно определить тип изображения. Сохранил как скриншот.")
+            await _save_screenshot_to_db(file_path, "vision_unknown", message)
+            await msg.edit_text("📥 Не совсем понял, что это. Сохранил скриншот в базу для ручного разбора.")
             
     except Exception as e:
-        app_logger.error(f"❌ Ошибка обработки фото: {e}", exc_info=True)
-        if file_path.exists(): os.remove(file_path)
-        await msg.edit_text(f"❌ Ошибка при обработке: {e}")
+        app_logger.error(f"❌ Ошибка Vision: {e}", exc_info=True)
+        if file_path and file_path.exists():
+            await _save_screenshot_to_db(file_path, "vision_error", message)
+            await msg.edit_text("❌ Ошибка зрения. Сохранил скриншот для ручного разбора.")
+        else:
+            await msg.edit_text(f"❌ Критическая ошибка: {e}")
+
+async def _save_screenshot_to_db(file_path: Path, status: str, message: Message):
+    """Сохранить информацию о скриншоте в БД для ручного разбора"""
+    try:
+        from app.models.screenshot import Screenshot
+        async with async_session() as db:
+            screenshot = Screenshot(
+                file_path=str(file_path),
+                ocr_status=status,
+                created_at=datetime.now()
+            )
+            db.add(screenshot)
+            await db.commit()
+    except Exception as e:
+        app_logger.error(f"❌ Не удалось сохранить скриншот в БД: {e}")

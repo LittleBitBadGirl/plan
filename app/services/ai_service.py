@@ -114,14 +114,26 @@ class AIService:
         tasks_text = "\n".join([f"- {t['title']} (Категория: {t['category']})" for t in tasks_data])
         
         system_prompt = f"""Ты — эксперт по HR и карьере (Senior Career Coach).
-Твоя задача: прочитать список выполненных задач пользователя и ВЫБРАТЬ только те, которые имеют профессиональную ценность.
+Твоя задача: прочитать список выполненных задач пользователя за месяц и ВЫБРАТЬ только те, которые имеют профессиональную ценность и могут быть превращены в достижения (Achievements/Milestones).
 
-Сегодня: {today_str}
-
-Задачи:
+Задачи пользователя:
 {tasks_text}
 
-Ответ дай СТРОГО в формате JSON списка достижений.
+Для каждой ценной задачи:
+1. Оставь исходное название (original_title).
+2. Напиши профессиональный Impact (описание влияния на бизнес, проект или навыки).
+3. Определи категорию (например: Управление, Разработка, Стратегия, Переговоры).
+
+Ответ дай СТРОГО в формате JSON:
+{{
+  "achievements": [
+    {{
+      "original_title": "Название задачи",
+      "impact": "Профессионально сформулированное достижение",
+      "category": "Категория"
+    }}
+  ]
+}}
 """
 
         try:
@@ -147,16 +159,72 @@ class AIService:
         
         return []
 
-    def _simple_categorize(self, text: str) -> Dict[str, str]:
-        text_lower = text.lower()
-        if 'дон' in text_lower: return {"category": "Личное", "subcategory": "Свои сайты"}
-        if 'планербот' in text_lower or 'транскрибатор' in text_lower: return {"category": "Личное", "subcategory": "Пет-проекты"}
-        if any(word in text_lower for word in ['дан', 'сын', 'подарок']): return {"category": "Личное", "subcategory": "Семья"}
-        if any(word in text_lower for word in ['врач', 'массаж', 'баня']): return {"category": "Личное", "subcategory": "Здоровье"}
-        if any(word in text_lower for word in ['марж', 'деньг', 'налог', 'счет', 'оплат']): return {"category": "Работа", "subcategory": "Финансы"}
-        if any(word in text_lower for word in ['тз', 'реестр', 'документ', 'инлайн']): return {"category": "Работа", "subcategory": "Документы"}
-        if any(word in text_lower for word in ['sql', 'курс', 'обучен', 'изуч']): return {"category": "Обучение", "subcategory": "Курсы"}
-        return {"category": "Личное", "subcategory": "Другое"}
+    async def vision_analyze_screenshot(self, image_path: str) -> Dict[str, any]:
+        """Прямой анализ скриншота через Vision-модель (Llama 3.2 Vision на Groq)"""
+        if not settings.groq_api_key:
+            return {"type": "other"}
+
+        import httpx
+        import base64
+        from pathlib import Path
+
+        # 1. Подготовка изображения (Base64)
+        path = Path(image_path)
+        if not path.exists():
+            return {"type": "other"}
+        
+        with open(path, "rb") as image_file:
+            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+
+        # 2. Промпт для Vision
+        system_prompt = """Ты — эксперт по анализу интерфейсов. Твоя задача — "увидеть" скриншот и извлечь данные.
+Определи тип:
+1. 'finance': Банковские приложения, история транзакций, чеки.
+2. 'calendar': Календарь, список встреч со временем.
+3. 'other': Все остальное.
+
+Если это 'finance', извлеки список трат: {"items": [{"amount": число (траты > 0, доходы < 0), "date": "YYYY-MM-DD", "desc": "магазин/имя", "category_hint": "еда/такси/перевод"}]}
+Если это 'calendar', извлеки события: {"events": [{"title": "название", "time": "HH:MM", "end_time": "HH:MM"}]}
+
+Ответ дай СТРОГО в формате JSON: {"type": "finance|calendar|other", "data": {...}}
+"""
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.groq_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "llama-3.2-90b-vision-preview",
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": system_prompt},
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                                    }
+                                ]
+                            }
+                        ],
+                        "temperature": 0.0,
+                        "response_format": {"type": "json_object"}
+                    },
+                    timeout=30.0
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()['choices'][0]['message']['content']
+                    return json.loads(result)
+                    
+        except Exception as e:
+            print(f"❌ Vision Error: {e}")
+        
+        return {"type": "other"}
 
 
 ai_service = AIService()

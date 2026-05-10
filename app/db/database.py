@@ -40,6 +40,22 @@ async def init_db():
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN tags VARCHAR(500);"))
         except Exception: pass
 
+        try:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN impact_notes TEXT;"))
+        except Exception: pass
+
+        try:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN is_milestone BOOLEAN DEFAULT 0;"))
+        except Exception: pass
+
+        try:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN estimated_minutes INTEGER;"))
+        except Exception: pass
+
+        try:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN actual_minutes INTEGER;"))
+        except Exception: pass
+
 
 
 async def get_db():

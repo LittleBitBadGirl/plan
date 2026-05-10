@@ -1312,30 +1312,28 @@ async def complete_task(request: Request, task_id: int):
         result = await db.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
         if task:
+            is_backlog = task.due_date is None
             task.status = "выполнена"
             task.completed_at = datetime.utcnow()
             task.is_archived = True
             await db.commit()
 
             target = request.headers.get("HX-Target", "")
-            if target.startswith("task-"):
-                return HTMLResponse("")
+            if target.startswith("task-") or is_backlog:
+                return HTMLResponse(content="✅ выполнено")
 
             return HTMLResponse(content=await get_tasks_today(db, request))
-    return HTMLResponse("")
+    raise HTTPException(status_code=404, detail="Задача не найдена")
 
 
 @router.delete("/tasks/{task_id}", response_class=HTMLResponse)
 async def delete_task(request: Request, task_id: int):
-    """Удалить задачу (полное удаление если из бэклога)"""
+    """Удалить задачу (soft delete)"""
     async with async_session() as db:
         result = await db.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
         if task:
-            if task.due_date is None:
-                await db.delete(task)
-            else:
-                task.is_archived = True
+            task.is_archived = True
             await db.commit()
             
             target = request.headers.get("HX-Target", "")
@@ -1343,7 +1341,7 @@ async def delete_task(request: Request, task_id: int):
                 return HTMLResponse("")
 
             return HTMLResponse(content=await get_tasks_today(db, request))
-    return HTMLResponse("")
+    raise HTTPException(status_code=404, detail="Задача не найдена")
 
 
 @router.post("/tasks/{task_id}/plan", response_class=HTMLResponse)
@@ -1353,23 +1351,25 @@ async def plan_task(request: Request, task_id: int, due_date: str = Form(None)):
     async with async_session() as db:
         result = await db.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
-        if task:
-            try:
-                if due_date:
-                    day, month = due_date.split(".")
-                    task.due_date = date(date.today().year, int(month), int(day))
-                else:
-                    task.due_date = date.today()
-                await db.commit()
+        if not task:
+            raise HTTPException(status_code=404, detail="Задача не найдена")
 
-                target = request.headers.get("HX-Target", "")
-                if target.startswith("task-"):
-                    return HTMLResponse("")
+        try:
+            if due_date:
+                day, month = due_date.split(".")
+                task.due_date = date(date.today().year, int(month), int(day))
+            else:
+                task.due_date = date.today()
+            task.status = "новая"
+            await db.commit()
 
-                return HTMLResponse(content=await get_tasks_today(db, request))
-            except:
-                return HTMLResponse('<div class="text-red-400">Ошибка даты</div>')
-    return HTMLResponse("")
+            target = request.headers.get("HX-Target", "")
+            if target.startswith("task-"):
+                return HTMLResponse(content=f"📅 {task.due_date.strftime('%d.%m')}")
+
+            return HTMLResponse(content=await get_tasks_today(db, request))
+        except:
+            raise HTTPException(status_code=400, detail="Неверный формат даты (ДД.ММ)")
 
 
 @router.get("/shopping", response_class=HTMLResponse)
