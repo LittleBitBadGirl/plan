@@ -302,11 +302,31 @@ async def handle_photo(message: Message, bot: Bot):
                 for event in events:
                     due_time = None
                     try:
-                        time_parts = event['time'].split(":")
-                        due_time = datetime.strptime(f"{time_parts[0]}:{time_parts[1]}", "%H:%M").time()
-                    except: pass
-                    db.add(Task(title=event["title"], due_date=date.today(), due_time=due_time, source="vision"))
-                    text_resp += f"🔸 {event['time']} - {event['title']}\n"
+                        time_str = event.get("time", "")
+                        if time_str:
+                            time_parts = time_str.split(":")
+                            due_time = datetime.strptime(f"{time_parts[0]}:{time_parts[1]}", "%H:%M").time()
+                    except Exception:
+                        pass
+
+                    # Use event's own date; fall back to today only if missing/unparseable
+                    event_date = date.today()
+                    try:
+                        date_str = event.get("date", "")
+                        if date_str:
+                            event_date = date.fromisoformat(date_str)
+                    except Exception:
+                        pass
+
+                    db.add(Task(
+                        title=event["title"],
+                        due_date=event_date,
+                        due_time=due_time,
+                        source="vision",
+                    ))
+                    date_label = event_date.strftime("%d.%m")
+                    time_label = event.get("time", "—")
+                    text_resp += f"🔸 {date_label} {time_label} — {event['title']}\n"
                 await db.commit()
             
             await msg.edit_text(text_resp + "\n✅ Задачи добавлены. Скриншот удален.")

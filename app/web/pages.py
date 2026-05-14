@@ -39,23 +39,46 @@ async def get_categories_list():
 
 
 async def get_today_stats(db: AsyncSession):
-    """Вспомогательная функция для получения статистики на сегодня"""
+    """Статистика сегодняшнего дня.
+
+    Считаем только задачи, которые реально видны в плане дня (колонка 1):
+    - корневые (parent_task_id IS NULL)
+    - не бытовые категории
+    - source != 'recurring'  (вхождения регулярных задач учитываются отдельно в колонке 3)
+    """
+    from sqlalchemy import not_, or_
     today = date.today()
-    # Считаем только корневые задачи
+
+    # Household-категории — те же самые, что фильтруются на дашборде
+    cat_result = await db.execute(
+        select(Category.id).where(
+            (Category.name.ilike("%быт%")) |
+            (Category.name.ilike("%покупк%")) |
+            (Category.name.ilike("%семья%"))
+        )
+    )
+    household_ids = [row[0] for row in cat_result.all()]
+
+    base_filter = [
+        Task.due_date == today,
+        Task.parent_task_id == None,
+        or_(Task.source != "recurring", Task.source == None),
+    ]
+    if household_ids:
+        base_filter.append(not_(Task.category_id.in_(household_ids)))
+
     completed_result = await db.execute(
         select(func.count(Task.id)).where(
-            Task.due_date == today,
+            *base_filter,
             Task.status == "выполнена",
-            Task.parent_task_id == None
         )
     )
     completed = completed_result.scalar() or 0
-    
+
     total_result = await db.execute(
         select(func.count(Task.id)).where(
-            Task.due_date == today,
-            Task.parent_task_id == None,
-            (Task.is_archived == False) | (Task.status == "выполнена")
+            *base_filter,
+            (Task.is_archived == False) | (Task.status == "выполнена"),
         )
     )
     total = total_result.scalar() or 0
@@ -162,9 +185,14 @@ async def dashboard(request: Request):
         )
         all_recurring = recur_result.scalars().all()
 
-                # Находим названия и категории ВСЕХ задач на сегодня (чтобы скрыть шаблоны в правой колонке)
+                # Находим активные задачи на сегодня, чтобы не дублировать их в колонке регулярных.
+        # Архивированные (выполненные) намеренно исключаем: если регулярная задача была закрыта
+        # сегодня и шаблон снова должен появиться — пользователь сам решит через перезагрузку.
         today_tasks_result = await db.execute(
-            select(Task.title, Task.category_id).where(Task.due_date == today)
+            select(Task.title, Task.category_id).where(
+                Task.due_date == today,
+                Task.is_archived == False,
+            )
         )
         all_occupied = set((t.title, t.category_id) for t in today_tasks_result.all())
 
@@ -1130,39 +1158,9 @@ async def create_recurring_web(
 
 @router.get("/tasks/list", response_class=HTMLResponse)
 async def tasks_list_htmx(request: Request):
-    """HTMX: список задач на сегодня"""
-    today = date.today()
+    """HTMX: список задач на сегодня (те же фильтры, что на дашборде)"""
     async with async_session() as db:
-        result = await db.execute(
-            select(Task)
-            .options(selectinload(Task.category))
-            .where(
-                Task.due_date == today,
-                Task.is_archived == False,
-                Task.parent_task_id == None
-            ).order_by(Task.sort_order.asc(), Task.created_at.asc())
-        )
-        tasks = list(result.scalars().all())
-
-        # Загружаем подзадачи
-        subtasks_map = {}
-        if tasks:
-            task_ids = [t.id for t in tasks]
-            subtasks_result = await db.execute(
-                select(Task).where(Task.parent_task_id.in_(task_ids))
-            )
-            all_subtasks = subtasks_result.scalars().all()
-            
-            from collections import defaultdict
-            subtasks_map = defaultdict(list)
-            for st in all_subtasks:
-                subtasks_map[st.parent_task_id].append(st)
-
-    return templates.TemplateResponse(request, "partials/tasks_list.html", {
-        "request": request,
-        "tasks": tasks,
-        "subtasks_map": subtasks_map,
-    })
+        return HTMLResponse(content=await get_tasks_today(db, request))
 
 
 @router.post("/tasks/create", response_class=HTMLResponse)
@@ -1303,6 +1301,20 @@ async def get_tasks_today(db: AsyncSession, request: Request):
     completed, total = await get_today_stats(db)
     stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
     return content + stats_oob
+
+
+@router.post("/tasks/{task_id}/backlog", response_class=HTMLResponse)
+async def task_to_backlog(request: Request, task_id: int):
+    """Вернуть задачу в бэклог (убрать дату планирования)"""
+    async with async_session() as db:
+        result = await db.execute(select(Task).where(Task.id == task_id))
+        task = result.scalar_one_or_none()
+        if task:
+            task.due_date = None
+            task.status = "новая"
+            await db.commit()
+            return HTMLResponse(content=await get_tasks_today(db, request))
+    raise HTTPException(status_code=404, detail="Задача не найдена")
 
 
 @router.post("/tasks/{task_id}/complete", response_class=HTMLResponse)
