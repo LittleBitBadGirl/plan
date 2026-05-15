@@ -13,11 +13,11 @@
     </div>
 
     <!-- Form -->
-    <div class="bg-dark-800 rounded-xl border border-dark-600 p-8 shadow-2xl">
+    <div class="bg-dark-800 rounded-xl border border-dark-600 shadow-2xl">
         {% if task %}
-        <form method="post" action="/tasks/web/{{ task.id }}/edit" class="space-y-6">
+        <form method="post" action="/tasks/web/{{ task.id }}/edit" class="space-y-6 p-8">
         {% else %}
-        <form method="post" action="/tasks/web/create" class="space-y-6">
+        <form method="post" action="/tasks/web/create" class="space-y-6 p-8">
         {% endif %}
             <!-- Title -->
             <div>
@@ -33,11 +33,22 @@
 
             <!-- Category & Due Date -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label for="category_id" class="block text-sm font-medium text-gray-300 mb-2">
-                        Категория
-                    </label>
+                <!-- Категория с inline-созданием -->
+                <div x-data="{ showCreate: false, newName: '', newParent: '' }">
+                    <div class="flex items-center justify-between mb-2">
+                        <label for="category_id" class="block text-sm font-medium text-gray-300">
+                            Категория
+                        </label>
+                        <button type="button"
+                                @click="showCreate = !showCreate"
+                                class="text-xs text-accent hover:text-blue-400 transition-colors flex items-center gap-1">
+                            <span x-text="showCreate ? '✕ Отмена' : '➕ Новая'"></span>
+                        </button>
+                    </div>
+
+                    <!-- Выбор существующей -->
                     <select id="category_id" name="category_id"
+                            x-show="!showCreate"
                             class="w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white
                                    focus:outline-none focus:border-accent appearance-none">
                         <option value="">Без категории</option>
@@ -55,6 +66,45 @@
                             {% endif %}
                         {% endfor %}
                     </select>
+
+                    <!-- Inline создание новой категории -->
+                    <div x-show="showCreate" x-cloak class="space-y-2">
+                        <input type="text" x-model="newName"
+                               placeholder="Название новой категории"
+                               class="w-full px-3 py-2.5 bg-dark-700 border border-accent/60 rounded-lg text-white
+                                      placeholder-gray-500 focus:outline-none focus:border-accent text-sm">
+
+                        <select x-model="newParent"
+                                class="w-full px-3 py-2 bg-dark-700 border border-dark-500 rounded-lg text-white text-sm
+                                       focus:outline-none focus:border-accent appearance-none">
+                            <option value="">Родительская группа (необязательно)</option>
+                            {% for cat in categories %}
+                                {% if cat.is_global %}
+                                <option value="{{ cat.id }}">{{ cat.name }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+
+                        <button type="button"
+                                @click="
+                                    if (!newName.trim()) return;
+                                    fetch('/api/categories/quick-create', {
+                                        method: 'POST',
+                                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                                        body: 'name=' + encodeURIComponent(newName) + '&parent_id=' + encodeURIComponent(newParent)
+                                    })
+                                    .then(r => r.text())
+                                    .then(html => {
+                                        document.getElementById('category_id').innerHTML = html;
+                                        showCreate = false;
+                                        newName = '';
+                                        newParent = '';
+                                    });
+                                "
+                                class="w-full py-2 bg-accent hover:bg-blue-600 text-white font-medium rounded-lg text-sm transition-all">
+                            Создать и выбрать
+                        </button>
+                    </div>
                 </div>
 
                 <div>
@@ -85,10 +135,8 @@
                 </div>
             </div>
 
-            </div>
-
             <!-- Footer -->
-            <div class="px-8 py-6 bg-dark-700/50 border-t border-dark-600 flex justify-between">
+            <div class="flex justify-between pt-4 border-t border-dark-600 mt-2">
                 <button type="submit"
                         class="px-8 py-3 bg-accent hover:bg-blue-600 text-white font-bold rounded-lg transition-all shadow-lg hover:shadow-accent/20">
                     {% if task %}Сохранить изменения{% else %}Создать задачу{% endif %}

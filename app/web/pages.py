@@ -254,9 +254,11 @@ async def dashboard(request: Request):
             )
             household_tasks = h_task_result.scalars().all()
 
-        # Категории для формы
+        # Категории для формы — только задачные, финансовые не смешиваем
         cats_result = await db.execute(
-            select(Category).order_by(Category.is_global.desc(), Category.name)
+            select(Category)
+            .where(Category.type == 'task')
+            .order_by(Category.is_global.desc(), Category.name)
         )
         categories = cats_result.scalars().all()
 
@@ -652,6 +654,59 @@ async def task_edit_page(request: Request, task_id: int):
         "categories": categories,
         "task": task,
     })
+
+
+@router.post("/api/categories/quick-create", response_class=HTMLResponse)
+async def quick_create_category(
+    request: Request,
+    name: str = Form(...),
+    parent_id: str = Form(""),
+):
+    """Быстрое создание категории задач inline — возвращает обновлённый <select>"""
+    async with async_session() as db:
+        final_parent_id = int(parent_id) if parent_id else None
+        is_global = final_parent_id is None
+
+        # Проверка дубля
+        dup = await db.execute(
+            select(Category).where(
+                Category.name == name,
+                Category.type == 'task',
+                Category.parent_id == final_parent_id,
+            )
+        )
+        new_cat = dup.scalar_one_or_none()
+        if not new_cat:
+            new_cat = Category(
+                name=name,
+                is_global=is_global,
+                parent_id=final_parent_id,
+                type='task',
+            )
+            db.add(new_cat)
+            await db.commit()
+            await db.refresh(new_cat)
+
+        # Загружаем все task-категории для обновлённого select
+        cats_result = await db.execute(
+            select(Category)
+            .where(Category.type == 'task')
+            .order_by(Category.is_global.desc(), Category.name)
+        )
+        categories = cats_result.scalars().all()
+
+    # Строим HTML для <select> options + выделяем только что созданную
+    options_html = '<option value="">Без категории</option>\n'
+    for cat in categories:
+        if cat.is_global:
+            options_html += f'<optgroup label="{cat.name}">\n'
+            for sub in categories:
+                if sub.parent_id == cat.id:
+                    selected = 'selected' if sub.id == new_cat.id else ''
+                    options_html += f'  <option value="{sub.id}" {selected}>↳ {sub.name}</option>\n'
+            options_html += '</optgroup>\n'
+
+    return HTMLResponse(content=options_html)
 
 
 @router.post("/categories/create", response_class=HTMLResponse)
