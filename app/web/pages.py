@@ -185,24 +185,25 @@ async def dashboard(request: Request):
         )
         all_recurring = recur_result.scalars().all()
 
-                # Находим активные задачи на сегодня, чтобы не дублировать их в колонке регулярных.
-        # Архивированные (выполненные) намеренно исключаем: если регулярная задача была закрыта
-        # сегодня и шаблон снова должен появиться — пользователь сам решит через перезагрузку.
-        today_tasks_result = await db.execute(
+        # Находим только ВЫПОЛНЕННЫЕ recurring-задачи сегодня, чтобы не показывать повторно.
+        # Активные (source=recurring) намеренно НЕ исключаем — они уже отфильтрованы из левой
+        # колонки, поэтому должны отображаться здесь.
+        today_completed_result = await db.execute(
             select(Task.title, Task.category_id).where(
                 Task.due_date == today,
-                Task.is_archived == False,
+                Task.is_archived == True,
+                Task.status == "выполнена",
             )
         )
-        all_occupied = set((t.title, t.category_id) for t in today_tasks_result.all())
+        all_completed_today = set((t.title, t.category_id) for t in today_completed_result.all())
 
         day_of_week = today.weekday()
         day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
         recurring_today = []
 
         for rt in all_recurring:
-            # Если задача с таким названием и категорией уже существует на сегодня — пропускаем
-            if (rt.title, rt.category_id) in all_occupied:
+            # Пропускаем только если уже ВЫПОЛНЕНА сегодня
+            if (rt.title, rt.category_id) in all_completed_today:
                 continue
 
             if rt.end_date and today > rt.end_date:

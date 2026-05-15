@@ -38,7 +38,11 @@ async def send_daily_plan(bot: Bot):
             return
             
         text = f"🌅 Доброе утро! Твой план на сегодня ({today.strftime('%d.%m')}):\n\n"
+        seen_titles = set()
         for t in tasks:
+            if t.title in seen_titles:
+                continue
+            seen_titles.add(t.title)
             time_str = f" ⏰ {t.due_time.strftime('%H:%M')}" if getattr(t, 'due_time', None) else ""
             text += f"🔸 {t.title}{time_str}\n"
         
@@ -168,6 +172,23 @@ async def _process_and_create_task(text: str, message: Message, source: str = "t
             cat_result = await db.execute(select(Category).where(Category.type == 'task'))
             categories = cat_result.scalars().all()
             cat_list = [{"id": c.id, "name": c.name, "is_global": c.is_global} for c in categories]
+
+            # Предварительный dedup: не создаём если такая задача уже есть на ту же дату
+            due_date_preview = date.today()  # будет уточнена после AI, но для dedup берём сегодня
+            clean_title_preview = text
+            for word in ["завтра", "сегодня", "послезавтра"]:
+                clean_title_preview = clean_title_preview.replace(word, "").replace(word.capitalize(), "").strip()
+
+            dup_check = await db.execute(
+                select(Task).where(
+                    Task.title == clean_title_preview,
+                    Task.due_date == due_date_preview,
+                    Task.is_archived == False,
+                )
+            )
+            if dup_check.scalar_one_or_none():
+                await message.answer(f"ℹ️ «{clean_title_preview}» уже есть в плане на {due_date_preview.strftime('%d.%m.%Y')}")
+                return
 
             # AI категоризация
             result = await ai_service.categorize(text, cat_list)
