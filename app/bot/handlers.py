@@ -2,6 +2,7 @@ import os
 import hashlib
 from datetime import date, datetime
 from pathlib import Path
+from typing import Literal
 
 from aiogram import Router, F, Bot
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
@@ -23,6 +24,64 @@ import json
 import re
 
 router = Router()
+
+# ─── Intent Detection ────────────────────────────────────────────────────────
+
+# Слова-маркеры завершения задачи (в конце фразы или после дефиса/тире)
+_DONE_WORDS = (
+    r"сделала?|выполнила?|выполнено|готово|завершила?|закончила?|done|ок|окей"
+)
+_DONE_SUFFIX = re.compile(
+    rf"\s*[-–—]\s*({_DONE_WORDS})\s*$", re.IGNORECASE
+)
+_DONE_PREFIX = re.compile(
+    rf"^\s*({_DONE_WORDS})\s*[-–—:]\s*", re.IGNORECASE
+)
+
+# Маркеры списков для bulk-режима
+_BULLET = re.compile(r"^\s*[-•*]\s+", re.MULTILINE)
+_NUMBERED = re.compile(r"^\s*\d+[.)]\s+", re.MULTILINE)
+
+
+def _detect_intent(text: str) -> dict:
+    """
+    Определяет намерение пользователя.
+
+    Возвращает dict с полями:
+      intent: 'complete' | 'bulk_add' | 'add'
+      task_name: str  (для complete — что выполнено)
+      tasks: list[str]  (для bulk_add — список задач)
+    """
+    text = text.strip()
+
+    # 1. Завершение: "X — сделала" или "сделала X"
+    m = _DONE_SUFFIX.search(text)
+    if m:
+        task_name = text[: m.start()].strip().rstrip("-–—").strip()
+        return {"intent": "complete", "task_name": task_name}
+
+    m = _DONE_PREFIX.match(text)
+    if m:
+        task_name = text[m.end():].strip()
+        return {"intent": "complete", "task_name": task_name}
+
+    # 2. Bulk-add: многострочный текст с буллетами/нумерацией или просто несколько строк
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    if len(lines) > 1:
+        # Убираем маркеры списков
+        clean = [_BULLET.sub("", _NUMBERED.sub("", l)).strip() for l in lines]
+        clean = [t for t in clean if t]
+        if len(clean) > 1:
+            return {"intent": "bulk_add", "tasks": clean}
+
+    # 3. Bulk через запятую (для голосовых: "позвонить маме, написать отчёт, купить молоко")
+    if text.count(",") >= 2:
+        parts = [p.strip() for p in text.split(",") if p.strip()]
+        if len(parts) >= 2:
+            return {"intent": "bulk_add", "tasks": parts}
+
+    # 4. Обычное добавление
+    return {"intent": "add", "task_name": text}
 
 async def send_daily_plan(bot: Bot):
     """Отправка плана на день в 09:00"""
@@ -152,6 +211,154 @@ async def cmd_stats(message: Message):
             f"Выполнено: {completed}/{total}\n"
         )
 
+async def _complete_task_by_name(task_name: str, message: Message) -> None:
+    """Найти задачу по fuzzy-имени и пометить выполненной."""
+    today = date.today()
+    async with async_session() as db:
+        result = await db.execute(
+            select(Task).where(
+                Task.due_date == today,
+                Task.is_archived == False,
+                Task.status.in_(["новая", "в_работе"]),
+                Task.title.ilike(f"%{task_name}%"),
+            )
+        )
+        matches = result.scalars().all()
+
+    if not matches:
+        # Ничего не нашли — предлагаем добавить как новую задачу
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="➕ Добавить как новую", callback_data=f"add_new:{task_name[:60]}"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action"),
+        ]])
+        await message.answer(
+            f"🔍 Задача «{task_name}» не найдена в плане на сегодня.\n"
+            "Добавить как новую задачу?",
+            reply_markup=kb,
+        )
+        return
+
+    if len(matches) == 1:
+        task = matches[0]
+        async with async_session() as db:
+            res = await db.execute(select(Task).where(Task.id == task.id))
+            t = res.scalar_one()
+            t.status = "выполнена"
+            t.completed_at = datetime.now()
+            t.is_archived = True
+            await db.commit()
+        await message.answer(f"✅ Выполнено: {task.title}")
+        return
+
+    # Несколько совпадений — показываем кнопки выбора
+    buttons = [
+        [InlineKeyboardButton(text=f"✅ {t.title[:40]}", callback_data=f"complete_task:{t.id}")]
+        for t in matches
+    ]
+    buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action")])
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await message.answer(
+        f"🔍 Нашла {len(matches)} похожих задачи. Какую отметить выполненной?",
+        reply_markup=kb,
+    )
+
+
+async def _process_bulk_tasks(tasks: list[str], message: Message, source: str = "telegram") -> None:
+    """Создать несколько задач за один раз."""
+    created = []
+    skipped = []
+
+    for raw in tasks:
+        raw = raw.strip()
+        if not raw:
+            continue
+        # Используем существующую логику — но без ответа на каждую задачу
+        try:
+            async with async_session() as db:
+                cat_result = await db.execute(select(Category).where(Category.type == 'task'))
+                categories = cat_result.scalars().all()
+                cat_list = [{"id": c.id, "name": c.name, "is_global": c.is_global} for c in categories]
+
+                clean_title = raw
+                for word in ["завтра", "сегодня", "послезавтра"]:
+                    clean_title = clean_title.replace(word, "").replace(word.capitalize(), "").strip()
+
+                # dedup
+                dup = await db.execute(
+                    select(Task).where(
+                        Task.title == clean_title,
+                        Task.due_date == date.today(),
+                        Task.is_archived == False,
+                    )
+                )
+                if dup.scalar_one_or_none():
+                    skipped.append(clean_title)
+                    continue
+
+                ai_result = await ai_service.categorize(raw, cat_list)
+                category_id = ai_result.get("category_id")
+                due_date_str = ai_result.get("due_date")
+                task_due_date = date.fromisoformat(due_date_str) if due_date_str else date.today()
+
+                task = Task(
+                    title=clean_title,
+                    category_id=category_id,
+                    source=source,
+                    due_date=task_due_date,
+                    tags=", ".join(ai_result.get("tags", [])) or None,
+                )
+                db.add(task)
+                await db.commit()
+                created.append(clean_title)
+
+        except Exception as e:
+            app_logger.error(f"❌ Bulk task error ({raw}): {e}", exc_info=True)
+            skipped.append(raw)
+
+    lines = [f"✅ Добавлено {len(created)} задач:"]
+    for t in created:
+        lines.append(f"  🔸 {t}")
+    if skipped:
+        lines.append(f"\nℹ️ Уже были в плане (пропущено): {', '.join(skipped)}")
+
+    await message.answer("\n".join(lines))
+
+
+# ─── Callback handlers ────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("complete_task:"))
+async def cb_complete_task(callback: CallbackQuery):
+    """Отметить конкретную задачу выполненной (из кнопок fuzzy-поиска)"""
+    task_id = int(callback.data.split(":")[1])
+    async with async_session() as db:
+        res = await db.execute(select(Task).where(Task.id == task_id))
+        task = res.scalar_one_or_none()
+        if task:
+            task.status = "выполнена"
+            task.completed_at = datetime.now()
+            task.is_archived = True
+            await db.commit()
+            await callback.message.edit_text(f"✅ Выполнено: {task.title}")
+        else:
+            await callback.message.edit_text("❌ Задача не найдена.")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("add_new:"))
+async def cb_add_new_task(callback: CallbackQuery):
+    """Добавить задачу как новую (из кнопки 'не найдено')"""
+    task_name = callback.data.split(":", 1)[1]
+    await callback.message.edit_text(f"➕ Добавляю «{task_name}»...")
+    await _process_and_create_task(task_name, callback.message, source="telegram")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "cancel_action")
+async def cb_cancel(callback: CallbackQuery):
+    await callback.message.edit_text("❌ Отменено.")
+    await callback.answer()
+
+
 async def _process_and_create_task(text: str, message: Message, source: str = "telegram"):
     """Общая логика создания задачи из текста"""
     try:
@@ -229,14 +436,23 @@ async def _process_and_create_task(text: str, message: Message, source: str = "t
 
 @router.message(F.text)
 async def handle_text(message: Message):
-    """Обработка текстового сообщения"""
+    """Обработка текстового сообщения с определением намерения"""
     text = message.text.strip()
-    if text.startswith("/"): return
-    await _process_and_create_task(text, message, source="telegram")
+    if text.startswith("/"):
+        return
+
+    intent = _detect_intent(text)
+
+    if intent["intent"] == "complete":
+        await _complete_task_by_name(intent["task_name"], message)
+    elif intent["intent"] == "bulk_add":
+        await _process_bulk_tasks(intent["tasks"], message, source="telegram")
+    else:
+        await _process_and_create_task(text, message, source="telegram")
 
 @router.message(F.voice)
 async def handle_voice(message: Message, bot: Bot):
-    """Обработка голосового"""
+    """Обработка голосового с определением намерения"""
     msg = await message.answer("🎙 Транскрибирую голосовое...")
     try:
         file_id = message.voice.file_id
@@ -247,8 +463,18 @@ async def handle_voice(message: Message, bot: Bot):
         await bot.download_file(file.file_path, destination=file_path)
         text = await transcribe_audio_groq(file_path)
         await msg.edit_text(f"📝 Распознано:\n_{text}_", parse_mode="Markdown")
-        if text.strip(): await _process_and_create_task(text, message, source="voice")
-        if file_path.exists(): os.remove(file_path)
+
+        if text.strip():
+            intent = _detect_intent(text)
+            if intent["intent"] == "complete":
+                await _complete_task_by_name(intent["task_name"], message)
+            elif intent["intent"] == "bulk_add":
+                await _process_bulk_tasks(intent["tasks"], message, source="voice")
+            else:
+                await _process_and_create_task(text, message, source="voice")
+
+        if file_path.exists():
+            os.remove(file_path)
     except Exception as e:
         app_logger.error(f"❌ Ошибка обработки голосового: {e}", exc_info=True)
         await msg.edit_text("❌ Ошибка при транскрибации.")
