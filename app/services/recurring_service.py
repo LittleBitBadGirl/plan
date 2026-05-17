@@ -1,5 +1,5 @@
 from datetime import date
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.recurring import RecurringTask
 from app.models.task import Task
@@ -8,8 +8,20 @@ import json
 
 
 async def _generate_impl(db: AsyncSession):
-    """Создать задачи из периодических шаблонов на сегодня"""
+    """Создать задачи из периодических шаблонов на сегодня."""
     today = date.today()
+
+    # Архивируем просроченные recurring-задачи из прошлых дней (они не rolling-over,
+    # генератор создаст свежие на нужный день сам).
+    await db.execute(
+        update(Task)
+        .where(
+            Task.source == "recurring",
+            Task.due_date < today,
+            Task.is_archived == False,
+        )
+        .values(is_archived=True)
+    )
     weekday_map = {
         0: "mon", 1: "tue", 2: "wed",
         3: "thu", 4: "fri", 5: "sat", 6: "sun"

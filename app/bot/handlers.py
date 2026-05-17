@@ -84,29 +84,83 @@ def _detect_intent(text: str) -> dict:
     return {"intent": "add", "task_name": text}
 
 async def send_daily_plan(bot: Bot):
-    """Отправка плана на день в 09:00"""
+    """Отправка плана на день в 09:00 — структура совпадает с дашбордом."""
+    from app.models.recurring import RecurringTask
+    import json as _json
+
+    admin_id = 163394712
+    today = date.today()
+    weekday_map = {0: "mon", 1: "tue", 2: "wed", 3: "thu", 4: "fri", 5: "sat", 6: "sun"}
+    today_weekday = weekday_map[today.weekday()]
+
     async with async_session() as db:
-        today = date.today()
-        admin_id = 163394712
-        
-        result = await db.execute(select(Task).where(Task.due_date == today, Task.status != "выполнена"))
-        tasks = result.scalars().all()
-        
-        if not tasks:
-            await bot.send_message(admin_id, "🌅 Доброе утро! На сегодня планов пока нет. Отличный день!")
-            return
-            
-        text = f"🌅 Доброе утро! Твой план на сегодня ({today.strftime('%d.%m')}):\n\n"
-        seen_titles = set()
-        for t in tasks:
-            if t.title in seen_titles:
+        # 1. Обычные задачи (как левая колонка дашборда)
+        regular_result = await db.execute(
+            select(Task).where(
+                Task.due_date == today,
+                Task.status.in_(["новая", "в_работе"]),
+                Task.is_archived == False,
+                Task.source.is_distinct_from("recurring"),
+            ).order_by(Task.sort_order.asc())
+        )
+        regular_tasks = regular_result.scalars().all()
+
+        # 2. Периодические задачи активные сегодня (как правая колонка Регулярные)
+        recur_result = await db.execute(
+            select(RecurringTask).where(RecurringTask.is_active == True)
+        )
+        all_recurring = recur_result.scalars().all()
+
+        # Выполненные recurring сегодня — не показываем
+        done_result = await db.execute(
+            select(Task.title, Task.category_id).where(
+                Task.due_date == today,
+                Task.is_archived == True,
+                Task.status == "выполнена",
+            )
+        )
+        done_today = set((t.title, t.category_id) for t in done_result.all())
+
+        recurring_today = []
+        for rt in all_recurring:
+            if (rt.title, rt.category_id) in done_today:
                 continue
-            seen_titles.add(t.title)
-            time_str = f" ⏰ {t.due_time.strftime('%H:%M')}" if getattr(t, 'due_time', None) else ""
-            text += f"🔸 {t.title}{time_str}\n"
-        
-        text += "\nХорошего дня! 🚀"
-        await bot.send_message(admin_id, text)
+            if rt.end_date and today > rt.end_date:
+                continue
+            if today < rt.start_date:
+                continue
+            if rt.recurrence_type == "daily":
+                recurring_today.append(rt)
+            elif rt.recurrence_type == "weekly":
+                days = rt.recurrence_days
+                if isinstance(days, str):
+                    try:
+                        days = _json.loads(days)
+                    except Exception:
+                        days = []
+                if days and today_weekday in days:
+                    recurring_today.append(rt)
+            elif rt.recurrence_type == "monthly":
+                if today.day == rt.start_date.day:
+                    recurring_today.append(rt)
+
+    if not regular_tasks and not recurring_today:
+        await bot.send_message(admin_id, "🌅 Доброе утро! На сегодня планов пока нет. Отличный день!")
+        return
+
+    text = f"🌅 Доброе утро! Твой план на сегодня ({today.strftime('%d.%m')}):\n\n"
+
+    for t in regular_tasks:
+        time_str = f" ⏰ {t.due_time.strftime('%H:%M')}" if getattr(t, 'due_time', None) else ""
+        text += f"🔸 {t.title}{time_str}\n"
+
+    if recurring_today:
+        text += "\n🔄 Регулярные:\n"
+        for rt in recurring_today:
+            text += f"🔹 {rt.title}\n"
+
+    text += "\nХорошего дня! 🚀"
+    await bot.send_message(admin_id, text)
 
 
 async def transcribe_audio_groq(file_path: Path) -> str:

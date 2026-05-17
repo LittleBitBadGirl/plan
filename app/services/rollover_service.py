@@ -7,18 +7,20 @@ from app.db.database import async_session
 
 
 async def _rollover_impl(db: AsyncSession):
-    """Перенести просроченные задачи на сегодня"""
-    today = date.today()
-    is_weekend = today.weekday() >= 5  # 5 = Суббота, 6 = Воскресенье
+    """Перенести просроченные задачи на сегодня.
 
-    # Найти просроченные задачи (с загрузкой категории для проверки)
+    Исключаем source='recurring' — они эфемерны, генератор создаст свежую копию сам.
+    Переносим все задачи независимо от дня недели — пользователь сам решает, что делать.
+    """
+    today = date.today()
+
     result = await db.execute(
         select(Task)
-        .options(selectinload(Task.category))
         .where(
             Task.status.in_(["новая", "в_работе"]),
             Task.due_date < today,
             Task.is_archived == False,
+            Task.source.is_distinct_from("recurring"),  # recurring регенерируются сами
         )
     )
     overdue_tasks = result.scalars().all()
@@ -27,17 +29,11 @@ async def _rollover_impl(db: AsyncSession):
     chronic_count = 0
 
     for task in overdue_tasks:
-        # В выходные пропускаем рабочие задачи
-        if is_weekend and task.category and "Работа" in task.category.name:
-            continue
-
-        # Увеличить счётчик переносов
         if task.postpones is None:
             task.postpones = 0
         task.postpones += 1
         task.due_date = today
 
-        # Если переносов > 7 — хроническая задача
         if task.postpones > 7 and not task.chronic_task:
             task.chronic_task = True
             chronic_count += 1
