@@ -816,15 +816,68 @@ async def create_subcategory_inline(parent_id: int, name: str = Form(...)):
 
 @router.delete("/api/categories/{category_id}", response_class=HTMLResponse)
 async def delete_category_htmx(category_id: int):
-    """Удалить категорию (HTMX)"""
+    """Удалить категорию (HTMX) — для категорий задач"""
     async with async_session() as db:
         result = await db.execute(select(Category).where(Category.id == category_id))
         cat = result.scalar_one_or_none()
         if cat:
             await db.delete(cat)
             await db.commit()
-            return HTMLResponse(content="") # Удалит элемент из DOM
+            return HTMLResponse(content="")
     return HTMLResponse(status_code=404)
+
+
+@router.delete("/api/categories/{category_id}/safe")
+async def delete_finance_category_safe(category_id: int):
+    """Удалить финансовую категорию с переносом транзакций.
+
+    Подкатегория → транзакции переходят к родителю.
+    Родительская → транзакции переходят в 'Прочее' (или null).
+    """
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import update as sa_update
+    from app.models.finance import Transaction as Tx
+
+    async with async_session() as db:
+        cat_res = await db.execute(select(Category).where(Category.id == category_id))
+        cat = cat_res.scalar_one_or_none()
+        if not cat:
+            return JSONResponse({"error": "not found"}, status_code=404)
+
+        if cat.parent_id:
+            # Подкатегория → транзакции к родителю
+            fallback_id = cat.parent_id
+        else:
+            # Корневая → ищем "Прочее" того же типа
+            prochee_res = await db.execute(
+                select(Category).where(
+                    Category.name == "Прочее",
+                    Category.type == cat.type,
+                    Category.is_global == True,
+                    Category.id != category_id,
+                )
+            )
+            prochee = prochee_res.scalar_one_or_none()
+            fallback_id = prochee.id if prochee else None
+
+            # Все дочерние подкатегории → тоже к fallback
+            await db.execute(
+                sa_update(Category)
+                .where(Category.parent_id == category_id)
+                .values(parent_id=fallback_id)
+            )
+
+        # Переносим транзакции
+        await db.execute(
+            sa_update(Tx)
+            .where(Tx.category_id == category_id)
+            .values(category_id=fallback_id)
+        )
+
+        await db.delete(cat)
+        await db.commit()
+
+    return JSONResponse({"ok": True})
 
 
 @router.post("/categories/{category_id}/edit", response_class=HTMLResponse)
@@ -1925,12 +1978,41 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         parent_ids = list(set([r.parent_id for r in raw_summary if r.parent_id]))
         parents_res = await db.execute(select(Category).where(Category.id.in_(parent_ids)))
         parents_map = {p.id: p.name for p in parents_res.scalars().all()}
-        
+
         for r in raw_summary:
-            p_name = parents_map.get(r.parent_id, "Прочее")
-            if p_name not in grouped_summary: grouped_summary[p_name] = {"total": 0, "sub_items": []}
-            grouped_summary[p_name]["sub_items"].append({"name": r.cat_name, "amount": r.total})
+            if r.parent_id:
+                # Подкатегория → группируем под родителем
+                p_name = parents_map.get(r.parent_id, r.cat_name)
+            else:
+                # Root-категория → сама является группой
+                p_name = r.cat_name
+
+            if p_name not in grouped_summary:
+                grouped_summary[p_name] = {"total": 0, "sub_items": []}
+            if r.parent_id:
+                grouped_summary[p_name]["sub_items"].append({"name": r.cat_name, "amount": r.total})
             grouped_summary[p_name]["total"] += r.total
+
+        # Добавляем некатегоризированные расходы
+        uncat_res = await db.execute(
+            select(func.sum(Transaction.amount)).where(
+                Transaction.date >= start_date,
+                Transaction.date < end_date,
+                Transaction.amount > 0,
+                Transaction.category_id.is_(None),
+            )
+        )
+        uncat_total = uncat_res.scalar() or 0
+        if uncat_total > 0:
+            grouped_summary["Без категории"] = {
+                "total": uncat_total,
+                "sub_items": [{"name": "Нет категории", "amount": uncat_total}],
+            }
+
+        # Сортируем по убыванию суммы
+        grouped_summary = dict(
+            sorted(grouped_summary.items(), key=lambda x: x[1]["total"], reverse=True)
+        )
 
         # ЦЕЛИ
         goals_res = await db.execute(select(FinancialGoal))
@@ -1956,9 +2038,15 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         total_income = sum(abs(tx.amount) for tx in transactions if tx.amount < 0)
         total_expense = sum(tx.amount for tx in transactions if tx.amount > 0)
         
-        # Список категорий для модалки
+        # Список категорий для модалки (иерархия)
         fin_cats_res = await db.execute(select(Category).where(Category.type == 'finance').order_by(Category.name))
-        fin_categories = fin_cats_res.scalars().all()
+        fin_categories_all = fin_cats_res.scalars().all()
+        fin_categories = fin_categories_all  # backward compat (flat)
+        fin_parent_cats = [c for c in fin_categories_all if not c.parent_id]
+        fin_sub_cats_by_parent: dict = {}
+        for c in fin_categories_all:
+            if c.parent_id:
+                fin_sub_cats_by_parent.setdefault(c.parent_id, []).append(c)
         
     return templates.TemplateResponse(request, "finance.html", {
         "request": request,
@@ -1970,6 +2058,8 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         "current_month": view_month,
         "current_year": view_year,
         "fin_categories": fin_categories,
+        "fin_parent_cats": fin_parent_cats,
+        "fin_sub_cats_by_parent": fin_sub_cats_by_parent,
         "stats": {"income": total_income, "expense": total_expense, "balance": total_income - total_expense},
         "today": today
     })

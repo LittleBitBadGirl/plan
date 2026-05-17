@@ -102,25 +102,109 @@
         </h2>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {% for gc in fin_global_categories %}
-            <div class="bg-dark-800 rounded-xl border border-dark-600 overflow-hidden flex flex-col shadow-lg hover:border-yellow-500/50 transition-all group">
-                <div class="bg-dark-700/50 p-3 border-b border-dark-600 flex justify-between items-center">
-                    <h2 class="text-sm font-bold text-white flex items-center gap-2">
-                        <span class="text-yellow-500">📁</span>
-                        {{ gc.name }}
-                    </h2>
+            <div class="bg-dark-800 rounded-xl border border-dark-600 overflow-hidden flex flex-col shadow-lg hover:border-yellow-500/50 transition-all group"
+                 id="fin-group-{{ gc.id }}"
+                 x-data="{ addingChild: false, newChildName: '', editingName: false, editName: '{{ gc.name }}' }">
+
+                <!-- Header -->
+                <div class="bg-dark-700/50 p-3 border-b border-dark-600 flex justify-between items-center min-h-[48px]">
+                    <!-- Название (просмотр/редактирование) -->
+                    <div class="flex-1 mr-2">
+                        <span x-show="!editingName"
+                              class="text-sm font-bold text-white flex items-center gap-1">
+                            <span class="text-yellow-500">📁</span>
+                            {{ gc.name }}
+                        </span>
+                        <form x-show="editingName" x-cloak
+                              @submit.prevent="
+                                fetch('/categories/{{ gc.id }}/edit', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                                    body: 'name=' + encodeURIComponent(editName)
+                                }).then(() => window.location.reload())
+                              "
+                              class="flex gap-1">
+                            <input x-model="editName" x-ref="editInput"
+                                   class="flex-1 bg-dark-900 border border-yellow-500/60 rounded px-2 py-1 text-xs text-white focus:outline-none w-full"
+                                   @click.away="editingName = false">
+                            <button type="submit" class="text-green-400 text-sm font-bold">✓</button>
+                        </form>
+                    </div>
+
+                    <!-- Кнопки управления -->
+                    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                        <button @click="editingName = true; $nextTick(() => $refs.editInput.focus())"
+                                class="text-gray-500 hover:text-white text-xs p-1" title="Переименовать">✏️</button>
+                        <button @click="addingChild = !addingChild"
+                                class="text-yellow-500/70 hover:text-yellow-400 text-xs p-1 font-bold" title="Добавить подкатегорию">+</button>
+                        <button @click="
+                                    if(confirm('Удалить «{{ gc.name }}»? Транзакции перейдут в Прочее.')) {
+                                        fetch('/api/categories/{{ gc.id }}/safe', {method: 'DELETE'})
+                                        .then(() => document.getElementById('fin-group-{{ gc.id }}').remove())
+                                    }"
+                                class="text-red-500/60 hover:text-red-400 text-xs p-1" title="Удалить">🗑</button>
+                    </div>
                 </div>
-                <div class="p-3 flex-1">
-                    <div class="space-y-1">
-                        {% set subs = fin_sub_categories.get(gc.id, []) %}
-                        {% for sc in subs %}
-                        <div class="flex items-center gap-2 p-1">
+
+                <!-- Подкатегории -->
+                <div class="p-3 flex-1 space-y-1">
+                    {% set subs = fin_sub_categories.get(gc.id, []) %}
+                    {% for sc in subs %}
+                    <div class="flex items-center justify-between group/sc px-1 py-0.5 rounded hover:bg-dark-700/30 transition-colors"
+                         id="fin-sub-{{ sc.id }}"
+                         x-data="{ editingSub: false, editSubName: '{{ sc.name }}' }">
+                        <span x-show="!editingSub" class="text-xs text-gray-400 flex items-center gap-1">
                             <span class="text-gray-600 text-[10px]">└</span>
-                            <span class="text-xs text-gray-400">{{ sc.name }}</span>
+                            {{ sc.name }}
+                        </span>
+                        <form x-show="editingSub" x-cloak
+                              @submit.prevent="
+                                fetch('/categories/{{ sc.id }}/edit', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                                    body: 'name=' + encodeURIComponent(editSubName)
+                                }).then(() => window.location.reload())
+                              "
+                              class="flex gap-1 flex-1">
+                            <input x-model="editSubName"
+                                   class="flex-1 bg-dark-900 border border-yellow-500/40 rounded px-2 py-0.5 text-xs text-white focus:outline-none"
+                                   @click.away="editingSub = false">
+                            <button type="submit" class="text-green-400 text-xs">✓</button>
+                        </form>
+                        <div class="flex gap-1 opacity-0 group-hover/sc:opacity-100 transition-opacity">
+                            <button @click="editingSub = true"
+                                    class="text-gray-600 hover:text-white text-[10px]" title="Переименовать">✏️</button>
+                            <button @click="
+                                        if(confirm('Удалить «{{ sc.name }}»? Транзакции перейдут в {{ gc.name }}.')) {
+                                            fetch('/api/categories/{{ sc.id }}/safe', {method: 'DELETE'})
+                                            .then(() => document.getElementById('fin-sub-{{ sc.id }}').remove())
+                                        }"
+                                    class="text-red-500/50 hover:text-red-400 text-[10px]" title="Удалить">🗑</button>
                         </div>
-                        {% endfor %}
-                        {% if not subs %}
-                        <span class="text-[10px] text-gray-600 italic">Нет подкатегорий</span>
-                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    {% if not subs %}
+                    <span class="text-[10px] text-gray-600 italic" x-show="!addingChild">Нет подкатегорий</span>
+                    {% endif %}
+
+                    <!-- Добавить подкатегорию inline -->
+                    <div x-show="addingChild" x-cloak class="mt-1">
+                        <form @submit.prevent="
+                                fetch('/categories/{{ gc.id }}/sub/create', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                                    body: 'name=' + encodeURIComponent(newChildName)
+                                }).then(() => window.location.reload())
+                              "
+                              class="flex gap-1">
+                            <input x-model="newChildName"
+                                   placeholder="Название..."
+                                   class="flex-1 bg-dark-900 border border-yellow-500/40 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-yellow-500">
+                            <button type="submit"
+                                    class="px-2 py-1 bg-yellow-600/20 hover:bg-yellow-500/30 text-yellow-400 text-xs rounded transition">✓</button>
+                            <button type="button" @click="addingChild = false; newChildName = ''"
+                                    class="px-1 text-gray-600 hover:text-gray-400 text-xs">✕</button>
+                        </form>
                     </div>
                 </div>
             </div>

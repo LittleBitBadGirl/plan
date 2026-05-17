@@ -177,9 +177,19 @@
                                     <div x-show="editing" x-cloak class="space-y-1.5 min-w-[160px]">
                                         <select x-model="catId"
                                                 class="w-full bg-dark-900 border border-accent/60 rounded px-2 py-1 text-xs text-white focus:outline-none">
-                                            <option value="">Прочее</option>
-                                            {% for fc in fin_categories %}
-                                            <option value="{{ fc.id }}">{{ fc.name }}</option>
+                                            <option value="">— Без категории —</option>
+                                            {% for parent in fin_parent_cats %}
+                                                {% set children = fin_sub_cats_by_parent.get(parent.id, []) %}
+                                                {% if children %}
+                                                <optgroup label="{{ parent.name }}">
+                                                    <option value="{{ parent.id }}">{{ parent.name }} (общее)</option>
+                                                    {% for child in children %}
+                                                    <option value="{{ child.id }}">  ↳ {{ child.name }}</option>
+                                                    {% endfor %}
+                                                </optgroup>
+                                                {% else %}
+                                                <option value="{{ parent.id }}">{{ parent.name }}</option>
+                                                {% endif %}
                                             {% endfor %}
                                         </select>
 
