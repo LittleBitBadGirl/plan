@@ -132,15 +132,78 @@
                         </thead>
                         <tbody class="divide-y divide-dark-700">
                             {% for tx in transactions %}
-                            <tr class="hover:bg-dark-700/30 transition-colors group" 
-                                x-show="'{{ tx.date.strftime('%d.%m.%y') }} {{ tx.description|lower }} {{ tx.category.name|lower if tx.category else '' }}'.includes(search.toLowerCase())">
+                            <tr x-data="{
+                                    editing: false,
+                                    catId: '{{ tx.category_id or '' }}',
+                                    catName: '{{ tx.category.name if tx.category else 'Прочее' }}',
+                                    applyAll: false,
+                                    saving: false,
+                                    async save() {
+                                        this.saving = true;
+                                        const body = new URLSearchParams({
+                                            category_id: this.catId,
+                                            apply_to_similar: this.applyAll ? 'true' : 'false'
+                                        });
+                                        const r = await fetch('/api/transactions/{{ tx.id }}/category', {
+                                            method: 'POST',
+                                            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                                            body: body.toString()
+                                        });
+                                        const data = await r.json();
+                                        this.catName = data.category_name;
+                                        if (data.updated > 1) {
+                                            this.catName += ' ✓×' + data.updated;
+                                        }
+                                        this.editing = false;
+                                        this.saving = false;
+                                    }
+                                }"
+                                class="hover:bg-dark-700/30 transition-colors group"
+                                x-show="'{{ tx.date.strftime('%d.%m.%y') }} {{ tx.description|lower }} {{ (tx.category.name)|lower if tx.category else '' }}'.includes(search.toLowerCase())">
                                 <td class="px-6 py-4 text-xs text-gray-500 font-mono">{{ tx.date.strftime('%d.%m.%y') }}</td>
                                 <td class="px-6 py-4 text-sm text-white">{{ tx.description or '-' }}</td>
+
+                                <!-- Категория — кликабельная -->
                                 <td class="px-6 py-4">
-                                    <span class="px-2 py-0.5 rounded bg-dark-700 text-[10px] text-gray-400 uppercase">
-                                        {{ tx.category.name if tx.category else 'Прочее' }}
+                                    <!-- Режим просмотра -->
+                                    <span x-show="!editing"
+                                          @click="editing = true"
+                                          x-text="catName"
+                                          title="Нажми для смены категории"
+                                          class="px-2 py-0.5 rounded bg-dark-700 hover:bg-dark-600 text-[10px] text-gray-400 uppercase cursor-pointer transition-colors border border-transparent hover:border-accent/40">
                                     </span>
+
+                                    <!-- Режим редактирования -->
+                                    <div x-show="editing" x-cloak class="space-y-1.5 min-w-[160px]">
+                                        <select x-model="catId"
+                                                class="w-full bg-dark-900 border border-accent/60 rounded px-2 py-1 text-xs text-white focus:outline-none">
+                                            <option value="">Прочее</option>
+                                            {% for fc in fin_categories %}
+                                            <option value="{{ fc.id }}">{{ fc.name }}</option>
+                                            {% endfor %}
+                                        </select>
+
+                                        <!-- "Применить ко всем похожим" -->
+                                        <label class="flex items-center gap-1.5 cursor-pointer">
+                                            <input type="checkbox" x-model="applyAll"
+                                                   class="accent-accent w-3 h-3 rounded">
+                                            <span class="text-[9px] text-gray-500">
+                                                Все «{{ tx.description[:20] }}...»
+                                            </span>
+                                        </label>
+
+                                        <div class="flex gap-1">
+                                            <button @click="save()"
+                                                    :disabled="saving"
+                                                    class="flex-1 py-1 bg-accent hover:bg-blue-600 text-white text-[10px] font-bold rounded transition">
+                                                <span x-text="saving ? '...' : '✓ Сохранить'"></span>
+                                            </button>
+                                            <button @click="editing = false"
+                                                    class="px-2 py-1 bg-dark-700 hover:bg-dark-600 text-gray-400 text-[10px] rounded transition">✕</button>
+                                        </div>
+                                    </div>
                                 </td>
+
                                 <td class="px-6 py-4 text-sm font-bold text-right {{ 'text-red-400' if tx.amount > 0 else 'text-green-400' }}">
                                     {{ "{:,.2f}".format(tx.amount).replace(',', ' ') }} ₽
                                 </td>

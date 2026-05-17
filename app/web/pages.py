@@ -1999,3 +1999,53 @@ async def create_transaction(
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/finance", status_code=303)
 
+
+@router.post("/api/transactions/{tx_id}/category")
+async def update_transaction_category(
+    tx_id: int,
+    category_id: str = Form(""),
+    apply_to_similar: bool = Form(False),
+):
+    """Сменить категорию транзакции inline.
+    
+    apply_to_similar=True обновит ВСЕ транзакции с тем же описанием.
+    Это создаёт merchant-memory эффект без отдельной таблицы правил.
+    """
+    from fastapi.responses import JSONResponse
+    from app.models.finance import Transaction as Tx
+
+    cat_id = int(category_id) if category_id and category_id.isdigit() else None
+
+    async with async_session() as db:
+        # Получаем целевую транзакцию
+        res = await db.execute(select(Tx).where(Tx.id == tx_id))
+        tx = res.scalar_one_or_none()
+        if not tx:
+            return JSONResponse({"error": "not found"}, status_code=404)
+
+        description = tx.description
+        tx.category_id = cat_id
+
+        # Применяем ко всем похожим (точное совпадение описания)
+        updated_count = 1
+        if apply_to_similar and description:
+            from sqlalchemy import update as sa_update
+            result = await db.execute(
+                sa_update(Tx)
+                .where(Tx.description == description, Tx.id != tx_id)
+                .values(category_id=cat_id)
+            )
+            updated_count += result.rowcount
+
+        await db.commit()
+
+        # Возвращаем название категории для обновления UI без перезагрузки
+        cat_name = "Прочее"
+        if cat_id:
+            cat_res = await db.execute(select(Category).where(Category.id == cat_id))
+            cat = cat_res.scalar_one_or_none()
+            if cat:
+                cat_name = cat.name
+
+    return JSONResponse({"category_name": cat_name, "updated": updated_count})
+

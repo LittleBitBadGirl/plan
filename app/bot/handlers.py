@@ -576,14 +576,25 @@ async def handle_photo(message: Message, bot: Bot):
                         tx_date = date.today()
                         
                     desc = item.get("desc", "Операция из Vision")
-                    cat_hint = item.get("category_hint")
                     cat_id = None
-                    
-                    if cat_hint:
-                        cat_res = await db.execute(select(Category).where(Category.name.ilike(f"%{cat_hint}%")))
-                        cat_obj = cat_res.scalar_one_or_none()
-                        if cat_obj: cat_id = cat_obj.id
-                        
+
+                    # 1. Merchant memory: проверяем историю — тот же мерчант = та же категория
+                    cat_id = await _get_merchant_category(desc, db)
+
+                    # 2. Если не знаем — пробуем подсказку от Vision AI
+                    if cat_id is None:
+                        cat_hint = item.get("category_hint")
+                        if cat_hint:
+                            cat_res = await db.execute(
+                                select(Category).where(
+                                    Category.name.ilike(f"%{cat_hint}%"),
+                                    Category.type == 'finance',
+                                )
+                            )
+                            cat_obj = cat_res.scalar_one_or_none()
+                            if cat_obj:
+                                cat_id = cat_obj.id
+
                     db.add(Transaction(date=tx_date, amount=amount, description=desc, category_id=cat_id, source="vision_screenshot"))
                     count += 1
                 await db.commit()
@@ -643,6 +654,31 @@ async def handle_photo(message: Message, bot: Bot):
             await msg.edit_text("❌ Ошибка зрения. Сохранил скриншот для ручного разбора.")
         else:
             await msg.edit_text(f"❌ Критическая ошибка: {e}")
+
+async def _get_merchant_category(description: str, db) -> int | None:
+    """Merchant memory: ищем категорию по истории транзакций с таким же описанием.
+    
+    Возвращает category_id который использовался чаще всего для данного мерчанта.
+    """
+    if not description:
+        return None
+    result = await db.execute(
+        select(Transaction.category_id)
+        .where(
+            Transaction.description == description,
+            Transaction.category_id.is_not(None),
+        )
+        .order_by(Transaction.created_at.desc())
+        .limit(10)
+    )
+    rows = result.scalars().all()
+    if not rows:
+        return None
+    # Берём наиболее часто встречающуюся категорию
+    from collections import Counter
+    most_common = Counter(rows).most_common(1)
+    return most_common[0][0] if most_common else None
+
 
 async def _save_screenshot_to_db(file_path: Path, status: str, message: Message):
     """Сохранить информацию о скриншоте в БД для ручного разбора"""
