@@ -17,6 +17,7 @@ async_session = async_sessionmaker(
 
 
 from app.models.base import Base
+from app.models import period_entry as _period_entry_import  # noqa: F401 – ensures table is created
 import sqlalchemy
 from sqlalchemy import text
 

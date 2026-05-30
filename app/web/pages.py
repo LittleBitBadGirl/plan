@@ -20,8 +20,148 @@ from app.services.ai_service import ai_service
 from app.config import settings
 
 import re
+from statistics import mean
 
 router = APIRouter(tags=["web"])
+
+
+# ─── Period tracker helpers ───────────────────────────────────────────────────
+
+_PHASE_LABELS = {
+    "period":     "Менструация",
+    "follicular": "Фолликулярная",
+    "ovulation":  "Овуляция",
+    "luteal":     "Лютеиновая",
+    "pms":        "ПМС",
+}
+
+_MONTH_NAMES = {
+    1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+    5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+    9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
+}
+
+
+def _period_phase(day: int, avg_cycle: int, avg_period: int) -> str:
+    if day <= avg_period:
+        return "period"
+    ovulation_day = avg_cycle - 14
+    if day <= ovulation_day - 2:
+        return "follicular"
+    if day <= ovulation_day + 1:
+        return "ovulation"
+    if day <= avg_cycle - 5:
+        return "luteal"
+    return "pms"
+
+
+def _build_month_calendar(today: date, period_map: dict) -> tuple[str, int, list]:
+    """Обычный календарь текущего месяца — цифры = числа месяца."""
+    import calendar as _cal
+
+    year, month = today.year, today.month
+    month_label = f"{_MONTH_NAMES[month]} {year}"
+    start_weekday = date(year, month, 1).weekday()
+    days_in_month = _cal.monthrange(year, month)[1]
+
+    calendar_days = []
+    for day_num in range(1, days_in_month + 1):
+        d = date(year, month, day_num)
+        if d in period_map:
+            state = "pain" if period_map[d] else "period"
+        elif d > today:
+            state = "future"
+        else:
+            state = "none"
+        calendar_days.append({
+            "date": d,
+            "date_str": d.isoformat(),
+            "day_num": day_num,
+            "state": state,
+            "is_today": d == today,
+        })
+
+    return month_label, start_weekday, calendar_days
+
+
+def compute_period_data(entries, today: date) -> dict:
+    """
+    entries: list of PeriodEntry objects.
+    Returns context dict for the dashboard period tracker card.
+    """
+    period_map = {e.date: e.has_pain for e in entries} if entries else {}
+
+    if not entries:
+        month_label, start_weekday, calendar_days = _build_month_calendar(today, period_map)
+        return {
+            "has_data": False,
+            "last_period_start": None,
+            "current_cycle_day": None,
+            "current_phase": None,
+            "current_phase_label": "Отметь первый день",
+            "avg_cycle": 28,
+            "avg_period": 5,
+            "month_label": month_label,
+            "start_weekday": start_weekday,
+            "calendar_days": calendar_days,
+            "days_until_next": None,
+            "cycles_history": [],
+        }
+
+    sorted_entries = sorted(entries, key=lambda e: e.date)
+
+    cycles: list[list] = []
+    group = [sorted_entries[0]]
+    for entry in sorted_entries[1:]:
+        if (entry.date - group[-1].date).days <= 2:
+            group.append(entry)
+        else:
+            cycles.append(group)
+            group = [entry]
+    cycles.append(group)
+
+    cycle_starts = [g[0].date for g in cycles]
+    cycle_lengths = [
+        (cycle_starts[i + 1] - cycle_starts[i]).days
+        for i in range(len(cycle_starts) - 1)
+    ]
+
+    avg_cycle = round(mean(cycle_lengths)) if cycle_lengths else 28
+    avg_period = max(1, round(mean(len(g) for g in cycles)))
+    last_start = cycle_starts[-1]
+    current_day = (today - last_start).days + 1
+    current_phase = _period_phase(current_day, avg_cycle, avg_period)
+    days_until_next = avg_cycle - current_day if cycle_lengths else None
+
+    month_label, start_weekday, calendar_days = _build_month_calendar(today, period_map)
+
+    cycles_history = []
+    for i, grp in enumerate(cycles):
+        cl = cycle_lengths[i] if i < len(cycle_lengths) else None
+        pain_count = sum(1 for e in grp if e.has_pain)
+        cycles_history.append({
+            "num": i + 1,
+            "start": grp[0].date.strftime("%d.%m.%Y"),
+            "length": cl,
+            "period_days": len(grp),
+            "pain_days": pain_count,
+            "is_current": cl is None,
+        })
+
+    return {
+        "has_data": True,
+        "last_period_start": last_start,
+        "current_cycle_day": current_day,
+        "current_phase": current_phase,
+        "current_phase_label": _PHASE_LABELS.get(current_phase, "—"),
+        "avg_cycle": avg_cycle,
+        "avg_period": avg_period,
+        "month_label": month_label,
+        "start_weekday": start_weekday,
+        "calendar_days": calendar_days,
+        "days_until_next": days_until_next,
+        "cycles_history": cycles_history,
+    }
 
 # Шаблоны
 templates_dir = Path(__file__).parent / "templates"
@@ -135,6 +275,12 @@ async def dashboard(request: Request):
                 "progress": len(h_logs),
                 "start_weekday": start_weekday
             })
+
+        # Period tracker data
+        from app.models.period_entry import PeriodEntry
+        period_result = await db.execute(select(PeriodEntry).order_by(PeriodEntry.date))
+        period_entries = period_result.scalars().all()
+        period_data = compute_period_data(list(period_entries), today)
 
         # ДАННЫЕ ДЛЯ БЛОКА БЫТА И ПОКУПОК
         # Сначала определяем ID категорий "быта", чтобы исключить их из основного списка
@@ -278,6 +424,7 @@ async def dashboard(request: Request):
         "today": today,
         "ai_warning": ai_warning,
         "habits_data": habits_data,
+        "period_data": period_data,
         "shopping_items": shopping_items,
         "household_tasks": household_tasks,
         "household_cat_ids": household_cat_ids,
@@ -803,14 +950,17 @@ async def get_category_edit_form(category_id: int):
 
 @router.post("/categories/{parent_id}/sub/create", response_class=HTMLResponse)
 async def create_subcategory_inline(parent_id: int, name: str = Form(...)):
-    """Создать подкатегорию прямо из карточки родителя"""
+    """Создать подкатегорию прямо из карточки родителя.
+    Тип наследуется от родителя, чтобы финансовая подкатегория не стала задачной.
+    """
     async with async_session() as db:
-        new_sub = Category(name=name, parent_id=parent_id, is_global=False)
+        parent_res = await db.execute(select(Category).where(Category.id == parent_id))
+        parent = parent_res.scalar_one_or_none()
+        inherited_type = parent.type if parent else "task"
+        new_sub = Category(name=name, parent_id=parent_id, is_global=False, type=inherited_type)
         db.add(new_sub)
         await db.commit()
-    
-    # Перезагружаем всю страницу, чтобы обновить счетчики и списки (самый надежный способ)
-    from fastapi.responses import RedirectResponse
+
     return HTMLResponse(content='<script>window.location.reload()</script>')
 
 
@@ -1035,6 +1185,12 @@ async def stats_page(request: Request, period: str = "week"):
         
         impact_score = round((impact_count / total_30_completed * 100)) if total_30_completed > 0 else 0
 
+        # Period stats
+        from app.models.period_entry import PeriodEntry as PE
+        period_res = await db.execute(select(PE).order_by(PE.date))
+        period_entries_for_stats = period_res.scalars().all()
+        period_stats = compute_period_data(list(period_entries_for_stats), date.today())
+
     return templates.TemplateResponse(request, "stats.html", {
         "request": request,
         "total_completed": total_completed,
@@ -1048,6 +1204,7 @@ async def stats_page(request: Request, period: str = "week"):
         "last_report": last_report,
         "career_impacts": impacts,
         "impact_score": impact_score,
+        "period_stats": period_stats,
     })
 
 @router.get("/api/stats/chart", response_class=HTMLResponse)

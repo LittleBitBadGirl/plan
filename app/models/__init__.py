@@ -9,3 +9,4 @@ from .impact import CareerImpact
 from .shopping import ShoppingItem
 from .finance import Transaction
 from .goal import FinancialGoal
+from .period_entry import PeriodEntry

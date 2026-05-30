@@ -2,6 +2,63 @@
 
 {% block title %}Дашборд — Планировщик{% endblock %}
 
+{% block extra_head %}
+<style>
+    .period-cell {
+        width: 1.5rem;
+        height: 1.5rem;
+        border-radius: 0.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-weight: 700;
+        transition: all 0.15s ease;
+        position: relative;
+        border: 1px solid transparent;
+    }
+    .period-cell--default {
+        background: rgba(30, 30, 50, 0.6);
+        border-color: rgba(75, 85, 99, 0.35);
+        color: #9ca3af;
+        cursor: pointer;
+    }
+    .period-cell--default:hover {
+        border-color: rgba(156, 163, 175, 0.5);
+        color: #d1d5db;
+    }
+    .period-cell--period {
+        background: rgba(225, 29, 72, 0.75);
+        border-color: rgba(251, 113, 133, 0.6);
+        color: #fff;
+        cursor: pointer;
+    }
+    .period-cell--period:hover {
+        background: rgba(225, 29, 72, 0.9);
+    }
+    .period-cell--pain {
+        background: rgba(190, 18, 60, 0.9);
+        border-color: rgba(253, 164, 175, 0.8);
+        color: #fff;
+        cursor: pointer;
+    }
+    .period-cell--future {
+        background: rgba(20, 20, 35, 0.4);
+        border-color: rgba(55, 65, 81, 0.25);
+        color: #374151;
+        cursor: default;
+    }
+    .period-cell--today {
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45);
+    }
+    .period-phase-pill--period     { background: rgba(225,29,72,0.15);  color: #fb7185; }
+    .period-phase-pill--follicular { background: rgba(59,130,246,0.15); color: #60a5fa; }
+    .period-phase-pill--ovulation  { background: rgba(16,185,129,0.15); color: #34d399; }
+    .period-phase-pill--luteal     { background: rgba(139,92,246,0.15);  color: #a78bfa; }
+    .period-phase-pill--pms        { background: rgba(245,158,11,0.15); color: #fbbf24; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="max-w-6xl mx-auto">
     <!-- Header -->
@@ -185,6 +242,70 @@
                     {% endfor %}
                 </div>
             </div>
+
+            <!-- Period Tracker Card — always last in column 2 -->
+            <div class="bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg flex flex-col" id="period-tracker-card">
+                <div class="flex justify-between items-start mb-3 gap-2">
+                    <div class="min-w-0">
+                        <h3 class="font-bold text-gray-100 text-sm">Месячные</h3>
+                        <p class="text-[10px] text-gray-500 mt-0.5">{{ period_data.month_label }}</p>
+                    </div>
+                    {% if period_data.has_data %}
+                    <div class="text-right shrink-0">
+                        <span class="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase period-phase-pill--{{ period_data.current_phase }}">
+                            {{ period_data.current_phase_label }}
+                        </span>
+                        <p class="text-[10px] text-gray-400 mt-1">
+                            день {{ period_data.current_cycle_day }}
+                            {% if period_data.days_until_next is not none and period_data.days_until_next > 0 %}
+                            · ~{{ period_data.days_until_next }} до след.
+                            {% endif %}
+                        </p>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="grid grid-cols-7 gap-1 self-center w-full max-w-[11rem] mx-auto">
+                    {% for wd in ['ПН','ВТ','СР','ЧТ','ПТ','СБ','ВС'] %}
+                    <div class="text-[7px] text-gray-600 text-center font-bold pb-0.5">{{ wd }}</div>
+                    {% endfor %}
+
+                    {% for _ in range(period_data.start_weekday) %}
+                    <div class="w-6 h-6"></div>
+                    {% endfor %}
+
+                    {% for day in period_data.calendar_days %}
+                    <button
+                        type="button"
+                        onclick="togglePeriodDay('{{ day.date_str }}', this)"
+                        data-state="{{ day.state }}"
+                        {% if day.state == 'future' %}disabled{% endif %}
+                        class="period-cell
+                               {% if day.state == 'period' %}period-cell--period
+                               {% elif day.state == 'pain' %}period-cell--pain
+                               {% elif day.state == 'future' %}period-cell--future
+                               {% else %}period-cell--default{% endif %}
+                               {% if day.is_today %}period-cell--today{% endif %}">
+                        {{ day.day_num }}
+                        <span class="period-pain-dot absolute bottom-0 right-0 w-1 h-1 rounded-full bg-white pointer-events-none"
+                              style="opacity:{{ 1 if day.state == 'pain' else 0 }};"></span>
+                    </button>
+                    {% endfor %}
+                </div>
+
+                {% if period_data.has_data %}
+                {% set prog_pct = [(period_data.current_cycle_day / period_data.avg_cycle * 100)|round, 100]|min %}
+                <div class="mt-3 flex justify-between items-center text-[9px]">
+                    <span class="text-gray-600 uppercase tracking-wider">Цикл</span>
+                    <span class="text-rose-400 font-bold">{{ period_data.current_cycle_day }}/~{{ period_data.avg_cycle }}</span>
+                </div>
+                <div class="mt-1 w-full bg-dark-700 rounded-full h-1 overflow-hidden">
+                    <div class="h-full bg-rose-500/80 transition-all duration-500" style="width:{{ prog_pct }}%;"></div>
+                </div>
+                {% endif %}
+
+                <p class="text-[8px] text-gray-700 text-center mt-2.5">тап: период → боль → снять</p>
+            </div>
         </div>
 
         <!-- COLUMN 3: STATS, RECURRING & SHOPPING -->
@@ -299,6 +420,43 @@
 
 {% block extra_scripts %}
 <script>
+function applyPeriodCellState(btn, state) {
+    btn.classList.remove('period-cell--default', 'period-cell--period', 'period-cell--pain', 'period-cell--future');
+    const dot = btn.querySelector('.period-pain-dot');
+    if (state === 'period') {
+        btn.classList.add('period-cell--period');
+        if (dot) dot.style.opacity = '0';
+    } else if (state === 'pain') {
+        btn.classList.add('period-cell--pain');
+        if (dot) dot.style.opacity = '1';
+    } else {
+        btn.classList.add('period-cell--default');
+        if (dot) dot.style.opacity = '0';
+    }
+    btn.dataset.state = state;
+}
+
+async function togglePeriodDay(dateStr, btn) {
+    try {
+        const card = document.getElementById('period-tracker-card');
+        const markedBefore = card.querySelectorAll('[data-state="period"], [data-state="pain"]').length;
+
+        const resp = await fetch('/api/period/toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: dateStr })
+        });
+        const data = await resp.json();
+        applyPeriodCellState(btn, data.state);
+
+        if (markedBefore === 0 && data.state === 'period') {
+            setTimeout(() => window.location.reload(), 350);
+        }
+    } catch (e) {
+        console.error('Period toggle error:', e);
+    }
+}
+
 async function toggleHabit(habitId, dateStr, btn) {
     try {
         const response = await fetch('/api/habits/toggle', {
