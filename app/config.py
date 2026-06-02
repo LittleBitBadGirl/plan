@@ -16,8 +16,10 @@ class Settings(BaseSettings):
     uploads_dir: Path = Path(__file__).parent.parent / "uploads"
     config_dir: Path = Path(__file__).parent.parent / "config"
 
-    # AI (в будущем внешнее API)
+    # AI — DeepSeek (основной) + Gemini (vision) + Groq (резерв)
     ai_use_local: bool = False
+    deepseek_api_key: str = ""
+    gemini_api_key: str = ""
     groq_api_key: str = ""
 
     # OCR
