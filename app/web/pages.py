@@ -1260,17 +1260,27 @@ async def get_history_data(db, period: str):
 
 @router.get("/api/ai/prepare-analysis", response_class=HTMLResponse)
 async def run_ai_analysis(request: Request):
-    """Автоматический запуск анализа задач за вчера через Groq"""
-    yesterday = date.today() - timedelta(days=1)
+    """Анализ задач через DeepSeek — с даты последнего анализа"""
     
     async with async_session() as db:
-        # Задачи за вчера
+        # Находим дату последнего анализа
+        last_report_res = await db.execute(
+            select(func.max(AIReport.report_date))
+        )
+        last_date = last_report_res.scalar()
+        start_date = last_date + timedelta(days=1) if last_date else date.today() - timedelta(days=7)
+        today = date.today()
+        
+        if start_date > today:
+            start_date = today
+        
+        # Задачи за период
         result = await db.execute(
             select(Task)
             .options(selectinload(Task.category))
             .where(
-                (func.date(Task.completed_at) == yesterday) | 
-                (Task.due_date == yesterday)
+                (func.date(Task.completed_at) >= start_date) | 
+                (Task.due_date >= start_date)
             )
         )
         tasks = result.scalars().all()
@@ -1278,83 +1288,174 @@ async def run_ai_analysis(request: Request):
         if not tasks:
             return HTMLResponse(f"""
                 <div class="bg-yellow-900/20 border border-yellow-700/50 p-6 rounded-xl text-center">
-                    <p class="text-yellow-500">За вчера ({yesterday.strftime('%d.%m')}) не найдено задач для анализа.</p>
+                    <p class="text-yellow-500">Нет новых задач с {start_date.strftime('%d.%m')}.</p>
                 </div>
             """)
 
-        # Формируем контекст для Грока
         tasks_list = []
         for t in tasks:
-            status = "ВЫПОЛНЕНО" if t.status == "выполнена" else "ПРОСРОЧЕНО/НОВАЯ"
+            status = "✅" if t.status == "выполнена" else "⏳"
             cat = t.category.name if t.category else "Без категории"
             tasks_list.append(f"- [{status}] [{cat}] {t.title}")
 
         tasks_context = "\n".join(tasks_list)
         
         prompt = f"""Ты — Senior Project Manager и коуч по продуктивности. 
-Проанализируй итоги дня пользователя за {yesterday.strftime('%d.%m.%Y')}.
+Проанализируй итоги пользователя за период {start_date.strftime('%d.%m')} — {today.strftime('%d.%m')}.
 
-СПИСОК ЗАДАЧ:
+ЗАДАЧИ:
 {tasks_context}
 
-ТВОЯ ЗАДАЧА:
-1. Дай краткий, но емкий Senior-анализ дня (что было сделано круто, где просадка).
-2. Выдели ключевые фокусы дня (на какие проекты ушло больше всего сил).
-3. Дай одну конкретную рекомендацию на будущее.
+Формат ответа (Markdown):
+### Анализ периода
+(2-3 предложения — общая картина)
 
-СТИЛЬ: Профессиональный, прямой, без воды, мотивирующий, но критичный. 
-Используй Markdown разметку (заголовки ###, жирный текст).
+### Положительные результаты
+(конкретные успехи, проекты)
+
+### Области для улучшения
+(где просадка, что оптимизировать)
+
+### Рекомендация
+(одна конкретная)
 """
 
-        # Вызываем Groq напрямую
+        # DeepSeek
         import httpx
         try:
             async with httpx.AsyncClient() as client:
+                api_key = settings.deepseek_api_key or settings.groq_api_key
+                api_url = "https://api.deepseek.com/chat/completions" if settings.deepseek_api_key else "https://api.groq.com/openai/v1/chat/completions"
+                model = "deepseek-chat" if settings.deepseek_api_key else "llama-3.3-70b-versatile"
+                
                 response = await client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {settings.groq_api_key}",
-                        "Content-Type": "application/json"
-                    },
+                    api_url,
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     json={
-                        "model": "llama-3.3-70b-versatile",
+                        "model": model,
                         "messages": [
-                            {"role": "system", "content": "Ты — профессиональный аналитик продуктивности."},
+                            {"role": "system", "content": "Ты — аналитик продуктивности. Пиши на русском, профессионально, без воды."},
                             {"role": "user", "content": prompt}
                         ],
                         "temperature": 0.3
                     },
-                    timeout=20.0
+                    timeout=30.0
                 )
                 
                 if response.status_code == 200:
                     analysis_content = response.json()['choices'][0]['message']['content']
                     
-                    # Сохраняем в базу
-                    from app.models.report import AIReport
-                    # Проверяем, есть ли уже отчет за этот день
-                    existing = await db.execute(select(AIReport).where(AIReport.report_date == yesterday))
-                    report = existing.scalar_one_or_none()
-                    
-                    if report:
-                        report.content = analysis_content
-                    else:
-                        report = AIReport(report_date=yesterday, content=analysis_content)
-                        db.add(report)
-                    
+                    # Сохраняем
+                    report = AIReport(report_date=today, content=analysis_content)
+                    db.add(report)
                     await db.commit()
                     
                     return HTMLResponse(f"""
-                        <div class="bg-green-900/20 border border-green-500/50 p-6 rounded-xl text-center">
-                            <p class="text-green-400 font-bold mb-2 text-lg">✅ Анализ завершен!</p>
-                            <p class="text-gray-400 text-sm mb-4">Senior-разбор за {yesterday.strftime('%d.%m')} готов и сохранен.</p>
-                            <button onclick="window.location.reload()" class="px-4 py-2 bg-accent text-white rounded-lg font-bold">Посмотреть результат</button>
+                        <div id="analysis-result" class="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
+                            <div class="prose prose-invert max-w-none text-sm">{analysis_content}</div>
+                            <div class="mt-4 pt-4 border-t border-gray-700">
+                                <p class="text-gray-500 text-xs mb-2">Обратная связь — что поправить в анализе?</p>
+                                <div class="flex gap-2">
+                                    <input type="text" id="feedback-input" name="feedback" 
+                                           placeholder="Например: слишком обще, добавь цифры..."
+                                           class="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white"
+                                           hx-get="/api/ai/feedback"
+                                           hx-trigger="keydown[key=='Enter']"
+                                           hx-include="this"
+                                           hx-target="#analysis-result"
+                                           hx-swap="outerHTML">
+                                    <button class="px-3 py-2 bg-accent text-white rounded-lg text-sm font-bold"
+                                            hx-get="/api/ai/feedback"
+                                            hx-include="#feedback-input"
+                                            hx-target="#analysis-result"
+                                            hx-swap="outerHTML">→</button>
+                                </div>
+                            </div>
                         </div>
                     """)
                 else:
-                    return HTMLResponse(f"""<div class="p-4 bg-red-900/20 text-red-400 rounded-lg">Ошибка API Groq: {response.status_code}</div>""")
+                    return HTMLResponse(f"""<div class="p-4 bg-red-900/20 text-red-400 rounded-lg">Ошибка API: {response.status_code}</div>""")
         except Exception as e:
             return HTMLResponse(f"""<div class="p-4 bg-red-900/20 text-red-400 rounded-lg">Ошибка: {str(e)}</div>""")
+
+
+@router.get("/api/ai/feedback", response_class=HTMLResponse)
+async def ai_feedback(request: Request, feedback: str = ""):
+    """Повторный анализ с учётом обратной связи"""
+    if not feedback.strip():
+        return HTMLResponse("""<div class="p-4 bg-yellow-900/20 text-yellow-400 rounded-lg">Введи текст обратной связи</div>""")
+    
+    async with async_session() as db:
+        last = await db.execute(
+            select(AIReport).order_by(AIReport.report_date.desc()).limit(1)
+        )
+        report = last.scalar_one_or_none()
+        if not report:
+            return HTMLResponse("""<div class="p-4 bg-yellow-900/20 text-yellow-400 rounded-lg">Нет сохранённого анализа</div>""")
+        
+        tasks_res = await db.execute(
+            select(Task).options(selectinload(Task.category))
+            .where(Task.completed_at != None)
+            .order_by(Task.completed_at.desc()).limit(50)
+        )
+        tasks = tasks_res.scalars().all()
+        tasks_text = "\n".join([f"- {t.title} [{t.category.name if t.category else '?'}]" for t in tasks])
+        
+        prompt = f"""Перепиши анализ продуктивности с учётом обратной связи пользователя.
+
+ОБРАТНАЯ СВЯЗЬ: {feedback}
+
+ПРЕДЫДУЩИЙ АНАЛИЗ:
+{report.content}
+
+ЗАДАЧИ (контекст):
+{tasks_text}
+
+Сделай новый анализ, исправляя то, что указано в обратной связи. Тот же формат (Markdown).
+"""
+        import httpx
+        try:
+            async with httpx.AsyncClient() as client:
+                api_key = settings.deepseek_api_key or settings.groq_api_key
+                api_url = "https://api.deepseek.com/chat/completions" if settings.deepseek_api_key else "https://api.groq.com/openai/v1/chat/completions"
+                model = "deepseek-chat" if settings.deepseek_api_key else "llama-3.3-70b-versatile"
+                
+                resp = await client.post(api_url,
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={"model": model, "messages": [
+                        {"role": "system", "content": "Ты — аналитик. Учитывай обратную связь. Пиши на русском."},
+                        {"role": "user", "content": prompt}
+                    ], "temperature": 0.3},
+                    timeout=30.0)
+                
+                if resp.status_code == 200:
+                    new_content = resp.json()['choices'][0]['message']['content']
+                    report.content = new_content
+                    await db.commit()
+                    
+                    return HTMLResponse(f"""
+                        <div id="analysis-result" class="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
+                            <div class="text-xs text-green-400 mb-2">✅ Обновлено: «{feedback[:80]}»</div>
+                            <div class="prose prose-invert max-w-none text-sm">{new_content}</div>
+                            <div class="mt-4 pt-4 border-t border-gray-700">
+                                <p class="text-gray-500 text-xs mb-2">Ещё обратная связь?</p>
+                                <div class="flex gap-2">
+                                    <input type="text" name="feedback" placeholder="Что ещё поправить?"
+                                           class="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white"
+                                           hx-get="/api/ai/feedback" hx-trigger="keydown[key=='Enter']"
+                                           hx-include="this" hx-target="#analysis-result" hx-swap="outerHTML">
+                                    <button class="px-3 py-2 bg-accent text-white rounded-lg text-sm font-bold"
+                                            hx-get="/api/ai/feedback" hx-include="this"
+                                            hx-target="#analysis-result" hx-swap="outerHTML">→</button>
+                                </div>
+                            </div>
+                        </div>
+                    """)
+        except Exception as e:
+            return HTMLResponse(f"""<div class="p-4 bg-red-900/20 text-red-400 rounded-lg">Ошибка: {str(e)}</div>""")
+    
+    return HTMLResponse("""<div class="p-4 bg-red-900/20 text-red-400 rounded-lg">Неизвестная ошибка</div>""")
+
 
 @router.get("/recurring", response_class=HTMLResponse)
 async def recurring_page(request: Request):
