@@ -171,7 +171,7 @@ templates.env.cache = None  # Отключаем кэш, чтобы избежа
 _EMOJI_IN_NAME = re.compile(
     r"[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F600-\U0001F64F"
     r"\U0001F680-\U0001F6FF\U0001F1E0-\U0001F1FF\U00002702-\U000027B0"
-    r"\U000024C2-\U0001F251\UFE0F\u200d]+",
+    r"\U000024C2-\U0001F251\uFE0F\u200d]+",
     flags=re.UNICODE,
 )
 
@@ -243,6 +243,11 @@ async def dashboard(request: Request):
     if rollover_result["moved"] > 0:
         from app.utils.logger import app_logger
         app_logger.info(f"🔄 Auto-rollover: перенесено {rollover_result['moved']} задач на сегодня")
+
+    from app.config import settings as app_settings
+    from app.services.calendar_sync_service import sync_calendar_events, get_visible_events_for_day
+    if app_settings.calendar_sync_enabled:
+        await sync_calendar_events()
 
     async with async_session() as db:
         # Привычки (Habit Tracker)
@@ -375,6 +380,8 @@ async def dashboard(request: Request):
         if len(tasks) > 8:
             ai_warning = f"⚠️ Запланировано {len(tasks)} задач на сегодня. Обычно вы выполняете ~5."
 
+        calendar_events = await get_visible_events_for_day(db, today)
+
     return templates.TemplateResponse(request, "dashboard.html", {
         "request": request,
         "tasks": tasks,
@@ -392,6 +399,7 @@ async def dashboard(request: Request):
             "total": len(shopping_items),
             "remaining": len(shopping_items),
         },
+        "calendar_events": calendar_events,
     })
 
 
