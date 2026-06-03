@@ -4,6 +4,7 @@ from .category import Category
 from .habit import Habit
 from .habit_log import HabitLog
 from .recurring import RecurringTask
+from .recurring_completion import RecurringCompletion
 from .report import AIReport
 from .impact import CareerImpact
 from .shopping import ShoppingItem

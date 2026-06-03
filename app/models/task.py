@@ -20,6 +20,7 @@ class Task(Base):
     source = Column(String(20), default="web")  # telegram/web/screenshot
     parent_task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
     is_archived = Column(Boolean, default=False, index=True)
+    item_kind = Column(String(20), default="task", nullable=False, index=True)  # task
     sort_order = Column(Integer, default=0)
     needs_review = Column(Boolean, default=False)
     message_hash = Column(String(64), nullable=True)

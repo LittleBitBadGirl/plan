@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     # OCR
     ocr_lang: str = "rus+eng"
 
+    # Yandex Calendar (CalDAV)
+    yandex_caldav_user: str = ""
+    yandex_caldav_app_password: str = ""
+    yandex_calendar_urls: str = ""  # comma-separated CalDAV calendar URLs
+    calendar_sync_enabled: bool = False
+
     # База данных
     database_url: str = ""
 

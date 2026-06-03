@@ -328,6 +328,7 @@
                                         {% elif rt.recurrence_type == 'weekly' %}еженедельно
                                         {% else %}ежемесячно{% endif %}
                                     </span>
+                                    <span class="text-[8px] text-gray-500">✓{{ rt.completed_count or 0 }} · ✗{{ rt.missed_count or 0 }}</span>
                                 </div>
                             </div>
                             <form hx-post="/api/recurring/{{ rt.id }}/complete"
@@ -373,46 +374,6 @@
                 </div>
             </div>
 
-            <!-- Household -->
-            <div class="space-y-4">
-                <h2 class="text-xl font-bold text-orange-400 flex items-center gap-2 px-1">
-                    <span>🏠</span> Быт
-                </h2>
-                <div class="bg-dark-800 rounded-xl border border-dark-600 shadow-lg overflow-hidden">
-                    <div class="p-3 space-y-3 max-h-[400px] overflow-y-auto">
-                        {% if household_tasks %}
-                            {% for h_task in household_tasks %}
-                            <div class="bg-dark-900 rounded-lg p-3 border border-dark-700 hover:border-orange-500 transition group" id="task-{{ h_task.id }}">
-                                <div class="flex justify-between items-start">
-                                    <div class="flex-1 min-w-0">
-                                        <h3 class="font-medium text-white text-xs truncate">{{ h_task.title }}</h3>
-                                        <p class="text-[8px] text-gray-500 mt-1 uppercase">{{ h_task.category.name if h_task.category else 'Быт' }}</p>
-                                    </div>
-                                    <form hx-post="/tasks/{{ h_task.id }}/complete" hx-target="#task-{{ h_task.id }}" hx-swap="outerHTML">
-                                        <button type="submit" class="text-green-500 hover:text-green-400 text-lg p-1">✅</button>
-                                    </form>
-                                </div>
-                            </div>
-                            {% endfor %}
-                        {% else %}
-                            <p class="text-center py-6 text-gray-600 italic text-[10px]">Домашних дел пока нет</p>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="p-3 bg-dark-700/20 border-t border-dark-600">
-                        <form hx-post="/tasks/create" 
-                              hx-target="this" 
-                              hx-swap="outerHTML" 
-                              hx-on::after-request="window.location.reload()"
-                              class="flex gap-2">
-                            <input type="hidden" name="category_id" value="{{ household_cat_ids[0] if household_cat_ids else '' }}">
-                            <input type="text" name="title" placeholder="+ Новое дело..." 
-                                   class="flex-1 bg-dark-900 border border-dark-600 rounded px-3 py-1.5 text-[10px] text-white focus:outline-none focus:border-orange-500">
-                            <button type="submit" class="bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-bold px-2 rounded transition-all">Ок</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
         </div>
 
     </div>

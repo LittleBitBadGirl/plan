@@ -168,6 +168,28 @@ templates_dir = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(templates_dir))
 templates.env.cache = None  # Отключаем кэш, чтобы избежать ошибок с хэшированием словарей
 
+_EMOJI_IN_NAME = re.compile(
+    r"[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F600-\U0001F64F"
+    r"\U0001F680-\U0001F6FF\U0001F1E0-\U0001F1FF\U00002702-\U000027B0"
+    r"\U000024C2-\U0001F251\UFE0F\u200d]+",
+    flags=re.UNICODE,
+)
+
+
+def _strip_emoji(text: str) -> str:
+    if not text:
+        return ""
+    cleaned = _EMOJI_IN_NAME.sub("", text)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+templates.env.filters["noemoji"] = _strip_emoji
+
+
+def _render_shopping_list(request: Request, items: list) -> str:
+    tpl = templates.get_template("partials/shopping_list.html")
+    return tpl.render({"request": request, "items": items})
+
 
 async def get_categories_list():
     """Получить список категорий только для задач"""
@@ -179,33 +201,16 @@ async def get_categories_list():
 
 
 async def get_today_stats(db: AsyncSession):
-    """Статистика сегодняшнего дня.
-
-    Считаем только задачи, которые реально видны в плане дня (колонка 1):
-    - корневые (parent_task_id IS NULL)
-    - не бытовые категории
-    - source != 'recurring'  (вхождения регулярных задач учитываются отдельно в колонке 3)
-    """
-    from sqlalchemy import not_, or_
+    """Статистика сегодняшнего дня (колонка 1, без recurring-вхождений)."""
+    from sqlalchemy import or_
     today = date.today()
-
-    # Household-категории — те же самые, что фильтруются на дашборде
-    cat_result = await db.execute(
-        select(Category.id).where(
-            (Category.name.ilike("%быт%")) |
-            (Category.name.ilike("%покупк%")) |
-            (Category.name.ilike("%семья%"))
-        )
-    )
-    household_ids = [row[0] for row in cat_result.all()]
 
     base_filter = [
         Task.due_date == today,
         Task.parent_task_id == None,
         or_(Task.source != "recurring", Task.source == None),
+        Task.item_kind == "task",
     ]
-    if household_ids:
-        base_filter.append(not_(Task.category_id.in_(household_ids)))
 
     completed_result = await db.execute(
         select(func.count(Task.id)).where(
@@ -282,21 +287,7 @@ async def dashboard(request: Request):
         period_entries = period_result.scalars().all()
         period_data = compute_period_data(list(period_entries), today)
 
-        # ДАННЫЕ ДЛЯ БЛОКА БЫТА И ПОКУПОК
-        # Сначала определяем ID категорий "быта", чтобы исключить их из основного списка
-        cat_result = await db.execute(
-            select(Category).where(
-                (Category.name.ilike("%быт%")) | 
-                (Category.name.ilike("%покупк%")) | 
-                (Category.name.ilike("%семья%"))
-            )
-        )
-        household_categories = cat_result.scalars().all()
-        household_cat_ids = [c.id for c in household_categories]
-
         # Обычные задачи (только корневые)
-        # Исключаем периодические (source=recurring) и бытовые категории
-        from sqlalchemy import not_
         result = await db.execute(
             select(Task)
             .options(selectinload(Task.category).selectinload(Category.parent))
@@ -304,9 +295,9 @@ async def dashboard(request: Request):
                 Task.due_date == today,
                 Task.is_archived == False,
                 Task.status.in_(["новая", "в_работе"]),
-                Task.parent_task_id == None,  # Только корневые задачи
+                Task.parent_task_id == None,
                 Task.source.is_distinct_from("recurring"),
-                not_(Task.category_id.in_(household_cat_ids)) if household_cat_ids else True
+                Task.item_kind == "task",
             ).order_by(Task.sort_order.asc())
         )
         tasks = list(result.scalars().all())
@@ -331,17 +322,8 @@ async def dashboard(request: Request):
         )
         all_recurring = recur_result.scalars().all()
 
-        # Находим только ВЫПОЛНЕННЫЕ recurring-задачи сегодня, чтобы не показывать повторно.
-        # Активные (source=recurring) намеренно НЕ исключаем — они уже отфильтрованы из левой
-        # колонки, поэтому должны отображаться здесь.
-        today_completed_result = await db.execute(
-            select(Task.title, Task.category_id).where(
-                Task.due_date == today,
-                Task.is_archived == True,
-                Task.status == "выполнена",
-            )
-        )
-        all_completed_today = set((t.title, t.category_id) for t in today_completed_result.all())
+        from app.services.recurring_completion_service import get_completed_today_keys
+        all_completed_today = await get_completed_today_keys(db, today)
 
         day_of_week = today.weekday()
         day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
@@ -377,28 +359,8 @@ async def dashboard(request: Request):
         # Получаем статистику через хелпер
         completed, total = await get_today_stats(db)
 
-        # ДАННЫЕ ДЛЯ БЛОКА БЫТА И ПОКУПОК
-        # 1. Элементы списка покупок
-        shop_result = await db.execute(
-            select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
-        )
-        shopping_items = list(shop_result.scalars().all())
-
-        # 2. Задачи категории "Быт", "Покупки", "Семья" (используем ID, вычисленные выше)
-        household_tasks = []
-        if household_cat_ids:
-            h_task_result = await db.execute(
-                select(Task)
-                .options(selectinload(Task.category))
-                .where(
-                    Task.category_id.in_(household_cat_ids),
-                    Task.is_archived == False,
-                    Task.status.in_(["новая", "в_работе"]),
-                    True  # Исключаем периодические из быта
-                )
-                .order_by(Task.status.desc(), Task.created_at.desc())
-            )
-            household_tasks = h_task_result.scalars().all()
+        from app.services.shopping_service import load_active_shopping
+        shopping_items = await load_active_shopping(db)
 
         # Категории для формы — только задачные, финансовые не смешиваем
         cats_result = await db.execute(
@@ -426,13 +388,10 @@ async def dashboard(request: Request):
         "habits_data": habits_data,
         "period_data": period_data,
         "shopping_items": shopping_items,
-        "household_tasks": household_tasks,
-        "household_cat_ids": household_cat_ids,
         "shop_stats": {
             "total": len(shopping_items),
-            "purchased": sum(1 for i in shopping_items if i.is_purchased),
-            "remaining": len([i for i in shopping_items if not i.is_purchased])
-        }
+            "remaining": len(shopping_items),
+        },
     })
 
 
@@ -579,6 +538,7 @@ async def task_web_edit(
         if status == "выполнена" and not task.completed_at:
             task.completed_at = datetime.utcnow()
             task.is_archived = True
+            task.item_kind = "task"
         elif status != "выполнена":
             task.completed_at = None
         await db.commit()
@@ -938,12 +898,13 @@ async def get_category_edit_form(category_id: int):
         if not category:
             return HTMLResponse("Ошибка")
         
+    display_name = _strip_emoji(category.name)
     return HTMLResponse(f"""
         <form hx-post="/categories/{category_id}/edit" hx-swap="outerHTML" class="flex gap-2 items-center">
-            <input type="text" name="name" value="{category.name}" 
+            <input type="text" name="name" value="{display_name}"
                    class="bg-dark-900 border border-accent rounded px-2 py-1 text-sm text-white focus:outline-none w-full">
-            <button type="submit" class="text-green-400 text-xs">✅</button>
-            <button type="button" onclick="window.location.reload()" class="text-gray-500 text-xs">❌</button>
+            <button type="submit" class="text-green-400 text-xs">OK</button>
+            <button type="button" onclick="window.location.reload()" class="text-gray-500 text-xs">×</button>
         </form>
     """)
 
@@ -1042,11 +1003,11 @@ async def edit_category(category_id: int, name: str = Form(...)):
             
             # Возвращаем заголовок/элемент с новым именем
             # Если это глобальная категория, возвращаем h2, если подкатегория - span
+            display_name = _strip_emoji(category.name)
             if category.is_global:
                 return HTMLResponse(f"""
-                    <h2 class="text-lg font-bold text-white flex items-center gap-2" id="cat-title-{category_id}">
-                        <span class="text-accent text-xl">🏷️</span>
-                        {category.name}
+                    <h2 class="text-lg font-bold text-white" id="cat-title-{category_id}">
+                        {display_name}
                     </h2>
                 """)
             else:
@@ -1054,11 +1015,11 @@ async def edit_category(category_id: int, name: str = Form(...)):
                     <div class="flex items-center justify-between group/item p-2 hover:bg-dark-700/30 rounded transition-colors" id="cat-title-{category_id}">
                         <span class="text-sm text-gray-300 flex items-center gap-2">
                             <span class="text-gray-600">└</span>
-                            {category.name}
+                            {display_name}
                         </span>
                         <div class="flex items-center gap-2 opacity-0 group-hover/item:opacity-100 transition-opacity">
-                            <button hx-get="/categories/{category_id}/edit-form" hx-target="#cat-title-{category_id}" class="text-xs text-gray-500 hover:text-white" title="Изменить">✏️</button>
-                            <button hx-delete="/api/categories/{category_id}" hx-target="#cat-title-{category_id}" hx-swap="delete" hx-confirm="Удалить подкатегорию?" class="text-red-500 hover:text-red-400 text-xs" title="Удалить">🗑</button>
+                            <button hx-get="/categories/{category_id}/edit-form" hx-target="#cat-title-{category_id}" class="text-xs text-gray-500 hover:text-white uppercase" title="Изменить">ред.</button>
+                            <button hx-delete="/api/categories/{category_id}" hx-target="#cat-title-{category_id}" hx-swap="delete" hx-confirm="Удалить подкатегорию?" class="text-red-500 hover:text-red-400 text-xs uppercase" title="Удалить">удл.</button>
                         </div>
                     </div>
                 """)
@@ -1091,30 +1052,56 @@ async def restore_task(task_id: int):
 
 
 @router.get("/archive", response_class=HTMLResponse)
-async def archive_page(request: Request, page: int = 1, limit: int = 50):
-    """Архив — выполненные и удалённые задачи с пагинацией"""
+async def archive_page(
+    request: Request,
+    page: int = 1,
+    shop_page: int = 1,
+    limit: int = 50,
+):
+    """Архив — задачи (item_kind=task) и покупки (item_kind=purchase) отдельно."""
     offset = (page - 1) * limit
+    shop_offset = (shop_page - 1) * limit
 
     async with async_session() as db:
-        # Общее количество
         total_result = await db.execute(
-            select(func.count(Task.id)).where(Task.is_archived == True)
+            select(func.count(Task.id)).where(
+                Task.is_archived == True,
+                Task.item_kind == "task",
+            )
         )
         total = total_result.scalar() or 0
 
-        # Задачи для текущей страницы
         result = await db.execute(
             select(Task)
             .options(selectinload(Task.category))
-            .where(Task.is_archived == True)
-            .order_by(Task.completed_at.desc())
+            .where(Task.is_archived == True, Task.item_kind == "task")
+            .order_by(Task.completed_at.desc(), Task.created_at.desc())
             .offset(offset)
             .limit(limit)
         )
         tasks = list(result.scalars().all())
 
-        has_next = offset + limit < total
+        shop_total_result = await db.execute(
+            select(func.count(ShoppingItem.id)).where(
+                ShoppingItem.is_archived == True,
+                ShoppingItem.item_kind == "purchase",
+            )
+        )
+        shop_total = shop_total_result.scalar() or 0
+
+        shop_result = await db.execute(
+            select(ShoppingItem)
+            .where(ShoppingItem.is_archived == True, ShoppingItem.item_kind == "purchase")
+            .order_by(ShoppingItem.purchased_at.desc(), ShoppingItem.created_at.desc())
+            .offset(shop_offset)
+            .limit(limit)
+        )
+        shopping_archived = list(shop_result.scalars().all())
+
         has_prev = page > 1
+        has_next = offset + limit < total
+        shop_has_prev = shop_page > 1
+        shop_has_next = shop_offset + limit < shop_total
 
     return templates.TemplateResponse(request, "archive.html", {
         "request": request,
@@ -1126,7 +1113,29 @@ async def archive_page(request: Request, page: int = 1, limit: int = 50):
         "has_next": has_next,
         "prev_page": page - 1,
         "next_page": page + 1,
+        "shopping_archived": shopping_archived,
+        "shop_total": shop_total,
+        "shop_page": shop_page,
+        "shop_has_prev": shop_has_prev,
+        "shop_has_next": shop_has_next,
+        "shop_prev_page": shop_page - 1,
+        "shop_next_page": shop_page + 1,
     })
+
+
+@router.post("/archive/shopping/{item_id}/restore", response_class=HTMLResponse)
+async def restore_shopping_from_archive(item_id: int):
+    """Вернуть покупку в активный список."""
+    async with async_session() as db:
+        result = await db.execute(select(ShoppingItem).where(ShoppingItem.id == item_id))
+        item = result.scalar_one_or_none()
+        if item:
+            item.is_archived = False
+            item.is_purchased = False
+            item.purchased_at = None
+            await db.commit()
+            return HTMLResponse(f'<div id="archive-shop-{item_id}" class="hidden"></div>')
+    return HTMLResponse('<div class="text-red-400 p-4">Ошибка восстановления</div>')
 
 
 @router.get("/stats", response_class=HTMLResponse)
@@ -1624,18 +1633,7 @@ async def task_create_htmx(
 async def get_tasks_today(db: AsyncSession, request: Request):
     """Вспомогательная функция для получения списка задач на сегодня и их отрисовки"""
     today = date.today()
-    
-    # Определяем бытовые категории
-    cat_result = await db.execute(
-        select(Category).where(
-            (Category.name.ilike("%быт%")) | 
-            (Category.name.ilike("%покупк%")) | 
-            (Category.name.ilike("%семья%"))
-        )
-    )
-    household_cat_ids = [c.id for c in cat_result.scalars().all()]
-    
-    from sqlalchemy import not_
+
     result = await db.execute(
         select(Task)
         .options(selectinload(Task.category).selectinload(Category.parent))
@@ -1645,7 +1643,7 @@ async def get_tasks_today(db: AsyncSession, request: Request):
             Task.status.in_(["новая", "в_работе"]),
             Task.parent_task_id == None,
             Task.source.is_distinct_from("recurring"),
-            not_(Task.category_id.in_(household_cat_ids)) if household_cat_ids else True
+            Task.item_kind == "task",
         ).order_by(Task.sort_order.asc(), Task.created_at.asc())
     )
     tasks = result.scalars().all()
@@ -1695,6 +1693,7 @@ async def complete_task(request: Request, task_id: int):
             task.status = "выполнена"
             task.completed_at = datetime.utcnow()
             task.is_archived = True
+            task.item_kind = "task"
             await db.commit()
 
             target = request.headers.get("HX-Target", "")
@@ -1713,8 +1712,9 @@ async def delete_task(request: Request, task_id: int):
         task = result.scalar_one_or_none()
         if task:
             task.is_archived = True
+            task.item_kind = "task"
             await db.commit()
-            
+
             target = request.headers.get("HX-Target", "")
             if target.startswith("task-"):
                 return HTMLResponse("")
@@ -1753,326 +1753,117 @@ async def plan_task(request: Request, task_id: int, due_date: str = Form(None)):
 
 @router.get("/shopping", response_class=HTMLResponse)
 async def shopping_page(request: Request):
-    """Страница списка покупок и бытовых задач"""
+    """Страница списка покупок."""
+    from app.services.shopping_service import load_active_shopping
+
     async with async_session() as db:
-        # 1. Элементы списка покупок (простые)
-        result = await db.execute(
-            select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
+        items = await load_active_shopping(db)
+        archived_count_result = await db.execute(
+            select(func.count(ShoppingItem.id)).where(ShoppingItem.is_archived == True)
         )
-        items = list(result.scalars().all())
-
-        # 2. Задачи категории "Быт" или "Покупки" из основного списка
-        # Ищем категории по ключевым словам
-        cat_result = await db.execute(
-            select(Category).where(
-                (Category.name.ilike("%быт%")) | 
-                (Category.name.ilike("%покупк%")) | 
-                (Category.name.ilike("%семья%"))
-            )
-        )
-        household_categories = cat_result.scalars().all()
-        household_cat_ids = [c.id for c in household_categories]
-
-        household_tasks = []
-        if household_cat_ids:
-            task_result = await db.execute(
-                select(Task)
-                .options(selectinload(Task.category))
-                .where(
-                    Task.category_id.in_(household_cat_ids),
-                    Task.is_archived == False
-                )
-                .order_by(Task.status.desc(), Task.created_at.desc())
-            )
-            household_tasks = task_result.scalars().all()
-
-        total = len(items)
-        purchased = sum(1 for item in items if item.is_purchased)
-        remaining = total - purchased
+        archived_count = archived_count_result.scalar() or 0
 
     return templates.TemplateResponse(request, "shopping.html", {
         "request": request,
         "items": items,
-        "household_tasks": household_tasks,
-        "household_cat_ids": household_cat_ids, # Теперь передаем
-        "total": total,
-        "purchased": purchased,
-        "remaining": remaining,
+        "total": len(items),
+        "remaining": len(items),
+        "archived_count": archived_count,
     })
 
+def _shopping_stats_script(total: int, archived_count: int) -> str:
+    return f'''<script>
+        const tc = document.getElementById('total-count');
+        const rc = document.getElementById('remaining-count');
+        const ac = document.getElementById('archived-count');
+        if (tc) tc.textContent = '{total}';
+        if (rc) rc.textContent = '{total}';
+        if (ac) ac.textContent = '{archived_count}';
+    </script>'''
+
+
+async def _shopping_list_response(request: Request, db: AsyncSession) -> HTMLResponse:
+    from app.services.shopping_service import load_active_shopping
+
+    items = await load_active_shopping(db)
+    archived_count_result = await db.execute(
+        select(func.count(ShoppingItem.id)).where(ShoppingItem.is_archived == True)
+    )
+    archived_count = archived_count_result.scalar() or 0
+    html = _render_shopping_list(request, items) + _shopping_stats_script(len(items), archived_count)
+    return HTMLResponse(content=html)
+
+
 @router.post("/api/shopping/create", response_class=HTMLResponse)
-async def create_shopping_item(
-    request: Request,
-    title: str = Form(...),
-):
-    """Создать элемент списка покупок"""
+async def create_shopping_item(request: Request, title: str = Form(...)):
+    """Создать элемент списка покупок."""
     async with async_session() as db:
-        item = ShoppingItem(
-            title=title,
-        )
-        db.add(item)
+        db.add(ShoppingItem(title=title, item_kind="purchase"))
         await db.commit()
-        
-        # Перезагружаем весь список
-        result = await db.execute(
-            select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
-        )
-        items = list(result.scalars().all())
-        
-        total = len(items)
-        purchased = sum(1 for item in items if item.is_purchased)
-        remaining = total - purchased
-
-    # Возвращаем только обновленный список элементов и статистику
-    from jinja2 import Template
-    list_template = Template('''
-        {% if items %}
-            {% for item in items %}
-            <div class="bg-dark-800 rounded-lg p-2 px-3 border border-dark-700 hover:border-purple-600 transition flex items-center gap-2 {{ 'opacity-40' if item.is_purchased else '' }}" 
-                 id="item-{{ item.id }}">
-                <!-- Чекбокс выполнения -->
-                <form hx-post="/api/shopping/{{ item.id }}/toggle"
-                      hx-target="#shopping-list"
-                      hx-swap="innerHTML"
-                      class="flex-shrink-0">
-                    <button type="submit" class="text-lg {{ 'text-green-400' if item.is_purchased else 'text-gray-600 hover:text-green-400' }}">
-                        {% if item.is_purchased %}✅{% else %}⬜{% endif %}
-                    </button>
-                </form>
-
-                <!-- Информация о продукте -->
-                <div class="flex-1 min-w-0">
-                    <span class="font-medium text-sm text-white truncate block {{ 'line-through text-gray-500' if item.is_purchased else '' }}">
-                        {{ item.title }}
-                    </span>
-                </div>
-
-                <!-- Удаление -->
-                <form hx-delete="/api/shopping/{{ item.id }}"
-                      hx-target="#shopping-list"
-                      hx-swap="innerHTML"
-                      class="flex-shrink-0">
-                    <button type="submit" class="text-gray-500 hover:text-red-400 text-xs" title="Удалить">🗑</button>
-                </form>
-            </div>
-            {% endfor %}
-        {% else %}
-            <div class="col-span-full text-center py-10 text-gray-500">
-                <p>Список покупок пуст 🛒</p>
-            </div>
-        {% endif %}
-    ''')
-    
-    stats_html = f'''
-        <script>
-            document.getElementById('total-count').textContent = '{total}';
-            document.getElementById('purchased-count').textContent = '{purchased}';
-            document.getElementById('remaining-count').textContent = '{remaining}';
-        </script>
-    '''
-    
-    return HTMLResponse(content=list_template.render(items=items) + stats_html)
+        return await _shopping_list_response(request, db)
 
 
 @router.post("/api/shopping/{item_id}/toggle", response_class=HTMLResponse)
 async def toggle_shopping_item(request: Request, item_id: int):
-    """Переключить статус покупки"""
+    """Отметить купленным → убрать из списка, положить в архив."""
+    from app.services.shopping_service import archive_purchased_item
+
     async with async_session() as db:
-        result = await db.execute(select(ShoppingItem).where(ShoppingItem.id == item_id))
-        item = result.scalar_one_or_none()
-        
-        if item:
-            item.is_purchased = not item.is_purchased
-            if item.is_purchased:
-                item.purchased_at = datetime.utcnow()
-            else:
-                item.purchased_at = None
-            await db.commit()
-            
-            # Перезагружаем весь список для обновления
-            result = await db.execute(
-                select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
+        result = await db.execute(
+            select(ShoppingItem).where(
+                ShoppingItem.id == item_id,
+                ShoppingItem.is_archived == False,
             )
-            items = list(result.scalars().all())
-            
-            total = len(items)
-            purchased = sum(1 for i in items if i.is_purchased)
-            remaining = total - purchased
-            
-            from jinja2 import Template
-            list_template = Template('''
-                {% if items %}
-                    {% for item in items %}
-                    <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition flex items-center gap-3 {{ 'opacity-50' if item.is_purchased else '' }}" 
-                         id="item-{{ item.id }}">
-                        <!-- Чекбокс выполнения -->
-                        <form hx-post="/api/shopping/{{ item.id }}/toggle"
-                              hx-target="#shopping-list"
-                              hx-swap="innerHTML"
-                              class="flex-shrink-0">
-                            <button type="submit" class="text-xl {{ 'text-green-400' if item.is_purchased else 'text-gray-600 hover:text-green-400' }}">
-                                {% if item.is_purchased %}✅{% else %}⬜{% endif %}
-                            </button>
-                        </form>
-
-                        <!-- Информация о продукте -->
-                        <div class="flex-1">
-                            <span class="font-medium text-white {{ 'line-through text-gray-500' if item.is_purchased else '' }}">
-                                {{ item.title }}
-                            </span>
-                        </div>
-
-                        <!-- Удаление -->
-                        <form hx-delete="/api/shopping/{{ item.id }}"
-                              hx-target="#shopping-list"
-                              hx-swap="innerHTML"
-                              class="flex-shrink-0">
-                            <button type="submit" class="text-red-400 hover:text-red-300" title="Удалить">🗑</button>
-                        </form>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="text-center py-10 text-gray-500">
-                        <p>Список покупок пуст 🛒</p>
-                        <p class="text-sm mt-2">Введите название продукта и нажмите Enter</p>
-                    </div>
-                {% endif %}
-            ''')
-            
-            stats_html = f'''
-                <script>
-                    document.getElementById('total-count').textContent = '{total}';
-                    document.getElementById('purchased-count').textContent = '{purchased}';
-                    document.getElementById('remaining-count').textContent = '{remaining}';
-                </script>
-            '''
-            
-            return HTMLResponse(content=list_template.render(items=items) + stats_html)
-    
+        )
+        item = result.scalar_one_or_none()
+        if item:
+            archive_purchased_item(item)
+            await db.commit()
+            return await _shopping_list_response(request, db)
     return HTMLResponse(content='<div class="hidden"></div>')
 
 
-@router.post("/api/shopping/restore-all", response_class=HTMLResponse)
-async def restore_all_shopping_items(request: Request):
-    """Сбросить статус 'куплено' для всех товаров"""
+@router.delete("/api/shopping/{item_id}", response_class=HTMLResponse)
+async def delete_shopping_item(request: Request, item_id: int):
+    """Удалить активную позицию из списка."""
     async with async_session() as db:
-        from sqlalchemy import update
+        result = await db.execute(
+            select(ShoppingItem).where(
+                ShoppingItem.id == item_id,
+                ShoppingItem.is_archived == False,
+            )
+        )
+        item = result.scalar_one_or_none()
+        if item:
+            await db.delete(item)
+            await db.commit()
+            return await _shopping_list_response(request, db)
+    raise HTTPException(status_code=404, detail="Позиция не найдена")
+
+
+@router.delete("/api/shopping/clear-purchased", response_class=HTMLResponse)
+async def clear_archived_shopping(request: Request):
+    """Удалить все архивные покупки навсегда."""
+    async with async_session() as db:
         await db.execute(
-            update(ShoppingItem).where(ShoppingItem.is_purchased == True).values(is_purchased=False, purchased_at=None)
+            delete(ShoppingItem).where(ShoppingItem.is_archived == True)
         )
         await db.commit()
-        
-        # Перезагружаем список
-        result = await db.execute(
-            select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
-        )
-        items = list(result.scalars().all())
-        total = len(items)
-        purchased = 0
-        remaining = total
-
-    from jinja2 import Template
-    # Используем тот же компактный шаблон (копирую его из метода выше)
-    list_template = Template('''
-        {% if items %}
-            {% for item in items %}
-            <div class="bg-dark-800 rounded-lg p-2 px-3 border border-dark-700 hover:border-purple-600 transition flex items-center gap-2 {{ 'opacity-40' if item.is_purchased else '' }}" 
-                 id="item-{{ item.id }}">
-                <form hx-post="/api/shopping/{{ item.id }}/toggle" hx-target="#shopping-list" hx-swap="innerHTML" class="flex-shrink-0">
-                    <button type="submit" class="text-lg {{ 'text-green-400' if item.is_purchased else 'text-gray-600 hover:text-green-400' }}">
-                        {% if item.is_purchased %}✅{% else %}⬜{% endif %}
-                    </button>
-                </form>
-                <div class="flex-1 min-w-0">
-                    <span class="font-medium text-sm text-white truncate block {{ 'line-through text-gray-500' if item.is_purchased else '' }}">
-                        {{ item.title }}
-                    </span>
-                </div>
-                <form hx-delete="/api/shopping/{{ item.id }}" hx-target="#shopping-list" hx-swap="innerHTML" class="flex-shrink-0">
-                    <button type="submit" class="text-gray-500 hover:text-red-400 text-xs" title="Удалить">🗑</button>
-                </form>
-            </div>
-            {% endfor %}
-        {% else %}
-            <div class="col-span-full text-center py-10 text-gray-500">
-                <p>Список покупок пуст 🛒</p>
-            </div>
-        {% endif %}
-    ''')
-    
-    stats_html = f'''
-        <script>
-            document.getElementById('total-count').textContent = '{total}';
-            document.getElementById('purchased-count').textContent = '{purchased}';
-            document.getElementById('remaining-count').textContent = '{remaining}';
-        </script>
-    '''
-    return HTMLResponse(content=list_template.render(items=items) + stats_html)
+        return await _shopping_list_response(request, db)
 
 
 @router.post("/api/shopping/bulk-create", response_class=HTMLResponse)
-async def bulk_create_shopping_items(
-    request: Request,
-    titles: str = Form(...),
-):
-    """Создать несколько элементов списка покупок из текста (по одному на строку)"""
-    lines = [line.strip() for line in titles.split('\n') if line.strip()]
-    
+async def bulk_create_shopping_items(request: Request, titles: str = Form(...)):
+    """Создать несколько элементов списка покупок из текста."""
+    lines = [line.strip() for line in titles.split("\n") if line.strip()]
+
     async with async_session() as db:
         for title in lines:
-            # Убираем лишние символы в начале (буллиты, дефисы)
-            clean_title = title.lstrip('•-*+ ').strip()
+            clean_title = title.lstrip("•-*+ ").strip()
             if clean_title:
-                item = ShoppingItem(title=clean_title)
-                db.add(item)
+                db.add(ShoppingItem(title=clean_title, item_kind="purchase"))
         await db.commit()
-        
-        # Перезагружаем список
-        result = await db.execute(
-            select(ShoppingItem).order_by(ShoppingItem.is_purchased.asc(), ShoppingItem.created_at.desc())
-        )
-        items = list(result.scalars().all())
-        total = len(items)
-        purchased = sum(1 for i in items if i.is_purchased)
-        remaining = total - purchased
-
-    # Тот же компактный шаблон
-    from jinja2 import Template
-    list_template = Template('''
-        {% if items %}
-            {% for item in items %}
-            <div class="bg-dark-800 rounded-lg p-2 px-3 border border-dark-700 hover:border-purple-600 transition flex items-center gap-2 {{ 'opacity-40' if item.is_purchased else '' }}" 
-                 id="item-{{ item.id }}">
-                <form hx-post="/api/shopping/{{ item.id }}/toggle" hx-target="#shopping-list" hx-swap="innerHTML" class="flex-shrink-0">
-                    <button type="submit" class="text-lg {{ 'text-green-400' if item.is_purchased else 'text-gray-600 hover:text-green-400' }}">
-                        {% if item.is_purchased %}✅{% else %}⬜{% endif %}
-                    </button>
-                </form>
-                <div class="flex-1 min-w-0">
-                    <span class="font-medium text-sm text-white truncate block {{ 'line-through text-gray-500' if item.is_purchased else '' }}">
-                        {{ item.title }}
-                    </span>
-                </div>
-                <form hx-delete="/api/shopping/{{ item.id }}" hx-target="#shopping-list" hx-swap="innerHTML" class="flex-shrink-0">
-                    <button type="submit" class="text-gray-500 hover:text-red-400 text-xs" title="Удалить">🗑</button>
-                </form>
-            </div>
-            {% endfor %}
-        {% else %}
-            <div class="col-span-full text-center py-10 text-gray-500">
-                <p>Список покупок пуст 🛒</p>
-            </div>
-        {% endif %}
-    ''')
-    
-    stats_html = f'''
-        <script>
-            document.getElementById('total-count').textContent = '{total}';
-            document.getElementById('purchased-count').textContent = '{purchased}';
-            document.getElementById('remaining-count').textContent = '{remaining}';
-        </script>
-    '''
-    return HTMLResponse(content=list_template.render(items=items) + stats_html)
+        return await _shopping_list_response(request, db)
 
 
 @router.get("/api/ai/generate-milestones", response_class=HTMLResponse)
@@ -2127,7 +1918,7 @@ async def generate_milestones(request: Request):
 
         return HTMLResponse(f"""
             <div class="bg-blue-900/20 border border-blue-500/50 p-6 rounded-xl text-center">
-                <p class="text-blue-400 font-bold mb-2 text-lg">🚀 Карьерный капитал пополнен!</p>
+                <p class="text-blue-400 font-bold mb-2 text-lg">Карьерный капитал пополнен</p>
                 <p class="text-gray-400 text-sm mb-4">Найдено и обработано достижений: {saved_count}.</p>
                 <button onclick="window.location.reload()" class="px-4 py-2 bg-accent text-white rounded-lg font-bold shadow-lg">Обновить и посмотреть</button>
             </div>

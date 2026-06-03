@@ -20,7 +20,13 @@ class RecurringTask(Base):
     time_of_day = Column(Time, nullable=True)
     is_active = Column(Boolean, default=True, index=True)
     completed_count = Column(Integer, default=0)
+    missed_count = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Связи
     category = relationship("Category")
+    completions = relationship(
+        "RecurringCompletion",
+        back_populates="recurring_task",
+        cascade="all, delete-orphan",
+    )

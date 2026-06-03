@@ -7,7 +7,7 @@
     <!-- Header -->
     <div class="flex items-center justify-between mb-8">
         <div>
-            <h1 class="text-3xl font-bold text-white">🗂️ Категории</h1>
+            <h1 class="text-3xl font-bold text-white">Категории</h1>
             <p class="text-gray-400 mt-1">Разделение на задачи и финансы</p>
         </div>
         <button onclick="document.getElementById('add-category-form').classList.toggle('hidden')"
@@ -28,8 +28,8 @@
             <div class="md:col-span-1">
                 <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Тип</label>
                 <select name="type" class="w-full px-4 py-2 bg-dark-700 border border-dark-500 rounded-lg text-white focus:outline-none focus:border-accent">
-                    <option value="task">📝 Задачи</option>
-                    <option value="finance">💰 Финансы</option>
+                    <option value="task">Задачи</option>
+                    <option value="finance">Финансы</option>
                 </select>
             </div>
             <div class="md:col-span-1">
@@ -38,12 +38,12 @@
                     <option value="">Глобальная</option>
                     <optgroup label="Задачи">
                         {% for cat in global_categories %}
-                        <option value="{{ cat.id }}">{{ cat.name }}</option>
+                        <option value="{{ cat.id }}">{{ cat.name | noemoji }}</option>
                         {% endfor %}
                     </optgroup>
                     <optgroup label="Финансы">
                         {% for cat in fin_global_categories %}
-                        <option value="{{ cat.id }}">{{ cat.name }}</option>
+                        <option value="{{ cat.id }}">{{ cat.name | noemoji }}</option>
                         {% endfor %}
                     </optgroup>
                 </select>
@@ -58,16 +58,15 @@
 
     <!-- SECTIONS: TASKS -->
     <div class="mb-12">
-        <h2 class="text-xl font-bold text-white flex items-center gap-2 mb-6 border-l-4 border-accent pl-4">
-            <span>📝</span> Категории задач
+        <h2 class="text-xl font-bold text-white mb-6 border-l-4 border-accent pl-4">
+            Категории задач
         </h2>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {% for gc in global_categories %}
             <div class="bg-dark-800 rounded-xl border border-dark-600 overflow-hidden flex flex-col shadow-lg hover:border-accent/50 transition-all group">
                 <div class="bg-dark-700/50 p-4 border-b border-dark-600 flex justify-between items-center">
-                    <h2 class="text-lg font-bold text-white flex items-center gap-2" id="cat-title-{{ gc.id }}">
-                        <span class="text-accent text-xl">🏷️</span>
-                        {{ gc.name }}
+                    <h2 class="text-lg font-bold text-white" id="cat-title-{{ gc.id }}">
+                        {{ gc.name | noemoji }}
                     </h2>
                     <span class="px-2 py-1 bg-dark-900 text-gray-500 rounded text-[10px] font-bold uppercase">
                         {{ task_counts.get(gc.id, 0) }} задач
@@ -80,7 +79,7 @@
                         <div class="flex items-center justify-between group/item p-2 hover:bg-dark-700/30 rounded transition-colors" id="cat-title-{{ sc.id }}">
                             <div class="flex items-center gap-2">
                                 <span class="text-gray-600 text-xs">└</span>
-                                <span class="text-sm text-gray-300">{{ sc.name }}</span>
+                                <span class="text-sm text-gray-300">{{ sc.name | noemoji }}</span>
                                 {% set sc_count = raw_counts.get(sc.id, 0) %}
                                 {% if sc_count > 0 %}
                                 <span class="text-[10px] text-gray-500 font-medium ml-1">({{ sc_count }})</span>
@@ -97,23 +96,21 @@
 
     <!-- SECTIONS: FINANCE -->
     <div>
-        <h2 class="text-xl font-bold text-white flex items-center gap-2 mb-6 border-l-4 border-yellow-500 pl-4">
-            <span>💰</span> Категории финансов
+        <h2 class="text-xl font-bold text-white mb-6 border-l-4 border-yellow-500 pl-4">
+            Категории финансов
         </h2>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {% for gc in fin_global_categories %}
             <div class="bg-dark-800 rounded-xl border border-dark-600 overflow-hidden flex flex-col shadow-lg hover:border-yellow-500/50 transition-all group"
                  id="fin-group-{{ gc.id }}"
-                 x-data="{ addingChild: false, newChildName: '', editingName: false, editName: '{{ gc.name }}' }">
+                 x-data="{ addingChild: false, newChildName: '', editingName: false, editName: '{{ gc.name | noemoji }}' }">
 
                 <!-- Header -->
                 <div class="bg-dark-700/50 p-3 border-b border-dark-600 flex justify-between items-center min-h-[48px]">
-                    <!-- Название (просмотр/редактирование) -->
                     <div class="flex-1 mr-2">
                         <span x-show="!editingName"
-                              class="text-sm font-bold text-white flex items-center gap-1">
-                            <span class="text-yellow-500">📁</span>
-                            {{ gc.name }}
+                              class="text-sm font-bold text-white">
+                            {{ gc.name | noemoji }}
                         </span>
                         <form x-show="editingName" x-cloak
                               @submit.prevent="
@@ -127,22 +124,21 @@
                             <input x-model="editName" x-ref="editInput"
                                    class="flex-1 bg-dark-900 border border-yellow-500/60 rounded px-2 py-1 text-xs text-white focus:outline-none w-full"
                                    @click.away="editingName = false">
-                            <button type="submit" class="text-green-400 text-sm font-bold">✓</button>
+                            <button type="submit" class="text-green-400 text-xs font-bold">OK</button>
                         </form>
                     </div>
 
-                    <!-- Кнопки управления -->
                     <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                         <button @click="editingName = true; $nextTick(() => $refs.editInput.focus())"
-                                class="text-gray-500 hover:text-white text-xs p-1" title="Переименовать">✏️</button>
+                                class="text-gray-500 hover:text-white text-[10px] uppercase p-1" title="Переименовать">ред.</button>
                         <button @click="addingChild = !addingChild"
                                 class="text-yellow-500/70 hover:text-yellow-400 text-xs p-1 font-bold" title="Добавить подкатегорию">+</button>
                         <button @click="
-                                    if(confirm('Удалить «{{ gc.name }}»? Транзакции перейдут в Прочее.')) {
+                                    if(confirm('Удалить «{{ gc.name | noemoji }}»? Транзакции перейдут в Прочее.')) {
                                         fetch('/api/categories/{{ gc.id }}/safe', {method: 'DELETE'})
                                         .then(() => document.getElementById('fin-group-{{ gc.id }}').remove())
                                     }"
-                                class="text-red-500/60 hover:text-red-400 text-xs p-1" title="Удалить">🗑</button>
+                                class="text-red-500/60 hover:text-red-400 text-[10px] uppercase p-1" title="Удалить">удл.</button>
                     </div>
                 </div>
 
@@ -152,10 +148,10 @@
                     {% for sc in subs %}
                     <div class="flex items-center justify-between group/sc px-1 py-0.5 rounded hover:bg-dark-700/30 transition-colors"
                          id="fin-sub-{{ sc.id }}"
-                         x-data="{ editingSub: false, editSubName: '{{ sc.name }}' }">
+                         x-data="{ editingSub: false, editSubName: '{{ sc.name | noemoji }}' }">
                         <span x-show="!editingSub" class="text-xs text-gray-400 flex items-center gap-1">
                             <span class="text-gray-600 text-[10px]">└</span>
-                            {{ sc.name }}
+                            {{ sc.name | noemoji }}
                         </span>
                         <form x-show="editingSub" x-cloak
                               @submit.prevent="
@@ -169,17 +165,17 @@
                             <input x-model="editSubName"
                                    class="flex-1 bg-dark-900 border border-yellow-500/40 rounded px-2 py-0.5 text-xs text-white focus:outline-none"
                                    @click.away="editingSub = false">
-                            <button type="submit" class="text-green-400 text-xs">✓</button>
+                            <button type="submit" class="text-green-400 text-xs">OK</button>
                         </form>
                         <div class="flex gap-1 opacity-0 group-hover/sc:opacity-100 transition-opacity">
                             <button @click="editingSub = true"
-                                    class="text-gray-600 hover:text-white text-[10px]" title="Переименовать">✏️</button>
+                                    class="text-gray-600 hover:text-white text-[10px] uppercase" title="Переименовать">ред.</button>
                             <button @click="
-                                        if(confirm('Удалить «{{ sc.name }}»? Транзакции перейдут в {{ gc.name }}.')) {
+                                        if(confirm('Удалить «{{ sc.name | noemoji }}»? Транзакции перейдут в {{ gc.name | noemoji }}.')) {
                                             fetch('/api/categories/{{ sc.id }}/safe', {method: 'DELETE'})
                                             .then(() => document.getElementById('fin-sub-{{ sc.id }}').remove())
                                         }"
-                                    class="text-red-500/50 hover:text-red-400 text-[10px]" title="Удалить">🗑</button>
+                                    class="text-red-500/50 hover:text-red-400 text-[10px] uppercase" title="Удалить">удл.</button>
                         </div>
                     </div>
                     {% endfor %}
@@ -187,7 +183,6 @@
                     <span class="text-[10px] text-gray-600 italic" x-show="!addingChild">Нет подкатегорий</span>
                     {% endif %}
 
-                    <!-- Добавить подкатегорию inline -->
                     <div x-show="addingChild" x-cloak class="mt-1">
                         <form @submit.prevent="
                                 fetch('/categories/{{ gc.id }}/sub/create', {
@@ -201,9 +196,9 @@
                                    placeholder="Название..."
                                    class="flex-1 bg-dark-900 border border-yellow-500/40 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-yellow-500">
                             <button type="submit"
-                                    class="px-2 py-1 bg-yellow-600/20 hover:bg-yellow-500/30 text-yellow-400 text-xs rounded transition">✓</button>
+                                    class="px-2 py-1 bg-yellow-600/20 hover:bg-yellow-500/30 text-yellow-400 text-xs rounded transition">OK</button>
                             <button type="button" @click="addingChild = false; newChildName = ''"
-                                    class="px-1 text-gray-600 hover:text-gray-400 text-xs">✕</button>
+                                    class="px-1 text-gray-600 hover:text-gray-400 text-xs">×</button>
                         </form>
                     </div>
                 </div>

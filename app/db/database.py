@@ -18,6 +18,7 @@ async_session = async_sessionmaker(
 
 from app.models.base import Base
 from app.models import period_entry as _period_entry_import  # noqa: F401 – ensures table is created
+from app.models import recurring_completion as _recurring_completion_import  # noqa: F401
 import sqlalchemy
 from sqlalchemy import text
 
@@ -55,6 +56,37 @@ async def init_db():
 
         try:
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN actual_minutes INTEGER;"))
+        except Exception: pass
+
+        try:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN item_kind VARCHAR(20) DEFAULT 'task';"))
+        except Exception: pass
+
+        try:
+            await conn.execute(text("UPDATE tasks SET item_kind = 'task' WHERE item_kind IS NULL;"))
+        except Exception: pass
+
+        try:
+            await conn.execute(text("ALTER TABLE shopping_items ADD COLUMN is_archived BOOLEAN DEFAULT 0;"))
+        except Exception: pass
+
+        try:
+            await conn.execute(text("ALTER TABLE shopping_items ADD COLUMN item_kind VARCHAR(20) DEFAULT 'purchase';"))
+        except Exception: pass
+
+        try:
+            await conn.execute(text("UPDATE shopping_items SET item_kind = 'purchase' WHERE item_kind IS NULL;"))
+        except Exception: pass
+
+        try:
+            await conn.execute(text("ALTER TABLE recurring_tasks ADD COLUMN missed_count INTEGER DEFAULT 0;"))
+        except Exception: pass
+
+        # Купленные позиции → в архив
+        try:
+            await conn.execute(text(
+                "UPDATE shopping_items SET is_archived = 1 WHERE is_purchased = 1 AND (is_archived IS NULL OR is_archived = 0);"
+            ))
         except Exception: pass
 
 

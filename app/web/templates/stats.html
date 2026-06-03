@@ -4,22 +4,20 @@
 
 {% block content %}
 <div class="max-w-6xl mx-auto">
-    <!-- Header -->
     <div class="flex items-center justify-between mb-8">
         <div>
-            <h1 class="text-3xl font-bold text-white">📊 Статистика</h1>
+            <h1 class="text-3xl font-bold text-white">Статистика</h1>
             <p class="text-gray-400 mt-1">Анализ вашей продуктивности</p>
         </div>
-        
-        <!-- Кнопка подготовки данных для анализа -->
-        <button hx-get="/api/ai/prepare-analysis" 
+
+        <button hx-get="/api/ai/prepare-analysis"
                 hx-target="#ai-analysis-container"
-                class="px-4 py-2 lg:px-5 lg:py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs lg:text-sm font-bold rounded-xl transition-all shadow-lg flex items-center gap-2 active:scale-95">
-            <span>🧠</span> <span class="hidden sm:inline">Анализ (AI)</span><span class="sm:hidden">Анализ</span>
+                class="px-4 py-2 lg:px-5 lg:py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs lg:text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95">
+            <span class="hidden sm:inline">Анализ (AI)</span><span class="sm:hidden">Анализ</span>
         </button>
     </div>
 
-            <!-- Основные показатели (Кликабельный блок) -->
+    <!-- Основные показатели -->
     <div class="bg-dark-800 rounded-2xl border border-dark-600 p-6 mb-8 shadow-2xl flex flex-wrap items-center justify-around gap-8">
         <a href="/archive" class="text-center group hover:scale-105 transition-transform">
             <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 group-hover:text-accent">Выполнено</p>
@@ -37,17 +35,17 @@
         </a>
     </div>
 
+    <!-- Диаграммы и цифры -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <!-- Топ категорий -->
         <div class="bg-dark-800 rounded-xl border border-dark-600 p-6 shadow-lg">
-            <h2 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
-                <span class="text-accent">🏆</span> Топ-5 продуктивных категорий
+            <h2 class="text-lg font-bold text-white mb-6">
+                Топ-5 продуктивных категорий
             </h2>
             <div class="space-y-4">
                 {% for name, count in category_distribution %}
                 <div>
                     <div class="flex justify-between text-sm mb-1">
-                        <span class="text-gray-300">{{ name }}</span>
+                        <span class="text-gray-300">{{ name | noemoji }}</span>
                         <span class="text-white font-bold">{{ count }}</span>
                     </div>
                     <div class="w-full bg-dark-700 rounded-full h-2">
@@ -62,70 +60,105 @@
             </div>
         </div>
 
-        <!-- Динамика за период -->
         {% include "partials/stats_chart.html" %}
     </div>
 
-    <!-- Career Capital 2.0 Section -->
-    <div class="bg-dark-800 rounded-2xl border border-accent/20 p-6 mb-8 shadow-xl">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-            <div>
-                <h2 class="text-xl lg:text-2xl font-bold text-white flex items-center gap-2">
-                    <span>🏆</span> Карьерный капитал 2.0
+    <!-- Анализ продуктивности (AI) -->
+    <div id="ai-analysis-container" class="mb-8">
+        {% if last_report %}
+        <div class="bg-dark-800 rounded-2xl border border-blue-500/30 overflow-hidden shadow-2xl">
+            <div class="p-6 bg-blue-600/10 border-b border-blue-500/20 flex items-center justify-between">
+                <h2 class="text-xl font-bold text-white">
+                    Анализ продуктивности
                 </h2>
+                <span class="text-xs text-blue-400 font-mono">за {{ last_report.report_date.strftime('%d.%m.%Y') }}</span>
+            </div>
+            <div class="p-8 prose prose-invert prose-blue max-w-none">
+                <div class="text-gray-300 leading-relaxed whitespace-pre-wrap">{{ last_report.content }}</div>
+            </div>
+            <div class="p-4 bg-dark-700/30 border-t border-dark-600">
+                <div class="flex gap-2">
+                    <input type="text" name="feedback"
+                           placeholder="Обратная связь: что поправить в анализе?"
+                           class="flex-1 bg-dark-900 border border-dark-600 rounded-lg px-3 py-2 text-sm text-white"
+                           hx-get="/api/ai/feedback"
+                           hx-trigger="keydown[key=='Enter']"
+                           hx-include="this"
+                           hx-target="#ai-analysis-container"
+                           hx-swap="outerHTML">
+                    <button class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-bold"
+                            hx-get="/api/ai/feedback"
+                            hx-include="this"
+                            hx-target="#ai-analysis-container"
+                            hx-swap="outerHTML">→</button>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="bg-dark-800/50 rounded-2xl border border-dark-600 p-12 text-center border-dashed">
+            <h2 class="text-xl font-bold text-white mb-2">AI-анализ продуктивности</h2>
+            <p class="text-gray-500 max-w-md mx-auto mb-6 text-sm">
+                Нажмите кнопку «Анализ (AI)» — DeepSeek проанализирует задачи с даты последнего анализа.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Карьерный капитал — сворачиваемый блок -->
+    <details class="bg-dark-800 rounded-2xl border border-accent/20 mb-8 shadow-xl group">
+        <summary class="cursor-pointer list-none p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 select-none">
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-xl lg:text-2xl font-bold text-white">
+                        Карьерный капитал 2.0
+                    </h2>
+                    <span class="career-chevron text-gray-500 text-sm" aria-hidden="true">▼</span>
+                </div>
                 <p class="text-gray-500 text-xs mt-1 uppercase tracking-wider">Автоматический сбор достижений через AI</p>
             </div>
-            <div class="flex gap-3">
-                <div class="hidden sm:flex flex-col items-end justify-center mr-4">
+            <div class="flex flex-wrap items-center gap-3" onclick="event.stopPropagation()">
+                <div class="flex flex-col items-end justify-center">
                     <span class="text-[10px] text-gray-500 uppercase font-bold tracking-tighter">Impact Score</span>
                     <span class="text-xl font-black text-accent">{{ impact_score }}%</span>
                 </div>
-                <a href="/api/career/export" 
-                   class="px-4 py-2 bg-dark-700 hover:bg-dark-600 text-gray-300 text-xs font-bold rounded-xl border border-dark-600 transition-all flex items-center gap-2">
-                    📥 Скачать .md
+                <a href="/api/career/export"
+                   class="px-4 py-2 bg-dark-700 hover:bg-dark-600 text-gray-300 text-xs font-bold rounded-xl border border-dark-600 transition-all">
+                    Скачать .md
                 </a>
                 <button hx-get="/api/ai/generate-milestones"
                         hx-target="#impact-results"
                         class="px-4 py-2 bg-accent hover:bg-blue-600 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95">
-                    🚀 Анализировать
+                    Анализировать
                 </button>
             </div>
-        </div>
+        </summary>
 
-        <!-- Impact Visual Gauge (Mobile Only visible score) -->
-        <div class="sm:hidden flex justify-between items-center bg-dark-900/50 rounded-xl p-3 mb-6 border border-dark-700">
-            <span class="text-xs text-gray-400 font-bold uppercase">Качество побед (Impact Score):</span>
-            <span class="text-lg font-black text-accent">{{ impact_score }}%</span>
-        </div>
-
-        <div id="impact-results">
-            {% if career_impacts %}
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="px-6 pb-6 border-t border-dark-700/80">
+            <div id="impact-results" class="pt-6">
+                {% if career_impacts %}
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[420px] overflow-y-auto pr-1">
                     {% for impact in career_impacts %}
-                    <div class="bg-dark-900/50 rounded-xl p-4 border border-dark-700 hover:border-accent/30 transition-all group relative overflow-hidden">
-                        <div class="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-100 transition-opacity">
-                            <span class="text-2xl">🏆</span>
-                        </div>
+                    <div class="bg-dark-900/50 rounded-xl p-4 border border-dark-700 hover:border-accent/30 transition-all">
                         <div class="flex items-center gap-2 mb-2">
-                            <span class="text-[10px] bg-accent/20 text-accent px-2 py-0.5 rounded font-bold uppercase">{{ impact.category_name }}</span>
+                            <span class="text-[10px] bg-accent/20 text-accent px-2 py-0.5 rounded font-bold uppercase">{{ impact.category_name | noemoji }}</span>
                             <span class="text-[10px] text-gray-600">{{ impact.period_month }}</span>
                         </div>
-                        <h3 class="text-gray-100 font-bold text-sm mb-2 leading-snug group-hover:text-white transition-colors">{{ impact.impact_description }}</h3>
-                        <p class="text-[10px] text-gray-500 italic">На базе задачи: "{{ impact.original_title }}"</p>
+                        <h3 class="text-gray-100 font-bold text-sm mb-2 leading-snug">{{ impact.impact_description }}</h3>
+                        <p class="text-[10px] text-gray-500 italic">На базе задачи: «{{ impact.original_title }}»</p>
                     </div>
                     {% endfor %}
                 </div>
-            {% else %}
+                {% else %}
                 <div class="text-center py-10 border-2 border-dashed border-dark-700 rounded-2xl">
-                    <span class="text-4xl block mb-4 grayscale">🚀</span>
                     <p class="text-gray-500 text-sm">Здесь появятся ваши профессиональные победы.</p>
-                    <p class="text-[10px] text-gray-600 mt-1 uppercase">Нажмите кнопку выше, чтобы AI нашел их в списке задач</p>
+                    <p class="text-[10px] text-gray-600 mt-1 uppercase">Нажмите «Анализировать», чтобы AI нашёл их в списке задач</p>
                 </div>
-            {% endif %}
+                {% endif %}
+            </div>
         </div>
-    </div>
+    </details>
 
-    <!-- Period Stats -->
+    <!-- Цикл — для врача -->
     {% if period_stats.has_data %}
     <div class="bg-dark-800 rounded-2xl border border-dark-600 p-6 mb-8 shadow-lg">
         <div class="flex items-center justify-between mb-6">
@@ -154,7 +187,6 @@
             </div>
         </div>
 
-        <!-- Cycle history table -->
         <div class="overflow-x-auto rounded-xl border border-dark-600 mb-6">
             <table class="w-full text-sm">
                 <thead>
@@ -185,7 +217,6 @@
             </table>
         </div>
 
-        <!-- Doctor text block -->
         <div class="bg-dark-900/60 rounded-xl border border-dark-600 p-4">
             <p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-3">Текст для врача — скопировать</p>
             <pre class="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap font-mono select-all">{% set lengths = period_stats.cycles_history | selectattr('length', 'ne', none) | map(attribute='length') | list %}Отслежено {{ period_stats.cycles_history|length - 1 }} полных цикл(ов) (с {{ period_stats.cycles_history[0].start }}).
@@ -196,47 +227,10 @@
         </div>
     </div>
     {% endif %}
-
-    <!-- AI Анализ -->
-    <div id="ai-analysis-container">
-        {% if last_report %}
-        <div class="bg-dark-800 rounded-2xl border border-blue-500/30 overflow-hidden shadow-2xl">
-            <div class="p-6 bg-blue-600/10 border-b border-blue-500/20 flex items-center justify-between">
-                <h2 class="text-xl font-bold text-white flex items-center gap-3">
-                    <span class="text-2xl">✨</span> Анализ продуктивности
-                </h2>
-                <span class="text-xs text-blue-400 font-mono">за {{ last_report.report_date.strftime('%d.%m.%Y') }}</span>
-            </div>
-            <div class="p-8 prose prose-invert prose-blue max-w-none">
-                <div class="text-gray-300 leading-relaxed whitespace-pre-wrap">{{ last_report.content }}</div>
-            </div>
-            <div class="p-4 bg-dark-700/30 border-t border-dark-600">
-                <div class="flex gap-2">
-                    <input type="text" name="feedback" 
-                           placeholder="Обратная связь: что поправить в анализе?"
-                           class="flex-1 bg-dark-900 border border-dark-600 rounded-lg px-3 py-2 text-sm text-white"
-                           hx-get="/api/ai/feedback"
-                           hx-trigger="keydown[key=='Enter']"
-                           hx-include="this"
-                           hx-target="#ai-analysis-container"
-                           hx-swap="outerHTML">
-                    <button class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-bold"
-                            hx-get="/api/ai/feedback"
-                            hx-include="this"
-                            hx-target="#ai-analysis-container"
-                            hx-swap="outerHTML">→</button>
-                </div>
-            </div>
-        </div>
-        {% else %}
-        <div class="bg-dark-800/50 rounded-2xl border border-dark-600 p-12 text-center border-dashed">
-            <span class="text-5xl mb-6 block grayscale">🧠</span>
-            <h2 class="text-xl font-bold text-white mb-2">AI-анализ продуктивности</h2>
-            <p class="text-gray-500 max-w-md mx-auto mb-6 text-sm">
-                Нажмите кнопку «Анализ (AI)» — DeepSeek проанализирует задачи с даты последнего анализа.
-            </p>
-        </div>
-        {% endif %}
-    </div>
 </div>
+
+<style>
+    details > summary::-webkit-details-marker { display: none; }
+    details[open] > summary .career-chevron { transform: rotate(180deg); display: inline-block; }
+</style>
 {% endblock %}

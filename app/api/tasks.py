@@ -196,6 +196,7 @@ async def delete_task(
         raise HTTPException(status_code=404, detail="Task not found")
 
     task.is_archived = True
+    task.item_kind = "task"
     await db.flush()
     return {"message": "Task archived"}
 
@@ -213,6 +214,8 @@ async def complete_task(
 
     task.status = "выполнена"
     task.completed_at = datetime.utcnow()
+    task.is_archived = True
+    task.item_kind = "task"
 
     # 1. Если это родительская задача — закрываем всех детей
     if task.parent_task_id is None:
@@ -282,5 +285,6 @@ async def archive_task(
         raise HTTPException(status_code=404, detail="Task not found")
 
     task.is_archived = True
+    task.item_kind = "task"
     await db.flush()
     return {"message": "Task archived"}

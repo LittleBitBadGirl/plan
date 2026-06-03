@@ -4,6 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.recurring import RecurringTask
 from app.models.task import Task
 from app.db.database import async_session
+from app.services.recurring_completion_service import (
+    find_template_for_task,
+    record_missed,
+)
 import json
 
 
@@ -11,8 +15,21 @@ async def _generate_impl(db: AsyncSession):
     """Создать задачи из периодических шаблонов на сегодня."""
     today = date.today()
 
-    # Архивируем просроченные recurring-задачи из прошлых дней (они не rolling-over,
-    # генератор создаст свежие на нужный день сам).
+    # Просроченные recurring-вхождения → архив + журнал пропусков
+    overdue_result = await db.execute(
+        select(Task).where(
+            Task.source == "recurring",
+            Task.due_date < today,
+            Task.is_archived == False,
+        )
+    )
+    for overdue_task in overdue_result.scalars().all():
+        template = await find_template_for_task(
+            db, overdue_task.title, overdue_task.category_id
+        )
+        if template and overdue_task.due_date:
+            await record_missed(db, template, overdue_task.due_date)
+
     await db.execute(
         update(Task)
         .where(
@@ -22,6 +39,7 @@ async def _generate_impl(db: AsyncSession):
         )
         .values(is_archived=True)
     )
+
     weekday_map = {
         0: "mon", 1: "tue", 2: "wed",
         3: "thu", 4: "fri", 5: "sat", 6: "sun"
@@ -36,7 +54,6 @@ async def _generate_impl(db: AsyncSession):
     created_count = 0
 
     for template in templates:
-        # Проверить, нужно ли создавать задачу сегодня
         should_create = False
 
         if template.recurrence_type == "daily":
@@ -48,12 +65,10 @@ async def _generate_impl(db: AsyncSession):
         elif template.recurrence_type == "monthly":
             should_create = today.day == template.start_date.day
         elif template.recurrence_type == "custom":
-            # Проверить интервал
             days_diff = (today - template.start_date).days
             should_create = days_diff % template.recurrence_interval == 0
 
         if should_create:
-            # Проверить, нет ли уже такой задачи на сегодня
             existing = await db.execute(
                 select(Task).where(
                     Task.title == template.title,
@@ -64,7 +79,6 @@ async def _generate_impl(db: AsyncSession):
             if existing.scalar_one_or_none():
                 continue
 
-            # Создать задачу
             task = Task(
                 title=template.title,
                 description=template.description,
@@ -72,6 +86,7 @@ async def _generate_impl(db: AsyncSession):
                 priority=template.priority,
                 due_date=today,
                 source="recurring",
+                item_kind="task",
             )
             db.add(task)
             created_count += 1

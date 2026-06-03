@@ -1,0 +1,33 @@
+# Правила синка Яндекс.Календаря (дефолты; оверрайды — в БД calendar_ignore_rules)
+
+sync:
+  horizon_days_past: 1
+  horizon_days_future: 14
+  cron_minutes: 30
+
+# Под-календари: не обязательные — не подписываемся (см. docs/calendar-yandex-integration.md)
+calendars:
+  include_name_patterns:
+    - "встречи внутри груп"
+    - "встречи с заказчика"
+    - "календарь Далее"
+    - "личные дела"
+  exclude_name_patterns:
+    - "не обязательные"
+
+# Рабочие — без событий в сб/вс
+work_calendar_name_patterns:
+  - "встречи внутри груп"
+  - "встречи с заказчика"
+  - "календарь Далее"
+
+weekend_skip_for_work_calendars: true
+
+title_exclude_patterns:
+  - "(?i)обед"
+  - "(?i)lunch"
+  - "(?i)блок.*обед"
+
+# Примеры из обратной связи (дополняются кнопкой «Не пойду»)
+title_exclude_exact:
+  - "Лидирование команды Frontend"

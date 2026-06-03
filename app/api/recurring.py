@@ -7,6 +7,7 @@ from pydantic import BaseModel, field_validator
 
 from app.api.dependencies import get_db_session, verify_token
 from app.models.recurring import RecurringTask
+from app.services.recurring_completion_service import record_completion
 
 router = APIRouter(prefix="/api/recurring", tags=["recurring"], dependencies=[Depends(verify_token)])
 
@@ -28,6 +29,7 @@ class RecurringTaskResponse(BaseModel):
     time_of_day: Optional[str]
     is_active: bool
     completed_count: int
+    missed_count: int = 0
     created_at: str
 
     @field_validator("time_of_day", mode="before")
@@ -104,7 +106,6 @@ async def create_recurring(
     db: AsyncSession = Depends(get_db_session),
 ):
     """Создать периодическую задачу"""
-    # Проверка на дубль
     existing = await db.execute(
         select(RecurringTask).where(
             RecurringTask.title == task_data.title,
@@ -193,80 +194,48 @@ async def complete_recurring(
     recurring_id: int,
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Отметить периодическую задачу выполненной — создаёт выполненную задачу на сегодня"""
-    from app.models.task import Task
+    """Отметить регулярную задачу выполненной — журнал, без новых Task."""
     from datetime import datetime
     from app.web.pages import get_today_stats
     from fastapi.responses import HTMLResponse
-    
+    from app.models.task import Task
+    from sqlalchemy import update
+
     result = await db.execute(select(RecurringTask).where(RecurringTask.id == recurring_id))
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Recurring task not found")
 
-    # Увеличиваем счётчик выполнений
-    task.completed_count += 1
-    
     today = date.today()
-    
-    # Проверяем, нет ли уже созданной "новой" задачи для этого шаблона на сегодня
-    from app.models.task import Task
-    existing_result = await db.execute(
+    await record_completion(db, task, today)
+
+    # Закрыть открытую задачу-вхождение, если генератор её создал
+    open_result = await db.execute(
         select(Task).where(
             Task.title == task.title,
             Task.category_id == task.category_id,
             Task.due_date == today,
             Task.status.in_(["новая", "в_работе"]),
-            Task.is_archived == False
+            Task.is_archived == False,
         )
     )
-    existing_task = existing_result.scalar_one_or_none()
-    
-    if existing_task:
-        # Если задача уже есть, просто переводим её в "выполнена"
-        existing_task.status = "выполнена"
-        existing_task.completed_at = datetime.utcnow()
-        existing_task.is_archived = True
-    else:
-        # Если задачи нет, создаём новую выполненную
-        completed_task = Task(
-            title=task.title,
-            description=task.description,
-            category_id=task.category_id,
-            priority=task.priority,
-            due_date=today,
-            status="выполнена",
-            completed_at=datetime.utcnow(),
-            source="recurring",
-            is_archived=True,
-        )
-        db.add(completed_task)
-    
+    open_task = open_result.scalar_one_or_none()
+    if open_task:
+        open_task.status = "выполнена"
+        open_task.completed_at = datetime.utcnow()
+        open_task.is_archived = True
+        open_task.item_kind = "task"
+        open_task.source = "recurring"
+
     await db.commit()
-    
-    # Получаем обновленную статистику для OOB
+
     completed, total = await get_today_stats(db)
-    
-    # Если мы обновили существующую задачу, нам нужно обновить список задач тоже
-    # так как она пропадет из списка активных. 
-    # Но проще всего вернуть HTMLResponse с OOB для статистики, 
-    # а для списка задач мы можем либо вернуть пустую строку (как сейчас), 
-    # либо спровоцировать перезагрузку списка.
-    
-    # Поскольку hx-target="#recurring-{{ rt.id }}" и hx-swap="outerHTML", 
-    # возвращаемый контент заменит блок периодической задачи.
-    # Если мы также хотим убрать задачу из основного списка, нам нужно OOB для #tasks-list
-    
-    tasks_list_oob = ""
-    if existing_task:
-        # Получаем обновленный список задач для OOB
-        # Альтернатива — hx-trigger="taskUpdated" на клиенте.
-        # Но давай попробуем проще: просто сигнализируем клиенту обновить список
-        tasks_list_oob = '<div hx-get="/tasks/list" hx-trigger="load" hx-target="#tasks-list" hx-swap="innerHTML" hx-swap-oob="true"></div>'
 
     stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
-    
-    return HTMLResponse(content=f"{stats_oob}{tasks_list_oob}")
+    # Убираем карточку с дашборда
+    hide_card = f'<div id="recurring-{recurring_id}" hx-swap-oob="true"></div>'
+
+    return HTMLResponse(content=f"{stats_oob}{hide_card}")
 
 
 @router.get("/for-date/{task_date}")
