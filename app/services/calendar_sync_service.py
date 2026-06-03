@@ -23,6 +23,18 @@ def _end_of_day(d: date) -> datetime:
     return datetime.combine(d, time.max)
 
 
+# Если в CalDAV нет dtend — считаем слот 30 мин
+_DEFAULT_MEETING_MINUTES = 30
+
+
+def event_is_upcoming(event: CalendarEvent, now: datetime | None = None) -> bool:
+    """Встреча ещё не закончилась (для дашборда и /plan)."""
+    now = now or datetime.now()
+    if event.end_at:
+        return event.end_at > now
+    return event.start_at + timedelta(minutes=_DEFAULT_MEETING_MINUTES) > now
+
+
 async def sync_calendar_events() -> dict[str, int]:
     """
     Pull CalDAV и upsert в БД.
@@ -144,8 +156,11 @@ async def sync_calendar_events() -> dict[str, int]:
 async def get_visible_events_for_day(
     db,
     day: date,
+    *,
+    include_past: bool = False,
+    now: datetime | None = None,
 ) -> list[CalendarEvent]:
-    """Встречи на день для дашборда."""
+    """Актуальные встречи на день (прошедшие скрыты, если include_past=False)."""
     start = _start_of_day(day)
     end = _end_of_day(day)
     result = await db.execute(
@@ -157,4 +172,7 @@ async def get_visible_events_for_day(
         )
         .order_by(CalendarEvent.start_at.asc())
     )
-    return list(result.scalars().all())
+    events = list(result.scalars().all())
+    if include_past:
+        return events
+    return [e for e in events if event_is_upcoming(e, now)]
