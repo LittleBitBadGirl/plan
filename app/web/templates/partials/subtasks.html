@@ -1,4 +1,4 @@
-<!-- Этот фрагмент заменяет содержимое контейнера подзадач -->
+{% from 'partials/icons_macros.html' import icon_check, icon_trash %}
 
 <!-- Список существующих подзадач -->
 {% if subtasks and subtasks|length > 0 %}
@@ -9,13 +9,18 @@
                   hx-target="#subtask-{{ sub.id }}"
                   hx-swap="outerHTML"
                   class="inline">
-                <button type="submit" class="text-xs text-green-500 hover:text-green-400">✅</button>
+                <button type="submit" class="icon-action icon-action--success !p-1" title="Выполнить">
+                    {{ icon_check('w-4 h-4') }}
+                </button>
             </form>
             <span id="subtask-{{ sub.id }}" class="flex-1 truncate text-gray-300">{{ sub.title }}</span>
             <button hx-delete="/tasks/{{ sub.id }}/subtask"
                     hx-target="#subtasks-{{ parent_id }}"
                     hx-swap="innerHTML"
-                    class="text-xs text-red-400 hover:text-red-300">🗑</button>
+                    class="icon-action icon-action--danger !p-1"
+                    title="Удалить">
+                {{ icon_trash() }}
+            </button>
         </div>
         {% endfor %}
     </div>
@@ -23,7 +28,6 @@
     <p class="text-xs text-gray-500 italic mb-2">Нет подзадач</p>
 {% endif %}
 
-<!-- Форма добавления новой подзадачи (всегда внизу) -->
 <form hx-post="/tasks/{{ parent_id }}/subtasks"
       hx-target="#subtasks-{{ parent_id }}"
       hx-swap="innerHTML"

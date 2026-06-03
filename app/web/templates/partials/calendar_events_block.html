@@ -1,3 +1,5 @@
+{% from 'partials/icons_macros.html' import icon_repeat %}
+
 {% if calendar_events %}
 <div id="calendar-meetings-block" class="space-y-4">
     <h2 class="text-xl font-bold text-sky-400 px-1">Встречи</h2>
@@ -14,7 +16,7 @@
                 </div>
                 <div class="flex flex-col items-end gap-1 shrink-0">
                     {% if ev.is_recurring %}
-                    <span class="text-[8px] text-sky-400/70 uppercase tracking-wide" title="Повторяющаяся">повт.</span>
+                    <span class="text-sky-400/80 inline-flex" title="Повторяющаяся">{{ icon_repeat() }}</span>
                     {% endif %}
                     <form hx-post="/api/calendar/{{ ev.id }}/decline"
                           hx-target="#calendar-meetings-block"

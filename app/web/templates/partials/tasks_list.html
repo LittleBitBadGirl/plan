@@ -1,8 +1,9 @@
+{% from 'partials/icons_macros.html' import icon_check, icon_calendar, icon_backlog, icon_edit, icon_trash, icon_subtasks, icon_clock %}
+
 {% if tasks %}
 <div class="space-y-3">
     {% for task in tasks %}
     <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition flex flex-col gap-3" id="task-{{ task.id }}">
-        <!-- Header (Full Width) -->
         <div class="flex items-center gap-2">
             {% if task.due_time %}
                 <span class="bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded text-xs font-mono border border-purple-700/50">
@@ -12,42 +13,43 @@
             <h3 class="font-semibold text-white flex-1">{{ task.title }}</h3>
         </div>
         
-        <div class="flex flex-wrap items-center justify-between mt-auto pt-2 border-t border-dark-700/30">
+        <div class="flex flex-wrap items-center justify-between mt-auto pt-2 border-t border-dark-700/30 gap-2">
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                 {% set current_subtasks = subtasks_map.get(task.id, []) if subtasks_map else [] %}
                 
-                <!-- Категория -->
                 {% if task.category %}
                     <span class="text-gray-500 font-medium">{{ task.category.name }}</span>
                 {% endif %}
                 
-                <!-- Переносы -->
                 {% if task.postpones and task.postpones > 0 %}
-                <span class="text-yellow-500/80 flex items-center gap-1" title="Перенесена {{ task.postpones }} раз(а)">
-                    перенос ×{{ task.postpones }}
+                <span class="text-yellow-500/80 inline-flex items-center gap-1" title="Перенесена {{ task.postpones }} раз(а)">
+                    {{ icon_clock() }}
+                    <span>×{{ task.postpones }}</span>
                 </span>
                 {% endif %}
 
-                <!-- Подзадачи -->
-                <span onclick="document.getElementById('subtasks-{{ task.id }}').classList.toggle('hidden')"
-                      class="text-purple-400 cursor-pointer hover:text-purple-300 font-medium transition-colors flex items-center gap-1">
-                    подзадачи
+                <button type="button"
+                        onclick="document.getElementById('subtasks-{{ task.id }}').classList.toggle('hidden')"
+                        class="text-purple-400 hover:text-purple-300 inline-flex items-center gap-1 transition-colors"
+                        title="Подзадачи">
+                    {{ icon_subtasks() }}
                     {% if current_subtasks and current_subtasks|length > 0 %}
                         {% set done = current_subtasks | selectattr("status", "equalto", "выполнена") | list | length %}
-                        {{ done }}/{{ current_subtasks|length }}
+                        <span class="font-medium">{{ done }}/{{ current_subtasks|length }}</span>
                     {% else %}
-                        <span class="text-[10px] opacity-50">+</span>
+                        <span class="text-[10px] opacity-60 font-bold">+</span>
                     {% endif %}
-                </span>
+                </button>
             </div>
 
-            <!-- Действия (Нижняя строка) -->
-            <div class="flex gap-3 items-center">
+            <div class="flex gap-0.5 items-center">
                 <form hx-post="/tasks/{{ task.id }}/complete"
                       hx-target="#tasks-list"
                       hx-swap="innerHTML"
                       class="inline">
-                    <button type="submit" class="text-green-400 hover:text-green-300 text-[10px] font-bold uppercase" title="Выполнить">Готово</button>
+                    <button type="submit" class="icon-action icon-action--success" title="Выполнить">
+                        {{ icon_check() }}
+                    </button>
                 </form>
                 
                 <div class="relative">
@@ -60,7 +62,10 @@
                                onkeypress="if(event.key==='Enter'){event.preventDefault(); this.form.requestSubmit()}">
                         <button type="button"
                                 onclick="document.getElementById('date-input-{{ task.id }}').classList.toggle('hidden'); document.getElementById('date-input-{{ task.id }}').focus()"
-                                class="text-blue-400 hover:text-blue-300 text-[10px] font-bold uppercase" title="Перенести на дату">Дата</button>
+                                class="icon-action icon-action--info"
+                                title="Перенести на дату">
+                            {{ icon_calendar() }}
+                        </button>
                     </form>
                 </div>
 
@@ -68,14 +73,17 @@
                       hx-target="#tasks-list"
                       hx-swap="innerHTML"
                       class="inline">
-                    <button type="submit" class="text-yellow-400 hover:text-yellow-300 text-[10px] font-bold uppercase" title="В бэклог">Бэклог</button>
+                    <button type="submit" class="icon-action icon-action--warn" title="В бэклог">
+                        {{ icon_backlog() }}
+                    </button>
                 </form>
 
-                <a href="/tasks/{{ task.id }}/edit" class="text-gray-500 hover:text-white text-[10px] font-bold uppercase" title="Редактировать">Изм.</a>
+                <a href="/tasks/{{ task.id }}/edit" class="icon-link icon-link--muted" title="Редактировать">
+                    {{ icon_edit() }}
+                </a>
             </div>
         </div>
 
-        <!-- Подзадачи (скрыто) -->
         <div id="subtasks-{{ task.id }}" class="hidden mt-2 pt-2 border-t border-dark-700/50">
             {% if current_subtasks and current_subtasks|length > 0 %}
                 <div class="space-y-1 mb-2">
@@ -85,14 +93,18 @@
                               hx-target="#tasks-list"
                               hx-swap="innerHTML"
                               class="inline">
-                            <button type="submit" class="text-xs text-green-500 hover:text-green-400 font-bold" title="Выполнить">Готово</button>
+                            <button type="submit" class="icon-action icon-action--success !p-1" title="Выполнить">
+                                {{ icon_check('w-4 h-4') }}
+                            </button>
                         </form>
                         <span class="flex-1 truncate text-gray-300">{{ sub.title }}</span>
                         <form hx-delete="/tasks/{{ sub.id }}/subtask"
                               hx-target="#subtasks-{{ task.id }}"
                               hx-swap="innerHTML"
                               class="inline">
-                            <button type="submit" class="text-xs text-red-400 hover:text-red-300 font-bold" title="Удалить">Удал.</button>
+                            <button type="submit" class="icon-action icon-action--danger !p-1" title="Удалить">
+                                {{ icon_trash() }}
+                            </button>
                         </form>
                     </div>
                     {% endfor %}
