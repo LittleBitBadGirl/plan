@@ -1822,6 +1822,29 @@ async def _shopping_list_response(request: Request, db: AsyncSession) -> HTMLRes
     return HTMLResponse(content=html)
 
 
+@router.post("/api/calendar/{event_id}/decline", response_class=HTMLResponse)
+async def decline_calendar_meeting(request: Request, event_id: int):
+    """«Не пойду» — скрыть встречу или всю повторяющуюся серию."""
+    from app.services.calendar_ignore_service import decline_calendar_event
+    from app.services.calendar_sync_service import get_visible_events_for_day
+
+    today = date.today()
+    async with async_session() as db:
+        declined = await decline_calendar_event(db, event_id)
+        if not declined:
+            return HTMLResponse(
+                content='<div id="calendar-meetings-block"></div>',
+                status_code=404,
+            )
+        events = await get_visible_events_for_day(db, today)
+
+    return templates.TemplateResponse(
+        request,
+        "partials/calendar_events_block.html",
+        {"request": request, "calendar_events": events},
+    )
+
+
 @router.post("/api/shopping/create", response_class=HTMLResponse)
 async def create_shopping_item(request: Request, title: str = Form(...)):
     """Создать элемент списка покупок."""

@@ -19,6 +19,8 @@ async_session = async_sessionmaker(
 from app.models.base import Base
 from app.models import period_entry as _period_entry_import  # noqa: F401 – ensures table is created
 from app.models import recurring_completion as _recurring_completion_import  # noqa: F401
+from app.models import calendar_event as _calendar_event_import  # noqa: F401
+from app.models import calendar_ignore_rule as _calendar_ignore_rule_import  # noqa: F401
 import sqlalchemy
 from sqlalchemy import text
 

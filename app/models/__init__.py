@@ -11,3 +11,5 @@ from .shopping import ShoppingItem
 from .finance import Transaction
 from .goal import FinancialGoal
 from .period_entry import PeriodEntry
+from .calendar_event import CalendarEvent
+from .calendar_ignore_rule import CalendarIgnoreRule

@@ -1,6 +1,6 @@
 # Интеграция Яндекс.Календаря
 
-**Статус:** Phase 0 — спецификация зафиксирована (2026-06-03)  
+**Статус:** Phase 0 ✅ probe пройден (2026-06-03, `vera.osolodkina@dalee.ru`)  
 **Секреты:** `.env` + `CONTEXT.md` (оба в `.gitignore`)
 
 ---
@@ -126,8 +126,37 @@ CALENDAR_SYNC_ENABLED=true
 
 ---
 
-## Check перед Phase 0
+## Phase 0 — результат probe
 
-- [ ] `YANDEX_CALDAV_USER` в `.env`
-- [ ] Прогон probe, сверить URL четырёх календарей
-- [ ] Подтвердить, что «личные дела» в выходные всё же нужны (сейчас weekend-filter только на рабочие)
+| Календарь | URL slug | Синк |
+|-----------|----------|------|
+| встречи внутри группы | `events-31966852` | ✅ |
+| встречи с заказчиками | `events-32080305` | ✅ |
+| календарь Далее | `events-32114292` | ✅ |
+| личные дела | `events-32114276` | ✅ |
+| не обязательные | `events-34569042` | ⏭ |
+| ЗМ (todos) | `todos-6868208` | ⏭ |
+
+Фильтр сработал: **«Лидирование команды Frontend»** (05.06 14:30) — отсечено.
+
+Команда: `python scripts/caldav_probe.py --days 10`
+
+## Phase 2 — «Не пойду» ✅
+
+- Кнопка на карточке встречи (дашборд, колонка 3).
+- **Разовая** → правило `external_uid`.
+- **Повторяющаяся** → `recurrence_id` или `series_title` (вся серия).
+- Правила в `calendar_ignore_rules`; синк не поднимает скрытые обратно.
+
+`POST /api/calendar/{id}/decline` — HTMX, обновляет блок `#calendar-meetings-block`.
+
+## Phase 3 — Telegram ✅
+
+- `/plan` и `send_daily_plan` (09:00): блок **📅 Встречи** → **🔸 Задачи** → **🔄 Регулярные**.
+- Перед сборкой — `sync_calendar_events()` если `CALENDAR_SYNC_ENABLED=true`.
+- Логика: `app/services/daily_plan_service.py`.
+
+## Check
+
+- [x] Phase 0–2
+- [ ] «личные дела» в выходные — оставить как есть?

@@ -8,6 +8,7 @@ from pathlib import Path
 from app.utils.logger import app_logger
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from app.db.database import init_db, async_session
 from app.db.seed import seed_categories
 from app.api.tasks import router as tasks_router
@@ -22,6 +23,7 @@ from app.config import settings
 from app.services.rollover_service import rollover_overdue_tasks
 from app.services.recurring_service import generate_recurring_tasks
 from app.services.backup_service import create_backup
+from app.services.calendar_sync_service import sync_calendar_events
 
 
 @asynccontextmanager
@@ -49,7 +51,10 @@ async def lifespan(app: FastAPI):
 
     # Перенос просроченных задач при запуске
     rollover_result = await rollover_overdue_tasks()
-    # ...
+
+    if settings.calendar_sync_enabled:
+        await sync_calendar_events()
+
     # APScheduler — фоновые задачи
     scheduler = AsyncIOScheduler()
 
@@ -76,6 +81,14 @@ async def lifespan(app: FastAPI):
         id="rollover_tasks",
         name="Перенос просроченных задач",
     )
+
+    if settings.calendar_sync_enabled:
+        scheduler.add_job(
+            sync_calendar_events,
+            IntervalTrigger(minutes=30),
+            id="calendar_sync",
+            name="Синхронизация Яндекс.Календаря",
+        )
 
     scheduler.start()
     app_logger.info("📅 APScheduler запущен")
