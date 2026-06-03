@@ -389,7 +389,7 @@ async def dashboard(request: Request):
         # AI предупреждение
         ai_warning = None
         if len(tasks) > 8:
-            ai_warning = f"⚠️ Запланировано {len(tasks)} задач на сегодня. Обычно вы выполняете ~5."
+            ai_warning = f"Запланировано {len(tasks)} задач на сегодня. Обычно вы выполняете ~5."
 
         calendar_events = []
         try:

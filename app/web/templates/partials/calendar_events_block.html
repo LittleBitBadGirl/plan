@@ -1,8 +1,6 @@
 {% if calendar_events %}
 <div id="calendar-meetings-block" class="space-y-4">
-    <h2 class="text-xl font-bold text-sky-400 flex items-center gap-2 px-1">
-        <span>📅</span> Встречи
-    </h2>
+    <h2 class="text-xl font-bold text-sky-400 px-1">Встречи</h2>
     <div class="space-y-2">
         {% for ev in calendar_events %}
         <div class="bg-sky-900/10 rounded-xl p-3 border border-sky-700/30 group" id="calendar-event-{{ ev.id }}">
@@ -16,7 +14,7 @@
                 </div>
                 <div class="flex flex-col items-end gap-1 shrink-0">
                     {% if ev.is_recurring %}
-                    <span class="text-[9px] text-sky-400/70" title="Повторяющаяся">🔁</span>
+                    <span class="text-[8px] text-sky-400/70 uppercase tracking-wide" title="Повторяющаяся">повт.</span>
                     {% endif %}
                     <form hx-post="/api/calendar/{{ ev.id }}/decline"
                           hx-target="#calendar-meetings-block"
