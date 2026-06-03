@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,9 +53,6 @@ async def lifespan(app: FastAPI):
     # Перенос просроченных задач при запуске
     rollover_result = await rollover_overdue_tasks()
 
-    if settings.calendar_sync_enabled:
-        await sync_calendar_events()
-
     # APScheduler — фоновые задачи
     scheduler = AsyncIOScheduler()
 
@@ -93,6 +91,16 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     app_logger.info("📅 APScheduler запущен")
     app_logger.info("✅ Планировщик запущен")
+
+    async def _startup_calendar_sync() -> None:
+        if not settings.calendar_sync_enabled:
+            return
+        try:
+            await asyncio.wait_for(sync_calendar_events(), timeout=45.0)
+        except Exception as e:
+            app_logger.warning(f"Calendar sync on startup skipped: {e}")
+
+    asyncio.create_task(_startup_calendar_sync())
 
     yield
 

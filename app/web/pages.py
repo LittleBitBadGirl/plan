@@ -249,7 +249,12 @@ async def dashboard(request: Request):
         from app.services.calendar_sync_service import sync_calendar_events
 
         if app_settings.calendar_sync_enabled:
-            await sync_calendar_events()
+            import asyncio
+            try:
+                await asyncio.wait_for(sync_calendar_events(), timeout=30.0)
+            except Exception as sync_exc:
+                from app.utils.logger import app_logger
+                app_logger.warning(f"Calendar sync on dashboard skipped: {sync_exc}")
     except ImportError:
         pass
     except Exception as exc:

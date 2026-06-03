@@ -5,8 +5,6 @@ from datetime import date, datetime, timedelta
 from typing import Any
 from urllib.parse import unquote
 
-import caldav
-
 from app.config import settings
 from app.services.calendar_filter_service import calendar_included, load_calendar_sync_config
 
@@ -74,6 +72,11 @@ def fetch_calendar_events(
     days_future: int | None = None,
 ) -> list[dict[str, Any]]:
     """Скачать события из настроенных календарей. Raises on auth/connection errors."""
+    try:
+        import caldav
+    except ImportError as e:
+        raise RuntimeError("Пакет caldav не установлен (pip install caldav vobject)") from e
+
     user = settings.yandex_caldav_user
     password = settings.yandex_caldav_app_password
     if not user or not password:
