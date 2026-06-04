@@ -22,6 +22,7 @@ from app.web.deps import (
     compute_period_data,
     get_categories_list,
     get_today_stats,
+    build_daily_load_warning,
     get_history_data,
     get_tasks_today,
     _strip_emoji,
@@ -160,11 +161,6 @@ async def dashboard(request: Request):
         )
         categories = cats_result.scalars().all()
 
-        # AI предупреждение
-        ai_warning = None
-        if len(tasks) > 8:
-            ai_warning = f"Запланировано {len(tasks)} задач на сегодня. Обычно вы выполняете ~5."
-
         calendar_events = []
         calendar_personal_events = []
         try:
@@ -178,6 +174,8 @@ async def dashboard(request: Request):
         except Exception as exc:
             from app.utils.logger import app_logger
             app_logger.warning(f"Calendar events skipped: {exc}")
+
+        ai_warning = await build_daily_load_warning(db, completed, total)
 
     return templates.TemplateResponse(request, "dashboard.html", {
         "request": request,

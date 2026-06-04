@@ -190,17 +190,20 @@ async def get_categories_list():
         return result.scalars().all()
 
 
-async def get_today_stats(db: AsyncSession):
-    """Статистика сегодняшнего дня (колонка 1, без recurring-вхождений)."""
-    from sqlalchemy import or_
-    today = date.today()
-
-    base_filter = [
+def _today_task_base_filter(today: date) -> list:
+    """Корневые задачи на дату (без recurring), единый контракт для дашборда."""
+    return [
         Task.due_date == today,
         Task.parent_task_id == None,
         or_(Task.source != "recurring", Task.source == None),
         Task.item_kind == "task",
     ]
+
+
+async def get_today_stats(db: AsyncSession):
+    """Статистика сегодняшнего дня (колонка 1, без recurring-вхождений)."""
+    today = date.today()
+    base_filter = _today_task_base_filter(today)
 
     completed_result = await db.execute(
         select(func.count(Task.id)).where(
@@ -218,6 +221,48 @@ async def get_today_stats(db: AsyncSession):
     )
     total = total_result.scalar() or 0
     return completed, total
+
+
+async def get_avg_completed_per_day(
+    db: AsyncSession, lookback_days: int = 14
+) -> float:
+    """Среднее число закрытых корневых задач в календарный день за период."""
+    today = date.today()
+    start = today - timedelta(days=lookback_days - 1)
+
+    result = await db.execute(
+        select(func.count(Task.id)).where(
+            Task.status == "выполнена",
+            Task.completed_at.isnot(None),
+            func.date(Task.completed_at) >= start,
+            func.date(Task.completed_at) <= today,
+            Task.parent_task_id == None,
+            or_(Task.source != "recurring", Task.source == None),
+            Task.item_kind == "task",
+        )
+    )
+    completed_in_period = result.scalar() or 0
+    return completed_in_period / lookback_days
+
+
+async def build_daily_load_warning(
+    db: AsyncSession, completed: int, total: int
+) -> Optional[str]:
+    """Предупреждение о перегрузке — те же цифры, что в «Прогресс сегодня»."""
+    remaining = max(total - completed, 0)
+    if remaining <= 8:
+        return None
+
+    avg = await get_avg_completed_per_day(db)
+    if avg >= 0.5:
+        avg_label = int(round(avg))
+        avg_part = f"Обычно вы закрываете ~{avg_label} в день."
+    else:
+        avg_part = "Обычно вы закрываете ~5 в день."
+
+    return (
+        f"Сегодня {total} задач: {completed} готово, {remaining} осталось. {avg_part}"
+    )
 
 
 def _shopping_stats_script(total: int, archived_count: int) -> str:
@@ -324,6 +369,8 @@ __all__ = [
     "compute_period_data",
     "get_categories_list",
     "get_today_stats",
+    "build_daily_load_warning",
+    "get_avg_completed_per_day",
     "get_history_data",
     "get_tasks_today",
     "_strip_emoji",
