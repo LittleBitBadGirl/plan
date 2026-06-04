@@ -108,6 +108,32 @@ def fetch_google_calendar_events(
         raw = response.content
 
     cal = Calendar.from_ical(raw)
+
+    # Fix Google's incomplete YEARLY RRULE: BYMONTHDAY without BYMONTH.
+    # recurring_ical_events incorrectly expands these to every month.
+    # We add the missing BYMONTH from DTSTART.
+    for component in cal.walk():
+        if component.name != "VEVENT":
+            continue
+        rrule = component.get("RRULE")
+        if rrule is None:
+            continue
+        rrule_d = dict(rrule)
+        freq = str(rrule_d.get("FREQ", "")).upper()
+        if freq != "YEARLY":
+            continue
+        if "BYMONTH" in rrule_d:
+            continue
+        if "BYMONTHDAY" not in rrule_d and "BYDAY" not in rrule_d:
+            continue
+        dtstart = component.get("DTSTART")
+        if dtstart is None:
+            continue
+        month = dtstart.dt.month
+        rrule_d["BYMONTH"] = [month]
+        from icalendar import vRecur
+        component["RRULE"] = vRecur(rrule_d)
+
     calendar_name = str(cal.get("X-WR-CALNAME", "Google — личный"))[:200]
     calendar_url = url.split("?")[0][:500]
 
