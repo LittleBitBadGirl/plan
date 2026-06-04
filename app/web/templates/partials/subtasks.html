@@ -1,27 +1,10 @@
-{% from 'partials/icons_macros.html' import icon_check, icon_trash %}
-
 <!-- Список существующих подзадач -->
 {% if subtasks and subtasks|length > 0 %}
     <div class="space-y-1 mb-2">
         {% for sub in subtasks %}
-        <div class="flex items-center gap-2 text-sm {{ 'opacity-50 line-through text-gray-600' if sub.status == 'выполнена' else '' }}">
-            <form hx-post="/tasks/{{ sub.id }}/complete"
-                  hx-target="#subtask-{{ sub.id }}"
-                  hx-swap="outerHTML"
-                  class="inline">
-                <button type="submit" class="icon-action icon-action--success !p-1" title="Выполнить">
-                    {{ icon_check('w-4 h-4') }}
-                </button>
-            </form>
-            <span id="subtask-{{ sub.id }}" class="flex-1 truncate text-gray-300">{{ sub.title }}</span>
-            <button hx-delete="/tasks/{{ sub.id }}/subtask"
-                    hx-target="#subtasks-{{ parent_id }}"
-                    hx-swap="innerHTML"
-                    class="icon-action icon-action--danger !p-1"
-                    title="Удалить">
-                {{ icon_trash() }}
-            </button>
-        </div>
+            {% with parent_id=parent_id %}
+                {% include 'partials/subtask_row.html' %}
+            {% endwith %}
         {% endfor %}
     </div>
 {% else %}

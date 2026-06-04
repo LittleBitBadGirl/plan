@@ -276,6 +276,31 @@ class TestSubtasks:
         response = await client.post("/api/tasks/99999/subtasks", json={"title": "Нет", "source": "web"})
         assert response.status_code == 404
 
+    async def test_complete_subtask_not_archived(self, client):
+        parent = await client.post("/api/tasks", json={"title": "Родитель", "category_id": 1})
+        parent_id = parent.json()["id"]
+        sub = await client.post(f"/api/tasks/{parent_id}/subtasks", json={"title": "Шаг", "source": "web"})
+        sub_id = sub.json()["id"]
+
+        resp = await client.post(f"/api/tasks/{sub_id}/complete")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "выполнена"
+        assert data["is_archived"] is False
+
+    async def test_complete_last_subtask_closes_parent(self, client):
+        parent = await client.post("/api/tasks", json={"title": "Родитель", "category_id": 1})
+        parent_id = parent.json()["id"]
+        sub = await client.post(f"/api/tasks/{parent_id}/subtasks", json={"title": "Единственный", "source": "web"})
+        sub_id = sub.json()["id"]
+
+        await client.post(f"/api/tasks/{sub_id}/complete")
+
+        parent_resp = await client.get(f"/api/tasks/{parent_id}")
+        parent_data = parent_resp.json()
+        assert parent_data["status"] == "выполнена"
+        assert parent_data["is_archived"] is True
+
 
 # ==================== Архив ====================
 

@@ -132,7 +132,10 @@ async def dashboard(request: Request):
         if tasks:
             task_ids = [t.id for t in tasks]
             subtasks_result = await db.execute(
-                select(Task).where(Task.parent_task_id.in_(task_ids))
+                select(Task).where(
+                    Task.parent_task_id.in_(task_ids),
+                    Task.is_archived == False,
+                )
             )
             all_subtasks = subtasks_result.scalars().all()
             

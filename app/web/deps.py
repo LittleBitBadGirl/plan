@@ -1,4 +1,5 @@
 """Shared web dependencies: templates, filters, helpers."""
+from collections import defaultdict
 from pathlib import Path
 import re
 from statistics import mean
@@ -223,27 +224,57 @@ def _today_task_base_filter(today: date) -> list:
     ]
 
 
-async def get_today_stats(db: AsyncSession):
-    """Статистика сегодняшнего дня (колонка 1, без recurring-вхождений)."""
+async def get_today_progress(db: AsyncSession) -> tuple[int, int]:
+    """Гибридный прогресс дня: подзадачи = частичный прогресс, листья = 1."""
     today = date.today()
     base_filter = _today_task_base_filter(today)
 
-    completed_result = await db.execute(
-        select(func.count(Task.id)).where(
-            *base_filter,
-            Task.status == "выполнена",
-        )
+    roots_result = await db.execute(
+        select(Task).where(*base_filter, Task.is_archived == False)
     )
-    completed = completed_result.scalar() or 0
+    roots = roots_result.scalars().all()
+    if not roots:
+        return 0, 0
 
-    total_result = await db.execute(
-        select(func.count(Task.id)).where(
-            *base_filter,
-            (Task.is_archived == False) | (Task.status == "выполнена"),
+    root_ids = [r.id for r in roots]
+    subs_result = await db.execute(
+        select(Task).where(
+            Task.parent_task_id.in_(root_ids),
+            Task.is_archived == False,
         )
     )
-    total = total_result.scalar() or 0
+    subs_by_parent: dict[int, list[Task]] = defaultdict(list)
+    for sub in subs_result.scalars().all():
+        subs_by_parent[sub.parent_task_id].append(sub)
+
+    completed = 0
+    total = 0
+    for root in roots:
+        subs = subs_by_parent.get(root.id, [])
+        if subs:
+            total += len(subs)
+            for sub in subs:
+                if (
+                    sub.status == "выполнена"
+                    and sub.completed_at
+                    and sub.completed_at.date() == today
+                ):
+                    completed += 1
+        else:
+            total += 1
+            if (
+                root.status == "выполнена"
+                and root.completed_at
+                and root.completed_at.date() == today
+            ):
+                completed += 1
+
     return completed, total
+
+
+async def get_today_stats(db: AsyncSession):
+    """Статистика сегодняшнего дня (колонка 1, без recurring-вхождений)."""
+    return await get_today_progress(db)
 
 
 def _completed_tasks_base_filter(start: date, end: date):
@@ -478,7 +509,10 @@ async def get_tasks_today(db: AsyncSession, request: Request):
     if tasks:
         task_ids = [t.id for t in tasks]
         subtasks_result = await db.execute(
-            select(Task).where(Task.parent_task_id.in_(task_ids))
+            select(Task).where(
+                Task.parent_task_id.in_(task_ids),
+                Task.is_archived == False,
+            )
         )
         all_subtasks = subtasks_result.scalars().all()
         from collections import defaultdict
@@ -498,6 +532,7 @@ __all__ = [
     "compute_period_data",
     "get_categories_list",
     "get_today_stats",
+    "get_today_progress",
     "build_daily_load_warning",
     "get_avg_completed_per_day",
     "get_productivity_insights",

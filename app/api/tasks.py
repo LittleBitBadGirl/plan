@@ -214,8 +214,9 @@ async def complete_task(
 
     task.status = "выполнена"
     task.completed_at = datetime.utcnow()
-    task.is_archived = True
-    task.item_kind = "task"
+    if task.parent_task_id is None:
+        task.is_archived = True
+        task.item_kind = "task"
 
     # 1. Если это родительская задача — закрываем всех детей
     if task.parent_task_id is None:
@@ -243,6 +244,8 @@ async def complete_task(
                 # Все дети закрыты — закрываем родителя
                 parent.status = "выполнена"
                 parent.completed_at = datetime.utcnow()
+                parent.is_archived = True
+                parent.item_kind = "task"
 
     await db.flush()
     return task

@@ -152,6 +152,41 @@ class TestWebTaskCRUD:
         assert response.status_code == 404
 
 
+# ==================== HTMX подзадачи ====================
+
+class TestSubtaskHTMX:
+    """HTMX: завершение подзадач на дашборде"""
+
+    async def test_complete_subtask_returns_strikethrough_row(self, client):
+        today = date.today().isoformat()
+        parent = await client.post("/api/tasks", json={"title": "Проект", "due_date": today, "category_id": 1})
+        parent_id = parent.json()["id"]
+        sub = await client.post(f"/api/tasks/{parent_id}/subtasks", json={"title": "Шаг 1", "source": "web"})
+        sub_id = sub.json()["id"]
+        await client.post(f"/api/tasks/{parent_id}/subtasks", json={"title": "Шаг 2", "source": "web"})
+
+        resp = await client.post(
+            f"/tasks/{sub_id}/complete-subtask",
+            headers={"HX-Target": f"subtask-row-{sub_id}"},
+        )
+        assert resp.status_code == 200
+        assert "✅ выполнено" not in resp.text
+        assert "line-through" in resp.text
+        assert "Шаг 1" in resp.text
+        assert f"subtask-row-{sub_id}" in resp.text
+
+    async def test_complete_last_subtask_removes_parent_from_list(self, client):
+        today = date.today().isoformat()
+        parent = await client.post("/api/tasks", json={"title": "Проект", "due_date": today, "category_id": 1})
+        parent_id = parent.json()["id"]
+        sub = await client.post(f"/api/tasks/{parent_id}/subtasks", json={"title": "Единственный", "source": "web"})
+        sub_id = sub.json()["id"]
+
+        resp = await client.post(f"/tasks/{sub_id}/complete-subtask")
+        assert resp.status_code == 200
+        assert "Проект" not in resp.text or "Нет задач" in resp.text
+
+
 # ==================== HTMX бэклога ====================
 
 class TestBacklogHTMX:
