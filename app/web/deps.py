@@ -2,7 +2,7 @@
 from pathlib import Path
 import re
 from statistics import mean
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import Request
@@ -30,6 +30,29 @@ _MONTH_NAMES = {
     5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
     9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
 }
+
+
+def is_weekend(day: date) -> bool:
+    """Суббота и воскресенье (date.weekday(): пн=0 … вс=6)."""
+    return day.weekday() >= 5
+
+
+def count_workdays_between(start: date, end: date) -> int:
+    if start > end:
+        return 0
+    n = 0
+    d = start
+    while d <= end:
+        if not is_weekend(d):
+            n += 1
+        d += timedelta(days=1)
+    return n
+
+
+def _sqlite_completed_not_on_weekend():
+    """SQLite strftime %w: 0=вс, 6=сб."""
+    w = func.strftime("%w", Task.completed_at)
+    return w.notin_(["0", "6"])
 
 
 def _period_phase(day: int, avg_cycle: int, avg_period: int) -> str:
@@ -223,26 +246,121 @@ async def get_today_stats(db: AsyncSession):
     return completed, total
 
 
+def _completed_tasks_base_filter(start: date, end: date):
+    """Корневые задачи, закрытые в интервале дат (без recurring)."""
+    return (
+        Task.status == "выполнена",
+        Task.completed_at.isnot(None),
+        func.date(Task.completed_at) >= start.isoformat(),
+        func.date(Task.completed_at) <= end.isoformat(),
+        Task.parent_task_id == None,
+        or_(Task.source != "recurring", Task.source == None),
+        Task.item_kind == "task",
+    )
+
+
+def rolling_week_windows(today: date) -> tuple[tuple[date, date], tuple[date, date]]:
+    """Текущее и предыдущее окно по 8 календарных дней (как график «неделя»)."""
+    current_start = today - timedelta(days=7)
+    prev_end = current_start - timedelta(days=1)
+    prev_start = prev_end - timedelta(days=7)
+    return (current_start, today), (prev_start, prev_end)
+
+
+async def count_stale_in_progress_tasks(
+    db: AsyncSession, *, stale_days: int = 7
+) -> int:
+    """Корневые задачи в статусе «в_работе» дольше stale_days (по created_at)."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=stale_days)
+    result = await db.execute(
+        select(func.count(Task.id)).where(
+            Task.status == "в_работе",
+            Task.is_archived == False,
+            Task.parent_task_id == None,
+            Task.item_kind == "task",
+            Task.created_at <= cutoff,
+        )
+    )
+    return result.scalar() or 0
+
+
+async def count_completed_tasks(
+    db: AsyncSession,
+    start: date,
+    end: date,
+    *,
+    workdays_only: bool = False,
+) -> int:
+    filters = list(_completed_tasks_base_filter(start, end))
+    if workdays_only:
+        filters.append(_sqlite_completed_not_on_weekend())
+    result = await db.execute(select(func.count(Task.id)).where(*filters))
+    return result.scalar() or 0
+
+
 async def get_avg_completed_per_day(
     db: AsyncSession, lookback_days: int = 14
 ) -> float:
-    """Среднее число закрытых корневых задач в календарный день за период."""
+    """Среднее закрытых корневых задач за рабочий день (пн–пт) за период."""
     today = date.today()
     start = today - timedelta(days=lookback_days - 1)
 
-    result = await db.execute(
-        select(func.count(Task.id)).where(
-            Task.status == "выполнена",
-            Task.completed_at.isnot(None),
-            func.date(Task.completed_at) >= start,
-            func.date(Task.completed_at) <= today,
-            Task.parent_task_id == None,
-            or_(Task.source != "recurring", Task.source == None),
-            Task.item_kind == "task",
-        )
+    completed_in_period = await count_completed_tasks(
+        db, start, today, workdays_only=True
     )
-    completed_in_period = result.scalar() or 0
-    return completed_in_period / lookback_days
+    workdays = count_workdays_between(start, today)
+    if workdays == 0:
+        return 0.0
+    return completed_in_period / workdays
+
+
+async def get_productivity_insights(db: AsyncSession) -> dict:
+    """Сводка для блока динамики (рабочие дни, без recurring)."""
+    today = date.today()
+    start_30 = today - timedelta(days=29)
+
+    avg = await get_avg_completed_per_day(db, 14)
+    (cur_start, cur_end), (prev_start, prev_end) = rolling_week_windows(today)
+    completed_7d = await count_completed_tasks(
+        db, cur_start, cur_end, workdays_only=True
+    )
+    completed_prev_7d = await count_completed_tasks(
+        db, prev_start, prev_end, workdays_only=True
+    )
+    week_delta = completed_7d - completed_prev_7d
+    completed_30d = await count_completed_tasks(db, start_30, today, workdays_only=True)
+    stale_in_progress = await count_stale_in_progress_tasks(db)
+
+    history = (await get_history_data(db, "week"))["history"]
+    workday_counts = [row[1] for row in history if len(row) > 2 and not row[2]]
+    best_day_7d = max(workday_counts) if workday_counts else 0
+
+    workdays_7 = count_workdays_between(cur_start, cur_end)
+    expected_7d = int(round(avg * workdays_7)) if avg >= 0.5 and workdays_7 else None
+    if expected_7d is not None and expected_7d > 0:
+        pace_pct = round(completed_7d / expected_7d * 100)
+    else:
+        pace_pct = None
+
+    if week_delta > 0:
+        week_delta_label = f"+{week_delta}"
+    elif week_delta < 0:
+        week_delta_label = f"−{abs(week_delta)}"
+    else:
+        week_delta_label = "0"
+
+    return {
+        "avg_workday": int(round(avg)) if avg >= 0.5 else None,
+        "completed_7d": completed_7d,
+        "completed_prev_7d": completed_prev_7d,
+        "completed_30d": completed_30d,
+        "week_delta": week_delta,
+        "week_delta_label": week_delta_label,
+        "best_day_7d": best_day_7d,
+        "pace_pct": pace_pct,
+        "workdays_7": workdays_7,
+        "stale_in_progress": stale_in_progress,
+    }
 
 
 async def build_daily_load_warning(
@@ -291,12 +409,10 @@ async def _shopping_list_response(request: Request, db: AsyncSession):
 
 
 async def get_history_data(db, period: str):
-    """Вспомогательная функция для получения данных истории"""
-    from datetime import timedelta
+    """Данные для графика динамики (неделя/месяц — все календарные дни, выходные помечены)."""
     today = date.today()
-    
+
     if period == "year":
-        # Группировка по месяцам за последний год
         start_date = today.replace(day=1) - timedelta(days=365)
         query = (
             select(func.strftime("%Y-%m", Task.completed_at), func.count(Task.id))
@@ -304,27 +420,40 @@ async def get_history_data(db, period: str):
             .group_by(func.strftime("%Y-%m", Task.completed_at))
             .order_by(func.strftime("%Y-%m", Task.completed_at).asc())
         )
-    elif period == "month":
-        # Группировка по дням за последние 30 дней
-        start_date = today - timedelta(days=30)
-        query = (
-            select(func.date(Task.completed_at), func.count(Task.id))
-            .where(Task.completed_at >= start_date, Task.status == "выполнена")
-            .group_by(func.date(Task.completed_at))
-            .order_by(func.date(Task.completed_at).asc())
-        )
-    else: # week
-        start_date = today - timedelta(days=7)
-        query = (
-            select(func.date(Task.completed_at), func.count(Task.id))
-            .where(Task.completed_at >= start_date, Task.status == "выполнена")
-            .group_by(func.date(Task.completed_at))
-            .order_by(func.date(Task.completed_at).asc())
-        )
+        result = await db.execute(query)
+        history = list(result.all())
+        max_val = max([count for _, count in history] + [1])
+        return {"history": history, "max_val": max_val}
 
+    if period == "month":
+        start_date = today - timedelta(days=30)
+    else:
+        start_date = today - timedelta(days=7)
+
+    query = (
+        select(func.date(Task.completed_at), func.count(Task.id))
+        .where(
+            func.date(Task.completed_at) >= start_date.isoformat(),
+            func.date(Task.completed_at) <= today.isoformat(),
+            Task.status == "выполнена",
+        )
+        .group_by(func.date(Task.completed_at))
+        .order_by(func.date(Task.completed_at).asc())
+    )
     result = await db.execute(query)
-    history = result.all()
-    max_val = max([count for _, count in history] + [1])
+    counts_by_date: dict[str, int] = {}
+    for day_key, count in result.all():
+        key = day_key if isinstance(day_key, str) else day_key.isoformat()
+        counts_by_date[key] = count
+
+    history = []
+    d = start_date
+    while d <= today:
+        ds = d.isoformat()
+        history.append((ds, counts_by_date.get(ds, 0), is_weekend(d)))
+        d += timedelta(days=1)
+
+    max_val = max([count for _, count, *_ in history] + [1])
     return {"history": history, "max_val": max_val}
 
 async def get_tasks_today(db: AsyncSession, request: Request):
@@ -371,6 +500,7 @@ __all__ = [
     "get_today_stats",
     "build_daily_load_warning",
     "get_avg_completed_per_day",
+    "get_productivity_insights",
     "get_history_data",
     "get_tasks_today",
     "_strip_emoji",

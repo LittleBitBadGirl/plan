@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="max-w-6xl mx-auto">
-    <div class="flex items-center justify-between mb-8">
+    <div class="flex items-center justify-between mb-6">
         <div>
             <h1 class="text-3xl font-bold text-white">Статистика</h1>
             <p class="text-gray-400 mt-1">Анализ вашей продуктивности</p>
@@ -17,50 +17,99 @@
         </button>
     </div>
 
-    <!-- Основные показатели -->
-    <div class="bg-dark-800 rounded-2xl border border-dark-600 p-6 mb-8 shadow-2xl flex flex-wrap items-center justify-around gap-8">
-        <a href="/archive" class="text-center group hover:scale-105 transition-transform">
-            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 group-hover:text-accent">Выполнено</p>
-            <p class="text-3xl font-black text-green-400 group-hover:text-green-300">{{ total_completed }}</p>
+    <!-- KPI: выполнено + в работе -->
+    <div class="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
+        <a href="/archive"
+           class="bg-dark-800 rounded-2xl border border-dark-600 px-5 py-4 sm:px-8 sm:py-5 shadow-xl flex items-center justify-between group hover:border-green-500/30 transition-colors">
+            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-green-400/80">Выполнено</p>
+            <p class="text-3xl sm:text-4xl font-black text-green-400 tabular-nums">{{ total_completed }}</p>
         </a>
-        <div class="w-px h-10 bg-dark-600 hidden md:block"></div>
-        <a href="/" class="text-center group hover:scale-105 transition-transform">
-            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 group-hover:text-accent">В работе</p>
-            <p class="text-3xl font-black text-blue-400 group-hover:text-blue-300">{{ total_active }}</p>
-        </a>
-        <div class="w-px h-10 bg-dark-600 hidden md:block"></div>
-        <a href="/tasks?filter=no_category" class="text-center group hover:scale-105 transition-transform">
-            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 group-hover:text-accent">Без категории</p>
-            <p class="text-3xl font-black text-orange-400 group-hover:text-orange-300">{{ no_category_count }}</p>
+        <a href="/"
+           class="bg-dark-800 rounded-2xl border border-dark-600 px-5 py-4 sm:px-8 sm:py-5 shadow-xl flex items-center justify-between group hover:border-blue-500/30 transition-colors">
+            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-blue-400/80">В работе</p>
+            <p class="text-3xl sm:text-4xl font-black text-blue-400 tabular-nums">{{ total_active }}</p>
         </a>
     </div>
 
-    <!-- Диаграммы и цифры -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <div class="bg-dark-800 rounded-xl border border-dark-600 p-6 shadow-lg">
-            <h2 class="text-lg font-bold text-white mb-6">
-                Топ-5 продуктивных категорий
-            </h2>
-            <div class="space-y-4">
+    <!-- Динамика (широко) + компактная боковая панель -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-8">
+        <div class="lg:col-span-9 flex flex-col gap-3">
+            {% include "partials/stats_chart.html" %}
+
+            <div class="bg-dark-800/80 rounded-xl border border-dark-600 px-4 py-3 flex flex-wrap gap-x-5 gap-y-2 text-xs">
+                {% if insights.avg_workday %}
+                <div>
+                    <span class="text-gray-500">Ср. темп</span>
+                    <span class="text-white font-bold ml-1">~{{ insights.avg_workday }}/раб. день</span>
+                    <span class="text-gray-600 ml-1">· 14 дн.</span>
+                </div>
+                {% endif %}
+                <div>
+                    <span class="text-gray-500">7 дней</span>
+                    <span class="text-green-400 font-bold ml-1">{{ insights.completed_7d }}</span>
+                    <span class="text-gray-600 ml-1">закрыто (пн–пт)</span>
+                </div>
+                <div title="Закрыто за 7 дн. (пн–пт) vs предыдущие 7 дн.: {{ insights.completed_prev_7d }}">
+                    <span class="text-gray-500">Δ неделя</span>
+                    <span class="font-bold ml-1 tabular-nums {{ 'text-green-400' if insights.week_delta > 0 else 'text-red-400/90' if insights.week_delta < 0 else 'text-gray-400' }}">{{ insights.week_delta_label }}</span>
+                    <span class="text-gray-600 ml-1">к прошлой</span>
+                </div>
+                {% if insights.stale_in_progress > 0 %}
+                <a href="/tasks?status=в_работе" class="hover:opacity-90" title="В работе более 7 дней (с даты создания)">
+                    <span class="text-gray-500">Зависли</span>
+                    <span class="text-amber-400 font-bold ml-1">{{ insights.stale_in_progress }}</span>
+                    <span class="text-gray-600 ml-1">в работе &gt;7 дн.</span>
+                </a>
+                {% else %}
+                <div>
+                    <span class="text-gray-500">Зависли</span>
+                    <span class="text-gray-500 font-bold ml-1">0</span>
+                    <span class="text-gray-600 ml-1">в работе &gt;7 дн.</span>
+                </div>
+                {% endif %}
+                <div>
+                    <span class="text-gray-500">30 дней</span>
+                    <span class="text-green-400/90 font-bold ml-1">{{ insights.completed_30d }}</span>
+                </div>
+                {% if insights.best_day_7d > 0 %}
+                <div>
+                    <span class="text-gray-500">Рекорд нед.</span>
+                    <span class="text-white font-bold ml-1">{{ insights.best_day_7d }}</span>
+                </div>
+                {% endif %}
+                {% if insights.pace_pct is not none %}
+                <div>
+                    <span class="text-gray-500">Темп нед.</span>
+                    <span class="font-bold ml-1 {{ 'text-green-400' if insights.pace_pct >= 100 else 'text-amber-400/90' if insights.pace_pct >= 70 else 'text-gray-400' }}">{{ insights.pace_pct }}%</span>
+                    <span class="text-gray-600 ml-1">к вашему среднему</span>
+                </div>
+                {% endif %}
+            </div>
+            <p class="text-[10px] text-gray-600 px-1">Выходные на графике подсвечены; в цифрах темпа — только пн–пт.</p>
+        </div>
+
+        <aside class="lg:col-span-3 bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg flex flex-col min-h-0">
+            <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Топ категорий</h2>
+            {% if category_distribution %}
+            <div class="space-y-2.5 flex-1">
                 {% for name, count in category_distribution %}
                 <div>
-                    <div class="flex justify-between text-sm mb-1">
-                        <span class="text-gray-300">{{ name | noemoji }}</span>
-                        <span class="text-white font-bold">{{ count }}</span>
+                    <div class="flex justify-between text-[11px] mb-0.5 gap-2">
+                        <span class="text-gray-400 truncate">{{ name | noemoji }}</span>
+                        <span class="text-gray-200 font-bold shrink-0">{{ count }}</span>
                     </div>
-                    <div class="w-full bg-dark-700 rounded-full h-2">
-                        {% set max_val = category_distribution[0][1] if category_distribution else 1 %}
-                        <div class="bg-accent h-full rounded-full" style="width: {{ (count / max_val * 100)|int }}%"></div>
+                    {% set max_val = category_distribution[0][1] %}
+                    <div class="w-full bg-dark-700 rounded-full h-1">
+                        <div class="bg-accent/80 h-full rounded-full" style="width: {{ (count / max_val * 100)|int }}%"></div>
                     </div>
                 </div>
                 {% endfor %}
-                {% if not category_distribution %}
-                <p class="text-center py-10 text-gray-600 italic">Нет данных по категориям</p>
-                {% endif %}
             </div>
-        </div>
-
-        {% include "partials/stats_chart.html" %}
+            <p class="text-[10px] text-gray-600 mt-3 pt-2 border-t border-dark-700">По всем закрытым задачам</p>
+            {% else %}
+            <p class="text-[11px] text-gray-600 italic py-4">Пока нет закрытых с категорией</p>
+            {% endif %}
+        </aside>
     </div>
 
     <!-- Анализ продуктивности (AI) -->

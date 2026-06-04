@@ -21,7 +21,7 @@
         </div>
     </div>
 
-    <div class="flex items-end justify-between h-48 gap-1 px-2 relative" x-data="{ activeYearPoint: null }">
+    <div class="flex items-end justify-between h-56 sm:h-64 gap-0.5 sm:gap-1 px-1 sm:px-2 relative" x-data="{ activeYearPoint: null }">
         {% if period == 'year' %}
             <!-- Точечный график (SVG) для года -->
             <svg class="absolute inset-0 w-full h-40 mt-4 px-4 overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -64,17 +64,23 @@
             </div>
         {% else %}
             <!-- Столбчатая диаграмма для недели/месяца -->
-            {% for date_str, count in weekly_history %}
-            <div class="flex-1 flex flex-col items-center justify-end h-full group min-w-[4px]">
-                <div class="text-[8px] text-white font-bold opacity-0 group-hover:opacity-100 transition-opacity bg-dark-700 px-1 rounded whitespace-nowrap z-10 mb-1">{{ count }}</div>
+            {% for row in weekly_history %}
+            {% set date_str = row[0] %}
+            {% set count = row[1] %}
+            {% set weekend = row[2] if row|length > 2 else false %}
+            <div class="flex-1 flex flex-col items-center justify-end h-full group min-w-[4px] relative rounded-t">
+                {% if weekend %}
+                <div class="absolute inset-0 bg-white/[0.06] rounded-t pointer-events-none" aria-hidden="true"></div>
+                {% endif %}
+                <div class="text-[8px] text-white font-bold opacity-0 group-hover:opacity-100 transition-opacity bg-dark-700 px-1 rounded whitespace-nowrap z-10 mb-1 relative">{{ count }}</div>
                 {% set height_percent = (count / max_hist * 100)|int %}
                 {% if count > 0 and height_percent < 5 %}{% set height_percent = 5 %}{% endif %}
-                <div class="w-full bg-green-500/80 hover:bg-green-400 rounded-t transition-all" 
-                     style="height: {{ height_percent }}%" title="{{ date_str }}: {{ count }}"></div>
+                <div class="w-full bg-green-500/80 hover:bg-green-400 rounded-t transition-all relative z-[1]"
+                     style="height: {{ height_percent }}%" title="{{ date_str }}: {{ count }}{% if weekend %} (выходной){% endif %}"></div>
                 {% if period == 'week' %}
-                    <div class="text-[9px] text-gray-500 uppercase mt-1">{{ date_str[-2:] }}</div>
+                    <div class="text-[9px] {{ 'text-gray-400' if weekend else 'text-gray-500' }} uppercase mt-1 relative">{{ date_str[-2:] }}</div>
                 {% elif loop.index % 5 == 0 or loop.first or loop.last %}
-                    <div class="text-[8px] text-gray-500 uppercase mt-1">{{ date_str[-2:] }}</div>
+                    <div class="text-[8px] {{ 'text-gray-400' if weekend else 'text-gray-500' }} uppercase mt-1 relative">{{ date_str[-2:] }}</div>
                 {% else %}
                     <div class="h-4"></div>
                 {% endif %}

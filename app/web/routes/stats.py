@@ -23,6 +23,7 @@ from app.web.deps import (
     get_categories_list,
     get_today_stats,
     get_history_data,
+    get_productivity_insights,
     get_tasks_today,
     _strip_emoji,
     _render_shopping_list,
@@ -46,28 +47,17 @@ async def stats_page(request: Request, period: str = "week"):
         active_result = await db.execute(select(func.count(Task.id)).where(Task.is_archived == False, Task.status != "выполнена"))
         total_active = active_result.scalar() or 0
 
-        no_cat_result = await db.execute(select(func.count(Task.id)).where(Task.category_id == None, Task.is_archived == False))
-        no_category_count = no_cat_result.scalar() or 0
-
-        speed_result = await db.execute(
-            select(func.avg(func.julianday(Task.completed_at) - func.julianday(Task.created_at))).where(
-                Task.status == "выполнена", Task.completed_at != None
-            )
-        )
-        avg_speed_days = speed_result.scalar()
-        avg_speed = f"{avg_speed_days:.1f} дн." if avg_speed_days else "—"
-
         cat_stats_query = (
             select(Category.name, func.count(Task.id))
             .join(Task, Task.category_id == Category.id)
             .where(Task.status == "выполнена")
-            .group_by(Category.name).order_by(func.count(Task.id).desc()).limit(5)
+            .group_by(Category.name).order_by(func.count(Task.id).desc()).limit(3)
         )
         cat_stats_result = await db.execute(cat_stats_query)
         category_distribution = cat_stats_result.all()
 
-        # Динамика (зависит от периода)
         history_data = await get_history_data(db, period)
+        insights = await get_productivity_insights(db)
         
         report_result = await db.execute(select(AIReport).order_by(AIReport.report_date.desc()))
         last_report = report_result.scalars().first()
@@ -101,9 +91,8 @@ async def stats_page(request: Request, period: str = "week"):
         "request": request,
         "total_completed": total_completed,
         "total_active": total_active,
-        "no_category_count": no_category_count,
-        "avg_speed": avg_speed,
         "category_distribution": category_distribution,
+        "insights": insights,
         "weekly_history": history_data["history"],
         "max_hist": history_data["max_val"],
         "period": period,
@@ -125,43 +114,6 @@ async def get_stats_chart(request: Request, period: str = "week"):
         "max_hist": history_data["max_val"],
         "period": period,
     })
-
-async def get_history_data(db, period: str):
-    """Вспомогательная функция для получения данных истории"""
-    from datetime import timedelta
-    today = date.today()
-    
-    if period == "year":
-        # Группировка по месяцам за последний год
-        start_date = today.replace(day=1) - timedelta(days=365)
-        query = (
-            select(func.strftime("%Y-%m", Task.completed_at), func.count(Task.id))
-            .where(Task.completed_at >= start_date, Task.status == "выполнена")
-            .group_by(func.strftime("%Y-%m", Task.completed_at))
-            .order_by(func.strftime("%Y-%m", Task.completed_at).asc())
-        )
-    elif period == "month":
-        # Группировка по дням за последние 30 дней
-        start_date = today - timedelta(days=30)
-        query = (
-            select(func.date(Task.completed_at), func.count(Task.id))
-            .where(Task.completed_at >= start_date, Task.status == "выполнена")
-            .group_by(func.date(Task.completed_at))
-            .order_by(func.date(Task.completed_at).asc())
-        )
-    else: # week
-        start_date = today - timedelta(days=7)
-        query = (
-            select(func.date(Task.completed_at), func.count(Task.id))
-            .where(Task.completed_at >= start_date, Task.status == "выполнена")
-            .group_by(func.date(Task.completed_at))
-            .order_by(func.date(Task.completed_at).asc())
-        )
-
-    result = await db.execute(query)
-    history = result.all()
-    max_val = max([count for _, count in history] + [1])
-    return {"history": history, "max_val": max_val}
 
 
 @router.get("/api/ai/prepare-analysis", response_class=HTMLResponse)

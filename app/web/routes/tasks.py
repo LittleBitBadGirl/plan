@@ -35,16 +35,16 @@ router = APIRouter()
 from app.services.ai_service import ai_service
 
 @router.get("/tasks", response_class=HTMLResponse)
-async def tasks_page(request: Request):
+async def tasks_page(request: Request, status: Optional[str] = None):
     """Все задачи"""
     async with async_session() as db:
+        filters = [Task.is_archived == False, Task.due_date != None]
+        if status:
+            filters.append(Task.status == status)
         result = await db.execute(
             select(Task)
             .options(selectinload(Task.category))
-            .where(
-                Task.is_archived == False,
-                Task.due_date != None
-            )
+            .where(*filters)
             .order_by(Task.due_date.asc())
         )
         tasks = result.scalars().all()
@@ -55,7 +55,7 @@ async def tasks_page(request: Request):
         "tasks": tasks,
         "categories": categories,
         "total": len(tasks),
-        "status_filter": None,
+        "status_filter": status,
         "category_id_filter": None,
         "from_date_filter": None,
         "to_date_filter": None,
