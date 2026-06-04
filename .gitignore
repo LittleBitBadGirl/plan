@@ -33,8 +33,13 @@ htmlcov/
 # OS generated files
 .DS_Store
 Thumbs.db
-```planner.db
-.env
-CONTEXT.md
-backups/
+# Database
+planner.db
 planner.db*
+backups/
+
+# Local technical docs (architecture, calendar, agent prompts)
+docs/internal/
+
+# Personal calendar secrets reference
+CONTEXT.md

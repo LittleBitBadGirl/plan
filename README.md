@@ -4,40 +4,29 @@
 
 ---
 
-## Возможности
+## Как пользоваться
 
-### Telegram (aiogram 3)
+### Веб-интерфейс
 
-- AI-категоризация и теги (DeepSeek / Groq)
-- Голос → задача (Groq Whisper)
-- Фото чеков → транзакции (Gemini / Groq Vision)
-- Утренний план в 09:00
+| Страница | URL | Что делает |
+|----------|-----|------------|
+| Дашборд | `/` | Задачи на сегодня, встречи, регулярные |
+| Задачи | `/tasks` | Список, создание, редактирование |
+| Бэклог | `/backlog` | Отложенные → в план |
+| Календарь | `/calendar` | Просмотр по датам |
+| Периодические | `/recurring` | Шаблоны повторяющихся задач |
+| Финансы | `/finance` | Траты/доходы, диаграмма по категориям |
+| Статистика | `/stats` | Нагрузка, карьерный капитал, экспорт `.md` |
+| Покупки | `/shopping` | Список покупок |
+| Архив | `/archive` | Завершённые и удалённые |
 
-### Веб
+**Вход (production):** `/login` → cookie на 30 дней. Подробнее: [docs/DEPLOY.md](docs/DEPLOY.md).
 
-- Дашборд, бэклог, календарь, периодические, финансы, статистика
-- **Финансы:** сводка по категориям + круговая диаграмма расходов (Chart.js) на `/finance`
-- Синк Яндекс CalDAV и Google iCal (опционально)
-- Карьерный капитал (AI impacts + экспорт `.md`)
+### Telegram-бот
 
-### Безопасность (production)
-
-- Секрет `API_TOKEN` в `.env`
-- Вход: `/login` → cookie на 30 дней
-- Доступ через Nginx Proxy Manager (HTTPS)
-
-Подробно: [docs/AUTH.md](docs/AUTH.md), [docs/NPM_PROXY.md](docs/NPM_PROXY.md).
-
----
-
-## Стек
-
-- FastAPI, SQLAlchemy 2, SQLite (WAL), Alembic
-- HTMX, Alpine.js, Tailwind, Chart.js (страница `/finance`)
-- Веб-UI: `app/web/pages.py` + доменные роуты в `app/web/routes/`, общие хелперы в `app/web/deps.py`
-- aiogram 3, APScheduler
-- DeepSeek, Gemini, Groq
-- Docker Compose + NPM
+- Текст / голос → задача с AI-категоризацией
+- Фото чека → транзакция
+- Утренний план в **09:00** (если задан `TELEGRAM_ADMIN_CHAT_ID`)
 
 ---
 
@@ -60,11 +49,30 @@ docker compose up -d --build
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-./run.sh              # только веб :8000
+./run.sh              # веб :8000
 python run_bot.py     # бот в отдельном терминале
 ```
 
 **Вход (если задан `API_TOKEN`):** http://localhost:8000/login
+
+---
+
+## Документация
+
+| Файл | Зачем |
+|------|-------|
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Что изменилось в проекте |
+| [docs/PLAN.md](docs/PLAN.md) | План и следующий шаг |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Деплой, auth, NPM |
+| [docs/ENDPOINTS.md](docs/ENDPOINTS.md) | API и маршруты |
+
+Техническая документация (архитектура, календарь, промпты для AI) — `docs/internal/` (локально, в `.gitignore`). Шаблон: `docs/internal.template/` → `cp -r docs/internal.template docs/internal`.
+
+---
+
+## Стек
+
+FastAPI · SQLAlchemy 2 · SQLite · HTMX · Alpine.js · Tailwind · Chart.js · aiogram 3 · DeepSeek · Gemini · Groq · Docker
 
 ---
 
@@ -74,12 +82,12 @@ python run_bot.py     # бот в отдельном терминале
 |------------|------------|
 | `API_TOKEN` | Пароль веб/API (пустой = dev без пароля) |
 | `TELEGRAM_BOT_TOKEN` | Бот |
-| `TELEGRAM_ADMIN_CHAT_ID` | Кому слать план 09:00 |
+| `TELEGRAM_ADMIN_CHAT_ID` | Утренний план 09:00 |
 | `DEEPSEEK_API_KEY` | Категории задач |
 | `GEMINI_API_KEY` | Vision / чеки |
 | `GROQ_API_KEY` | Whisper, fallback |
 | `CALENDAR_SYNC_ENABLED` | Yandex CalDAV |
-| `GOOGLE_CALENDAR_SYNC_ENABLED` | Google iCal URL |
+| `GOOGLE_CALENDAR_SYNC_ENABLED` | Google iCal |
 
 Полный шаблон: `.env.example`.
 
@@ -93,19 +101,6 @@ pytest tests/   # 99 passed
 
 ---
 
-## Документация
-
-| Файл | Содержание |
-|------|------------|
-| [HANDOVER.md](HANDOVER.md) | Состояние проекта, деплой, команды VPS |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | План фич (кратко) |
-| [docs/SUBAGENT_PLAN.md](docs/SUBAGENT_PLAN.md) | **Очередь для субагентов** (Deploy VPS / техдолг по запросу) |
-| [docs/AUTH.md](docs/AUTH.md) | Cookie, API_TOKEN |
-| [docs/NPM_PROXY.md](docs/NPM_PROXY.md) | Nginx Proxy Manager |
-| [docs/calendar-yandex-integration.md](docs/calendar-yandex-integration.md) | CalDAV |
-
----
-
 ## Деплой на VPS
 
 ```bash
@@ -115,4 +110,4 @@ docker compose down && docker compose up -d --build
 docker image prune -f
 ```
 
-Первый заход: `https://ваш-домен/login`.
+Детали: [docs/DEPLOY.md](docs/DEPLOY.md)
