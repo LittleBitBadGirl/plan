@@ -19,6 +19,10 @@ Senior AI-инженер: архитектура, код, `pytest tests/` пер
 | `app/services/calendar_sync_service.py` | CalDAV + Google → `calendar_events` |
 | `app/auth.py` + middleware | `API_TOKEN`, cookie |
 | `app/web/pages.py` | Сборка `APIRouter`; логика — `routes/*`, `deps.py` |
+| `app/web/deps.py` | **Статистика:** `get_history_data`, `get_productivity_insights`, `get_avg_completed_per_day`, рабочие дни |
+| `app/web/routes/stats.py` | `/stats`, `/api/stats/chart`, AI partials |
+
+Подробно: `docs/internal/STATS.md` (копия из `internal.template/STATS.md`).
 
 ---
 
@@ -56,7 +60,7 @@ Senior AI-инженер: архитектура, код, `pytest tests/` пер
 | `docs/PLAN.md` | План и следующий шаг |
 | `docs/DEPLOY.md` | Auth, NPM, VPS |
 | `docs/ENDPOINTS.md` | Маршруты |
-| `docs/internal/*` | Архитектура, календарь (локально) |
+| `docs/internal/*` | Архитектура, календарь, **STATS** (локально) |
 
 ---
 

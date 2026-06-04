@@ -25,7 +25,8 @@ Auth: если задан `API_TOKEN` — cookie после `/login` или за
 | `/calendar` | Календарь |
 | `/categories` | Категории |
 | `/archive` | Архив |
-| `/stats` | Статистика, карьерный капитал |
+| `/stats` | KPI, динамика (HTMX нед/мес/год), инсайты, карьерный капитал, AI-анализ |
+| `/tasks?status=в_работе` | Фильтр по статусу (в т.ч. ссылка «зависшие» со `/stats`) |
 | `/recurring` | Периодические |
 | `/shopping` | Список покупок |
 | `/finance` | Финансы + диаграмма расходов |
@@ -84,7 +85,8 @@ Auth: если задан `API_TOKEN` — cookie после `/login` или за
 | POST | `/tasks/{id}/complete` | Завершить (partial) |
 | POST | `/api/calendar/{id}/decline` | «Не пойду» на встречу |
 | POST | `/api/transactions/{id}/category` | Категория транзакции |
-| GET | `/api/stats/chart` | График статистики |
+| GET | `/api/stats/chart?period=week\|month\|year` | Partial графика (`partials/stats_chart.html`) |
+| GET | `/api/ai/prepare-analysis` | AI-анализ продуктивности (partial) |
 | POST | `/api/shopping/*` | CRUD списка покупок |
 
 Полный список маршрутов — `app/web/routes/` и `app/api/`.

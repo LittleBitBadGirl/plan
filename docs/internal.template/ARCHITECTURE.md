@@ -35,10 +35,11 @@ app/main.py
               shopping.py       # /shopping
               career.py         # export, milestones
               finance.py        # /finance, Chart.js
-        deps.py                 # templates, helpers
+        deps.py                 # templates, stats insights, period calendar
 ```
 
 - Импорт в `main.py`: `from app.web.pages import router` — **не менять**
+- Статистика: см. `docs/internal/STATS.md` — owner `deps.py`, UI `stats.html` + `partials/stats_chart.html`
 - `get_today_stats`: re-export из `pages` → `deps`
 - Backlog **только** в `routes/backlog.py`
 
