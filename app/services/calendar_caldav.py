@@ -95,7 +95,7 @@ def fetch_calendar_events(
     end_dt = datetime.combine(today + timedelta(days=days_future), datetime.max.time())
 
     configured_urls = {
-        u.strip() for u in settings.yandex_calendar_urls.split(",") if u.strip()
+        unquote(u.strip()) for u in settings.yandex_calendar_urls.split(",") if u.strip()
     }
 
     principal_url = f"https://caldav.yandex.ru/principals/users/{user}/"
