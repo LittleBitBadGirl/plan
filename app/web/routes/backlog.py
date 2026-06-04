@@ -74,21 +74,19 @@ async def backlog_page(request: Request):
 async def show_make_recurring_form(request: Request, task_id: int):
     """Показать форму для превращения задачи в периодическую"""
     return HTMLResponse(f"""
-        <div class="bg-dark-800 rounded-lg p-4 border border-purple-600 transition" id="task-{task_id}">
+        <div class="px-3 py-2 bg-purple-950/30 border-l-2 border-purple-500" id="task-{task_id}">
             <form hx-post="/backlog/{task_id}/make-recurring"
                   hx-target="#task-{task_id}"
                   hx-swap="outerHTML"
-                  class="space-y-3">
-                <p class="text-sm text-white font-medium">🔄 Сделать периодической:</p>
-                
+                  class="flex flex-wrap items-center gap-2">
+                <span class="text-xs text-purple-300 font-medium shrink-0">Шаблон:</span>
                 <select name="recurrence_type" onchange="this.nextElementSibling.classList.toggle('hidden', this.value !== 'weekly')"
-                        class="w-full bg-dark-900 border border-dark-700 rounded px-3 py-2 text-white text-sm">
-                    <option value="daily">📅 Ежедневно</option>
-                    <option value="weekly">📆 Еженедельно</option>
-                    <option value="monthly">🗓 Ежемесячно</option>
+                        class="bg-dark-900 border border-dark-600 rounded px-2 py-1 text-white text-xs min-w-[7rem]">
+                    <option value="daily">Ежедневно</option>
+                    <option value="weekly">Еженедельно</option>
+                    <option value="monthly">Ежемесячно</option>
                 </select>
-
-                <div class="hidden flex flex-wrap gap-2 text-xs text-gray-400">
+                <div class="hidden flex flex-wrap gap-1.5 text-[10px] text-gray-400">
                     <label><input type="checkbox" name="recurrence_days" value="mon" class="accent-purple-500"> Пн</label>
                     <label><input type="checkbox" name="recurrence_days" value="tue" class="accent-purple-500"> Вт</label>
                     <label><input type="checkbox" name="recurrence_days" value="wed" class="accent-purple-500"> Ср</label>
@@ -97,11 +95,8 @@ async def show_make_recurring_form(request: Request, task_id: int):
                     <label><input type="checkbox" name="recurrence_days" value="sat" class="accent-purple-500"> Сб</label>
                     <label><input type="checkbox" name="recurrence_days" value="sun" class="accent-purple-500"> Вс</label>
                 </div>
-
-                <div class="flex gap-2">
-                    <button type="submit" class="flex-1 bg-purple-600 hover:bg-purple-500 text-white py-1.5 rounded text-sm font-medium">Создать</button>
-                    <button type="button" hx-get="/backlog" hx-target="#backlog-list" class="px-3 py-1.5 bg-dark-700 text-gray-400 rounded text-sm">Отмена</button>
-                </div>
+                <button type="submit" class="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold">Создать</button>
+                <button type="button" onclick="window.location.reload()" class="px-2 py-1 text-gray-500 hover:text-gray-300 text-xs">Отмена</button>
             </form>
         </div>
     """)

@@ -54,6 +54,41 @@ class TestPages:
         assert "text/html" in response.headers["content-type"]
         assert "Периодические" in response.text
 
+    async def test_recurring_web_create_redirects(self, client):
+        """Создание шаблона: 303 на GET, без повторного POST при обновлении страницы"""
+        import uuid
+        title = f"web-rt-{uuid.uuid4().hex[:8]}"
+        create = await client.post(
+            "/recurring/create",
+            data={
+                "title": title,
+                "category_id": "",
+                "recurrence_type": "daily",
+                "start_date": date.today().isoformat(),
+            },
+            follow_redirects=False,
+        )
+        assert create.status_code == 303
+        assert create.headers["location"] == "/recurring?flash=created"
+
+        page = await client.get("/recurring?flash=created")
+        assert page.status_code == 200
+        assert title in page.text
+        assert "Шаблон создан" in page.text
+
+        dup = await client.post(
+            "/recurring/create",
+            data={
+                "title": title,
+                "category_id": "",
+                "recurrence_type": "daily",
+                "start_date": date.today().isoformat(),
+            },
+            follow_redirects=False,
+        )
+        assert dup.status_code == 303
+        assert "flash=duplicate" in dup.headers["location"]
+
     async def test_stats_page(self, client):
         """Страница статистики"""
         response = await client.get("/stats")

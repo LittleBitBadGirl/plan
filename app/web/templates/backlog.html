@@ -1,82 +1,80 @@
 {% extends "base.html" %}
+{% from 'partials/icons_macros.html' import icon_check, icon_calendar, icon_edit, icon_trash, icon_subtasks, icon_repeat, icon_bolt %}
 
 {% block title %}Бэклог — Планировщик{% endblock %}
 
 {% block content %}
-<h1 class="text-3xl font-bold mb-6">📥 Бэклог</h1>
-<p class="text-gray-400 mb-2">Задачи без даты — запланируйте на нужный день</p>
-<p class="text-gray-500 text-xs mb-6 uppercase tracking-wider">
-    📅 Дата | ⚡ Сегодня | 🔄 В шаблоны | ✅ Выполнено | 🗑 Архив
-</p>
+<div class="mb-4">
+    <h1 class="text-2xl font-bold text-white">Бэклог</h1>
+    <p class="text-gray-500 text-sm mt-0.5">Задачи без даты — запланируйте на нужный день</p>
+</div>
 
 {% if tasks %}
-<div class="space-y-3" id="backlog-list">
+<div class="rounded-xl border border-dark-600 bg-dark-800/50 overflow-hidden divide-y divide-dark-700" id="backlog-list">
     {% for task in tasks %}
-    <div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition" id="task-{{ task.id }}">
-        <div class="flex justify-between items-start gap-4">
-            <div class="flex-1">
-                <h3 class="font-semibold text-white leading-tight mb-1">{{ task.title }}</h3>
-                <div class="flex items-center gap-3 text-[10px]">
-                    <span class="text-gray-500">Создана: {{ task.created_at.strftime('%d.%m') }}</span>
-                    
-                    <!-- Категория (Если есть) -->
-                    {% if task.category %}
-                        <span class="text-accent font-bold uppercase tracking-tighter">
-                            {% if task.category.parent %}{{ task.category.parent.name }} → {% endif %}{{ task.category.name }}
-                        </span>
-                    {% endif %}
-                </div>
-
-                <!-- Подзадачи в бэклоге (упрощенно) -->
-                {% set current_subtasks = subtasks_map.get(task.id, []) %}
+    {% set current_subtasks = subtasks_map.get(task.id, []) %}
+    <div class="group px-3 py-2 hover:bg-dark-700/40 transition-colors" id="task-{{ task.id }}">
+        <div class="flex items-center gap-2 min-h-[2rem]">
+            <div class="flex-1 min-w-0 flex items-center gap-2">
+                <h3 class="text-sm font-semibold text-white truncate" title="{{ task.title }}">{{ task.title }}</h3>
+                {% if task.category %}
+                <span class="hidden sm:inline text-[10px] text-accent/80 font-medium truncate max-w-[8rem]"
+                      title="{% if task.category.parent %}{{ task.category.parent.name }} → {% endif %}{{ task.category.name }}">
+                    {{ task.category.name }}
+                </span>
+                {% endif %}
+                <span class="text-[10px] text-gray-600 tabular-nums shrink-0">{{ task.created_at.strftime('%d.%m') }}</span>
                 {% if current_subtasks and current_subtasks|length > 0 %}
-                    {% set done = current_subtasks | selectattr("status", "equalto", "выполнена") | list | length %}
-                    <div class="mt-2 text-[10px] text-gray-500">
-                        📂 Подзадачи: {{ done }}/{{ current_subtasks|length }}
-                    </div>
+                {% set done = current_subtasks | selectattr("status", "equalto", "выполнена") | list | length %}
+                <span class="inline-flex items-center gap-0.5 text-[10px] text-purple-400/90 shrink-0" title="Подзадачи">
+                    {{ icon_subtasks('w-3 h-3') }}
+                    <span class="font-medium">{{ done }}/{{ current_subtasks|length }}</span>
+                </span>
                 {% endif %}
             </div>
-            
-            <!-- Действия -->
-            <div class="flex flex-wrap gap-3 items-center justify-end">
-                <!-- 📅 Запланировать -->
-                <div class="flex items-center gap-1">
-                    <form hx-post="/tasks/{{ task.id }}/plan"
-                          hx-target="#task-{{ task.id }}"
-                          hx-swap="outerHTML"
-                          class="flex items-center gap-1">
-                        <input type="text" name="due_date" id="date-input-{{ task.id }}" placeholder="ДД.ММ" maxlength="5"
-                               class="bg-dark-900 border border-dark-700 rounded px-2 py-1 text-[10px] text-white hidden w-14"
-                               onkeypress="if(event.key==='Enter'){event.preventDefault(); this.form.requestSubmit()}">
-                        <button type="button"
-                                onclick="document.getElementById('date-input-{{ task.id }}').classList.toggle('hidden'); document.getElementById('date-input-{{ task.id }}').focus()"
-                                class="text-blue-400 hover:text-blue-300 transition-colors p-1" title="Запланировать">
-                            📅
-                        </button>
-                    </form>
-                </div>
-                
-                <!-- ⚡️ На сегодня -->
-                <form hx-post="/backlog/{{ task.id }}/plan-today" hx-target="#task-{{ task.id }}" hx-swap="outerHTML">
-                    <button type="submit" class="text-orange-400 hover:text-orange-300 transition-colors p-1 text-xl" title="На сегодня">⚡</button>
+
+            <div class="flex items-center gap-0.5 shrink-0 opacity-90 group-hover:opacity-100">
+                <form hx-post="/tasks/{{ task.id }}/plan"
+                      hx-target="#task-{{ task.id }}"
+                      hx-swap="outerHTML"
+                      class="inline-flex items-center">
+                    <input type="text" name="due_date" id="date-input-{{ task.id }}" placeholder="ДД.ММ" maxlength="5"
+                           class="bg-dark-900 border border-dark-600 rounded px-1.5 py-0.5 text-[10px] text-white hidden w-14 mr-0.5"
+                           onkeypress="if(event.key==='Enter'){event.preventDefault(); this.form.requestSubmit()}">
+                    <button type="button"
+                            onclick="document.getElementById('date-input-{{ task.id }}').classList.toggle('hidden'); document.getElementById('date-input-{{ task.id }}').focus()"
+                            class="icon-action icon-action--info"
+                            title="Запланировать на дату">
+                        {{ icon_calendar('w-4 h-4') }}
+                    </button>
                 </form>
 
-                <!-- 🔄 Периодическая -->
-                <form hx-post="/backlog/{{ task.id }}/make-recurring-form" hx-target="#task-{{ task.id }}" hx-swap="outerHTML">
-                    <button type="submit" class="text-purple-400 hover:text-purple-300 transition-colors p-1 text-xl" title="В шаблон">🔄</button>
+                <form hx-post="/backlog/{{ task.id }}/plan-today" hx-target="#task-{{ task.id }}" hx-swap="outerHTML" class="inline">
+                    <button type="submit" class="icon-action icon-action--today" title="На сегодня">
+                        {{ icon_bolt('w-4 h-4') }}
+                    </button>
                 </form>
 
-                <!-- ✅ Выполнено -->
-                <form hx-post="/tasks/{{ task.id }}/complete" hx-target="#task-{{ task.id }}" hx-swap="outerHTML">
-                    <button type="submit" class="text-green-500 hover:text-green-400 transition-colors p-1 text-xl" title="Выполнено">✅</button>
+                <form hx-post="/backlog/{{ task.id }}/make-recurring-form" hx-target="#task-{{ task.id }}" hx-swap="outerHTML" class="inline">
+                    <button type="submit" class="icon-action icon-action--purple" title="В шаблоны">
+                        {{ icon_repeat('w-4 h-4') }}
+                    </button>
                 </form>
 
-                <!-- ✏️ Правка -->
-                <a href="/tasks/{{ task.id }}/edit" class="text-gray-500 hover:text-white transition-colors p-1" title="Редактировать">✏️</a>
+                <form hx-post="/tasks/{{ task.id }}/complete" hx-target="#task-{{ task.id }}" hx-swap="outerHTML" class="inline">
+                    <button type="submit" class="icon-action icon-action--success" title="Выполнено">
+                        {{ icon_check('w-4 h-4') }}
+                    </button>
+                </form>
 
-                <!-- 🗑 Удалить -->
-                <form hx-delete="/tasks/{{ task.id }}" hx-target="#task-{{ task.id }}" hx-swap="outerHTML">
-                    <button type="submit" class="text-gray-700 hover:text-red-500 transition-colors p-1 text-xl" title="В архив">🗑</button>
+                <a href="/tasks/{{ task.id }}/edit" class="icon-link icon-link--muted" title="Редактировать">
+                    {{ icon_edit('w-4 h-4') }}
+                </a>
+
+                <form hx-delete="/tasks/{{ task.id }}" hx-target="#task-{{ task.id }}" hx-swap="outerHTML" class="inline">
+                    <button type="submit" class="icon-action icon-action--danger" title="В архив">
+                        {{ icon_trash('w-4 h-4') }}
+                    </button>
                 </form>
             </div>
         </div>
@@ -84,10 +82,9 @@
     {% endfor %}
 </div>
 {% else %}
-<div class="text-center py-20 text-gray-500">
-    <p class="text-5xl mb-4">📥</p>
-    <p>Бэклог пуст</p>
-    <p class="text-sm mt-2">Создайте задачу без даты или переместите сюда из дашборда</p>
+<div class="text-center py-16 text-gray-500 rounded-xl border border-dashed border-dark-600">
+    <p class="text-sm">Бэклог пуст</p>
+    <p class="text-xs mt-1 text-gray-600">Создайте задачу без даты или переместите сюда с дашборда</p>
 </div>
 {% endif %}
 {% endblock %}

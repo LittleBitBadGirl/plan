@@ -23,6 +23,10 @@
 .icon-action--muted:hover { color: #e5e7eb; background: rgba(255, 255, 255, 0.08); }
 .icon-action--danger { color: #9ca3af; }
 .icon-action--danger:hover { color: #f87171; background: rgba(239, 68, 68, 0.12); }
+.icon-action--today { color: #fb923c; }
+.icon-action--today:hover { color: #fdba74; background: rgba(249, 115, 22, 0.12); }
+.icon-action--purple { color: #c084fc; }
+.icon-action--purple:hover { color: #d8b4fe; background: rgba(168, 85, 247, 0.12); }
 .icon-link {
     display: inline-flex;
     align-items: center;

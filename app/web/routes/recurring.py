@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
+from urllib.parse import quote
 from sqlalchemy import select, func, delete
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,14 +52,22 @@ async def recurring_page(request: Request):
         )
         categories = cats_result.scalars().all()
 
+    flash = request.query_params.get("flash")
+    flash_title = request.query_params.get("title", "")
+
     return templates.TemplateResponse(request, "recurring.html", {
         "request": request,
         "recurring_tasks": recurring_tasks,
         "categories": categories,
+        "today": date.today().isoformat(),
+        "flash": flash,
+        "flash_title": flash_title,
+        "show_create_form": flash in ("duplicate", "empty_title"),
     })
 
 
-@router.post("/api/recurring/web-create", response_class=HTMLResponse)
+@router.post("/recurring/create")
+@router.post("/api/recurring/web-create")
 async def create_recurring_web(
     request: Request,
     title: str = Form(...),
@@ -67,24 +76,33 @@ async def create_recurring_web(
     days: List[str] = Form(None),
     start_date: str = Form(None),
 ):
-    """Создать периодическую задачу из веб-интерфейса"""
+    """Создать периодическую задачу из веб-интерфейса (POST → redirect, без повторной отправки формы)."""
+    title_clean = (title or "").strip()
+    if not title_clean:
+        return RedirectResponse(url="/recurring?flash=empty_title", status_code=303)
+
+    category_id_int = int(category_id) if category_id and category_id.isdigit() else None
+
     async with async_session() as db:
-        category_id_int = int(category_id) if category_id and category_id.isdigit() else None
-        
-        # Проверка на дубликат (title + recurrence_type + category + is_active)
-        existing = await db.execute(
-            select(RecurringTask).where(
-                RecurringTask.title == title,
-                RecurringTask.recurrence_type == recurrence_type,
-                RecurringTask.category_id == category_id_int,
-                RecurringTask.is_active == True,
-            )
-        )
+        dup_filters = [
+            RecurringTask.title == title_clean,
+            RecurringTask.recurrence_type == recurrence_type,
+            RecurringTask.is_active == True,
+        ]
+        if category_id_int is None:
+            dup_filters.append(RecurringTask.category_id.is_(None))
+        else:
+            dup_filters.append(RecurringTask.category_id == category_id_int)
+
+        existing = await db.execute(select(RecurringTask).where(*dup_filters))
         if existing.scalar_one_or_none():
-            return HTMLResponse(content='<script>alert("Ошибка: Такой активный шаблон уже существует в этой категории!"); window.history.back();</script>')
+            return RedirectResponse(
+                url=f"/recurring?flash=duplicate&title={quote(title_clean)}",
+                status_code=303,
+            )
 
         new_rt = RecurringTask(
-            title=title,
+            title=title_clean,
             category_id=category_id_int,
             recurrence_type=recurrence_type,
             recurrence_days=days if recurrence_type == "weekly" and days else None,
@@ -94,5 +112,4 @@ async def create_recurring_web(
         db.add(new_rt)
         await db.commit()
 
-    # Просто перезагружаем страницу
-    return HTMLResponse(content='<script>window.location.reload()</script>')
+    return RedirectResponse(url="/recurring?flash=created", status_code=303)

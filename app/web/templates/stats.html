@@ -4,153 +4,157 @@
 
 {% block content %}
 <div class="max-w-6xl mx-auto">
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h1 class="text-3xl font-bold text-white">Статистика</h1>
-            <p class="text-gray-400 mt-1">Анализ вашей продуктивности</p>
+    <div class="mb-6">
+        <h1 class="text-3xl font-bold text-white">Статистика</h1>
+        <p class="text-gray-400 mt-1">Анализ вашей продуктивности</p>
+    </div>
+
+    <!-- Сводка: KPI + темп/неделя — всё наверху -->
+    <section class="bg-dark-800 rounded-2xl border border-dark-600 shadow-xl mb-6 overflow-hidden">
+        <div class="grid grid-cols-2 divide-x divide-dark-600 border-b border-dark-600">
+            <a href="/archive"
+               class="px-5 py-5 sm:px-8 sm:py-6 flex flex-col gap-1 group hover:bg-dark-700/40 transition-colors">
+                <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-green-400/80">Выполнено</p>
+                <p class="text-4xl sm:text-5xl font-black text-green-400 tabular-nums leading-none">{{ total_completed }}</p>
+            </a>
+            <a href="/"
+               class="px-5 py-5 sm:px-8 sm:py-6 flex flex-col gap-1 group hover:bg-dark-700/40 transition-colors">
+                <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-blue-400/80">В работе</p>
+                <p class="text-4xl sm:text-5xl font-black text-blue-400 tabular-nums leading-none">{{ total_active }}</p>
+            </a>
         </div>
 
-        <button hx-get="/api/ai/prepare-analysis"
-                hx-target="#ai-analysis-container"
-                class="px-4 py-2 lg:px-5 lg:py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs lg:text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95">
-            <span class="hidden sm:inline">Анализ (AI)</span><span class="sm:hidden">Анализ</span>
-        </button>
-    </div>
-
-    <!-- KPI: выполнено + в работе -->
-    <div class="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
-        <a href="/archive"
-           class="bg-dark-800 rounded-2xl border border-dark-600 px-5 py-4 sm:px-8 sm:py-5 shadow-xl flex items-center justify-between group hover:border-green-500/30 transition-colors">
-            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-green-400/80">Выполнено</p>
-            <p class="text-3xl sm:text-4xl font-black text-green-400 tabular-nums">{{ total_completed }}</p>
-        </a>
-        <a href="/"
-           class="bg-dark-800 rounded-2xl border border-dark-600 px-5 py-4 sm:px-8 sm:py-5 shadow-xl flex items-center justify-between group hover:border-blue-500/30 transition-colors">
-            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-blue-400/80">В работе</p>
-            <p class="text-3xl sm:text-4xl font-black text-blue-400 tabular-nums">{{ total_active }}</p>
-        </a>
-    </div>
-
-    <!-- Динамика (широко) + компактная боковая панель -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-8">
-        <div class="lg:col-span-9 flex flex-col gap-3">
-            {% include "partials/stats_chart.html" %}
-
-            <div class="bg-dark-800/80 rounded-xl border border-dark-600 px-4 py-3 flex flex-wrap gap-x-5 gap-y-2 text-xs">
+        <div class="px-4 py-4 sm:px-6 sm:py-5">
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                 {% if insights.avg_workday %}
-                <div>
-                    <span class="text-gray-500">Ср. темп</span>
-                    <span class="text-white font-bold ml-1">~{{ insights.avg_workday }}/раб. день</span>
-                    <span class="text-gray-600 ml-1">· 14 дн.</span>
+                <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Ср. темп</p>
+                    <p class="text-sm font-bold text-white tabular-nums">~{{ insights.avg_workday }}<span class="text-gray-500 font-normal">/раб. день</span></p>
+                    <p class="text-[10px] text-gray-600 mt-0.5">за 14 раб. дней</p>
                 </div>
                 {% endif %}
-                <div>
-                    <span class="text-gray-500">7 дней</span>
-                    <span class="text-green-400 font-bold ml-1">{{ insights.completed_7d }}</span>
-                    <span class="text-gray-600 ml-1">закрыто (пн–пт)</span>
+                <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">7 дней</p>
+                    <p class="text-sm font-bold text-green-400 tabular-nums">{{ insights.completed_7d }} <span class="text-gray-500 font-normal text-xs">закрыто</span></p>
+                    <p class="text-[10px] text-gray-600 mt-0.5">пн–пт</p>
                 </div>
-                <div title="Закрыто за 7 дн. (пн–пт) vs предыдущие 7 дн.: {{ insights.completed_prev_7d }}">
-                    <span class="text-gray-500">Δ неделя</span>
-                    <span class="font-bold ml-1 tabular-nums {{ 'text-green-400' if insights.week_delta > 0 else 'text-red-400/90' if insights.week_delta < 0 else 'text-gray-400' }}">{{ insights.week_delta_label }}</span>
-                    <span class="text-gray-600 ml-1">к прошлой</span>
+                <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5"
+                     title="Закрыто за 7 дн. (пн–пт) vs предыдущие 7 дн.: {{ insights.completed_prev_7d }}">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Δ неделя</p>
+                    <p class="text-sm font-bold tabular-nums {{ 'text-green-400' if insights.week_delta > 0 else 'text-red-400/90' if insights.week_delta < 0 else 'text-gray-400' }}">{{ insights.week_delta_label }}</p>
+                    <p class="text-[10px] text-gray-600 mt-0.5">к прошлой</p>
                 </div>
                 {% if insights.stale_in_progress > 0 %}
-                <a href="/tasks?status=в_работе" class="hover:opacity-90" title="В работе более 7 дней (с даты создания)">
-                    <span class="text-gray-500">Зависли</span>
-                    <span class="text-amber-400 font-bold ml-1">{{ insights.stale_in_progress }}</span>
-                    <span class="text-gray-600 ml-1">в работе &gt;7 дн.</span>
+                <a href="/tasks?status=в_работе"
+                   class="rounded-xl bg-dark-900/50 border border-amber-500/20 px-3 py-2.5 hover:border-amber-500/40 transition-colors"
+                   title="В работе более 7 дней (с даты создания)">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Зависли</p>
+                    <p class="text-sm font-bold text-amber-400 tabular-nums">{{ insights.stale_in_progress }}</p>
+                    <p class="text-[10px] text-gray-600 mt-0.5">в работе &gt;7 дн.</p>
                 </a>
                 {% else %}
-                <div>
-                    <span class="text-gray-500">Зависли</span>
-                    <span class="text-gray-500 font-bold ml-1">0</span>
-                    <span class="text-gray-600 ml-1">в работе &gt;7 дн.</span>
+                <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Зависли</p>
+                    <p class="text-sm font-bold text-gray-500 tabular-nums">0</p>
+                    <p class="text-[10px] text-gray-600 mt-0.5">в работе &gt;7 дн.</p>
                 </div>
                 {% endif %}
-                <div>
-                    <span class="text-gray-500">30 дней</span>
-                    <span class="text-green-400/90 font-bold ml-1">{{ insights.completed_30d }}</span>
+                <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">30 дней</p>
+                    <p class="text-sm font-bold text-green-400/90 tabular-nums">{{ insights.completed_30d }}</p>
+                    <p class="text-[10px] text-gray-600 mt-0.5">закрыто</p>
                 </div>
                 {% if insights.best_day_7d > 0 %}
-                <div>
-                    <span class="text-gray-500">Рекорд нед.</span>
-                    <span class="text-white font-bold ml-1">{{ insights.best_day_7d }}</span>
+                <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Рекорд нед.</p>
+                    <p class="text-sm font-bold text-white tabular-nums">{{ insights.best_day_7d }}</p>
+                    <p class="text-[10px] text-gray-600 mt-0.5">за один день</p>
                 </div>
                 {% endif %}
                 {% if insights.pace_pct is not none %}
-                <div>
-                    <span class="text-gray-500">Темп нед.</span>
-                    <span class="font-bold ml-1 {{ 'text-green-400' if insights.pace_pct >= 100 else 'text-amber-400/90' if insights.pace_pct >= 70 else 'text-gray-400' }}">{{ insights.pace_pct }}%</span>
-                    <span class="text-gray-600 ml-1">к вашему среднему</span>
+                <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Темп нед.</p>
+                    <p class="text-sm font-bold tabular-nums {{ 'text-green-400' if insights.pace_pct >= 100 else 'text-amber-400/90' if insights.pace_pct >= 70 else 'text-gray-400' }}">{{ insights.pace_pct }}%</p>
+                    <p class="text-[10px] text-gray-600 mt-0.5">к вашему среднему</p>
                 </div>
                 {% endif %}
             </div>
-            <p class="text-[10px] text-gray-600 px-1">Выходные на графике подсвечены; в цифрах темпа — только пн–пт.</p>
+            <p class="text-[10px] text-gray-600 mt-4 pt-3 border-t border-dark-700">Выходные на графике подсвечены; в цифрах темпа — только пн–пт.</p>
         </div>
+    </section>
 
-        <aside class="lg:col-span-3 bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg flex flex-col min-h-0">
-            <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Топ категорий</h2>
-            {% if category_distribution %}
-            <div class="space-y-2.5 flex-1">
+    <!-- Динамика + компактный топ категорий -->
+    <div class="mb-8 space-y-3">
+        {% if category_distribution %}
+        {% set max_val = category_distribution[0][1] %}
+        <div class="rounded-xl border border-dark-600 bg-dark-800/90 px-3 py-2.5 sm:px-4">
+            <div class="flex items-baseline justify-between gap-2 mb-2">
+                <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Топ категорий</p>
+                <p class="text-[10px] text-gray-600 shrink-0">закрытые · всё время</p>
+            </div>
+            <div class="grid grid-cols-3 gap-2 sm:gap-3">
                 {% for name, count in category_distribution %}
-                <div>
-                    <div class="flex justify-between text-[11px] mb-0.5 gap-2">
-                        <span class="text-gray-400 truncate">{{ name | noemoji }}</span>
-                        <span class="text-gray-200 font-bold shrink-0">{{ count }}</span>
-                    </div>
-                    {% set max_val = category_distribution[0][1] %}
-                    <div class="w-full bg-dark-700 rounded-full h-1">
+                <div class="flex items-center gap-2 min-w-0 rounded-lg bg-dark-900/60 px-2.5 py-1.5 sm:px-3 sm:py-2">
+                    <span class="text-[11px] sm:text-xs text-gray-400 truncate flex-1 min-w-0" title="{{ name | noemoji }}">{{ name | noemoji }}</span>
+                    <span class="text-xs font-black text-white tabular-nums shrink-0">{{ count }}</span>
+                    <div class="w-10 sm:w-12 bg-dark-700 rounded-full h-1 shrink-0 hidden sm:block">
                         <div class="bg-accent/80 h-full rounded-full" style="width: {{ (count / max_val * 100)|int }}%"></div>
                     </div>
                 </div>
                 {% endfor %}
             </div>
-            <p class="text-[10px] text-gray-600 mt-3 pt-2 border-t border-dark-700">По всем закрытым задачам</p>
-            {% else %}
-            <p class="text-[11px] text-gray-600 italic py-4">Пока нет закрытых с категорией</p>
-            {% endif %}
-        </aside>
+        </div>
+        {% endif %}
+
+        {% include "partials/stats_chart.html" %}
     </div>
 
     <!-- Анализ продуктивности (AI) -->
-    <div id="ai-analysis-container" class="mb-8">
-        {% if last_report %}
-        <div class="bg-dark-800 rounded-2xl border border-blue-500/30 overflow-hidden shadow-2xl">
-            <div class="p-6 bg-blue-600/10 border-b border-blue-500/20 flex items-center justify-between">
-                <h2 class="text-xl font-bold text-white">
-                    Анализ продуктивности
-                </h2>
-                <span class="text-xs text-blue-400 font-mono">за {{ last_report.report_date.strftime('%d.%m.%Y') }}</span>
+    <div id="ai-analysis-container" class="mb-8 bg-dark-800 rounded-2xl border {{ 'border-blue-500/30 shadow-2xl' if last_report else 'border-dark-600 border-dashed' }} overflow-hidden">
+        <div class="p-5 sm:p-6 {{ 'bg-blue-600/10 border-b border-blue-500/20' if last_report else 'border-b border-dark-700' }} flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="min-w-0">
+                <h2 class="text-xl font-bold text-white">AI-анализ продуктивности</h2>
+                {% if last_report %}
+                <p class="text-xs text-blue-400/90 font-mono mt-0.5">последний · {{ last_report.report_date.strftime('%d.%m.%Y') }}</p>
+                {% else %}
+                <p class="text-gray-500 text-sm mt-1">DeepSeek разберёт задачи с даты последнего анализа</p>
+                {% endif %}
             </div>
-            <div class="p-8 prose prose-invert prose-blue max-w-none">
-                <div class="text-gray-300 leading-relaxed whitespace-pre-wrap">{{ last_report.content }}</div>
+            <button hx-get="/api/ai/prepare-analysis"
+                    hx-target="#ai-analysis-inner"
+                    hx-swap="innerHTML"
+                    class="shrink-0 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95">
+                {% if last_report %}Новый анализ (AI){% else %}Анализ (AI){% endif %}
+            </button>
+        </div>
+
+        <div id="ai-analysis-inner">
+            {% if last_report %}
+            <div class="p-6 sm:p-8">
+                <div class="text-gray-300 leading-relaxed whitespace-pre-wrap text-sm sm:text-base">{{ last_report.content }}</div>
             </div>
             <div class="p-4 bg-dark-700/30 border-t border-dark-600">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Обратная связь</p>
                 <div class="flex gap-2">
                     <input type="text" name="feedback"
-                           placeholder="Обратная связь: что поправить в анализе?"
+                           placeholder="Что поправить в анализе?"
                            class="flex-1 bg-dark-900 border border-dark-600 rounded-lg px-3 py-2 text-sm text-white"
                            hx-get="/api/ai/feedback"
                            hx-trigger="keydown[key=='Enter']"
                            hx-include="this"
-                           hx-target="#ai-analysis-container"
-                           hx-swap="outerHTML">
+                           hx-target="#ai-analysis-inner"
+                           hx-swap="innerHTML">
                     <button class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-bold"
                             hx-get="/api/ai/feedback"
-                            hx-include="this"
-                            hx-target="#ai-analysis-container"
-                            hx-swap="outerHTML">→</button>
+                            hx-include="[name='feedback']"
+                            hx-target="#ai-analysis-inner"
+                            hx-swap="innerHTML">→</button>
                 </div>
             </div>
+            {% else %}
+            <p class="px-5 sm:px-6 py-8 text-sm text-gray-600 text-center">Отчёт появится здесь после запуска анализа</p>
+            {% endif %}
         </div>
-        {% else %}
-        <div class="bg-dark-800/50 rounded-2xl border border-dark-600 p-12 text-center border-dashed">
-            <h2 class="text-xl font-bold text-white mb-2">AI-анализ продуктивности</h2>
-            <p class="text-gray-500 max-w-md mx-auto mb-6 text-sm">
-                Нажмите кнопку «Анализ (AI)» — DeepSeek проанализирует задачи с даты последнего анализа.
-            </p>
-        </div>
-        {% endif %}
     </div>
 
     <!-- Карьерный капитал — сворачиваемый блок -->

@@ -68,19 +68,33 @@
             {% set date_str = row[0] %}
             {% set count = row[1] %}
             {% set weekend = row[2] if row|length > 2 else false %}
-            <div class="flex-1 flex flex-col items-center justify-end h-full group min-w-[4px] relative rounded-t">
+            <div class="flex-1 flex flex-col items-center justify-end h-full group min-w-[4px] relative">
+                <div class="text-[8px] font-bold opacity-0 group-hover:opacity-100 transition-opacity px-1 rounded whitespace-nowrap z-10 mb-1 relative
+                            {{ 'text-violet-200 bg-violet-950/80' if weekend else 'text-white bg-dark-700' }}">{{ count }}</div>
                 {% if weekend %}
-                <div class="absolute inset-0 bg-white/[0.06] rounded-t pointer-events-none" aria-hidden="true"></div>
+                    {% if count > 0 %}
+                    {% set height_percent = (count / max_hist * 100)|int %}
+                    {% if height_percent < 4 %}{% set height_percent = 4 %}{% endif %}
+                    <div class="w-[72%] max-w-[10px] mx-auto bg-violet-400/45 hover:bg-violet-300/60 rounded-t transition-all relative z-[1] ring-1 ring-inset ring-violet-300/15"
+                         style="height: {{ height_percent }}%"
+                         title="{{ date_str }}: {{ count }} · выходной"></div>
+                    {% else %}
+                    <div class="w-[72%] max-w-[10px] h-1 mx-auto rounded-full bg-violet-500/25 relative z-[1]"
+                         title="{{ date_str }}: 0 · выходной"></div>
+                    {% endif %}
+                {% else %}
+                    {% set height_percent = (count / max_hist * 100)|int %}
+                    {% if count > 0 and height_percent < 5 %}{% set height_percent = 5 %}{% endif %}
+                    <div class="w-full bg-green-500/85 hover:bg-green-400 rounded-t transition-all relative z-[1]"
+                         style="height: {{ height_percent }}%"
+                         title="{{ date_str }}: {{ count }}"></div>
                 {% endif %}
-                <div class="text-[8px] text-white font-bold opacity-0 group-hover:opacity-100 transition-opacity bg-dark-700 px-1 rounded whitespace-nowrap z-10 mb-1 relative">{{ count }}</div>
-                {% set height_percent = (count / max_hist * 100)|int %}
-                {% if count > 0 and height_percent < 5 %}{% set height_percent = 5 %}{% endif %}
-                <div class="w-full bg-green-500/80 hover:bg-green-400 rounded-t transition-all relative z-[1]"
-                     style="height: {{ height_percent }}%" title="{{ date_str }}: {{ count }}{% if weekend %} (выходной){% endif %}"></div>
                 {% if period == 'week' %}
-                    <div class="text-[9px] {{ 'text-gray-400' if weekend else 'text-gray-500' }} uppercase mt-1 relative">{{ date_str[-2:] }}</div>
+                    <div class="text-[9px] uppercase mt-1 relative tabular-nums
+                                {{ 'text-violet-400/70 font-medium' if weekend else 'text-gray-500' }}">{{ date_str[-2:] }}</div>
                 {% elif loop.index % 5 == 0 or loop.first or loop.last %}
-                    <div class="text-[8px] {{ 'text-gray-400' if weekend else 'text-gray-500' }} uppercase mt-1 relative">{{ date_str[-2:] }}</div>
+                    <div class="text-[8px] uppercase mt-1 relative tabular-nums
+                                {{ 'text-violet-400/70 font-medium' if weekend else 'text-gray-500' }}">{{ date_str[-2:] }}</div>
                 {% else %}
                     <div class="h-4"></div>
                 {% endif %}
@@ -92,4 +106,17 @@
         <p class="w-full text-center py-20 text-gray-600 italic">Нет данных за этот период</p>
         {% endif %}
     </div>
+
+    {% if period != 'year' and weekly_history %}
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 pt-3 border-t border-dark-700 text-[10px] text-gray-500">
+        <span class="inline-flex items-center gap-1.5">
+            <span class="inline-block w-2.5 h-3 rounded-sm bg-green-500/85"></span>
+            будни
+        </span>
+        <span class="inline-flex items-center gap-1.5">
+            <span class="inline-block w-2.5 h-1 rounded-full bg-violet-400/45"></span>
+            выходные
+        </span>
+    </div>
+    {% endif %}
 </div>

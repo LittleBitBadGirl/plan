@@ -36,8 +36,39 @@ router = APIRouter()
 import httpx
 from app.services.ai_service import ai_service
 
+
+def _ai_analysis_inner_html(content: str, note: str = "") -> str:
+    """Фрагмент для #ai-analysis-inner (HTMX innerHTML)."""
+    note_block = (
+        f'<p class="text-xs text-green-400/90 mb-3">{note}</p>' if note else ""
+    )
+    return f"""
+<div class="p-6 sm:p-8">
+    {note_block}
+    <div class="text-gray-300 leading-relaxed whitespace-pre-wrap text-sm sm:text-base">{content}</div>
+</div>
+<div class="p-4 bg-dark-700/30 border-t border-dark-600">
+    <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Обратная связь</p>
+    <div class="flex gap-2">
+        <input type="text" name="feedback"
+               placeholder="Что поправить в анализе?"
+               class="flex-1 bg-dark-900 border border-dark-600 rounded-lg px-3 py-2 text-sm text-white"
+               hx-get="/api/ai/feedback"
+               hx-trigger="keydown[key=='Enter']"
+               hx-include="this"
+               hx-target="#ai-analysis-inner"
+               hx-swap="innerHTML">
+        <button type="button" class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-bold"
+                hx-get="/api/ai/feedback"
+                hx-include="[name='feedback']"
+                hx-target="#ai-analysis-inner"
+                hx-swap="innerHTML">→</button>
+    </div>
+</div>
+"""
+
 @router.get("/stats", response_class=HTMLResponse)
-async def stats_page(request: Request, period: str = "week"):
+async def stats_page(request: Request, period: str = "month"):
     """Статистика"""
     async with async_session() as db:
         # Общие показатели (всегда за все время)
@@ -103,7 +134,7 @@ async def stats_page(request: Request, period: str = "week"):
     })
 
 @router.get("/api/stats/chart", response_class=HTMLResponse)
-async def get_stats_chart(request: Request, period: str = "week"):
+async def get_stats_chart(request: Request, period: str = "month"):
     """Обновление только блока графика через HTMX"""
     async with async_session() as db:
         history_data = await get_history_data(db, period)
@@ -145,10 +176,10 @@ async def run_ai_analysis(request: Request):
 
         if not tasks:
             return HTMLResponse(f"""
-                <div class="bg-yellow-900/20 border border-yellow-700/50 p-6 rounded-xl text-center">
-                    <p class="text-yellow-500">Нет новых задач с {start_date.strftime('%d.%m')}.</p>
-                </div>
-            """)
+<p class="px-6 py-8 text-center text-sm text-yellow-500/90">
+    Нет новых задач с {start_date.strftime('%d.%m')}.
+</p>
+""")
 
         tasks_list = []
         for t in tasks:
@@ -208,40 +239,24 @@ async def run_ai_analysis(request: Request):
                     db.add(report)
                     await db.commit()
                     
-                    return HTMLResponse(f"""
-                        <div id="analysis-result" class="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
-                            <div class="prose prose-invert max-w-none text-sm">{analysis_content}</div>
-                            <div class="mt-4 pt-4 border-t border-gray-700">
-                                <p class="text-gray-500 text-xs mb-2">Обратная связь — что поправить в анализе?</p>
-                                <div class="flex gap-2">
-                                    <input type="text" id="feedback-input" name="feedback" 
-                                           placeholder="Например: слишком обще, добавь цифры..."
-                                           class="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white"
-                                           hx-get="/api/ai/feedback"
-                                           hx-trigger="keydown[key=='Enter']"
-                                           hx-include="this"
-                                           hx-target="#analysis-result"
-                                           hx-swap="outerHTML">
-                                    <button class="px-3 py-2 bg-accent text-white rounded-lg text-sm font-bold"
-                                            hx-get="/api/ai/feedback"
-                                            hx-include="#feedback-input"
-                                            hx-target="#analysis-result"
-                                            hx-swap="outerHTML">→</button>
-                                </div>
-                            </div>
-                        </div>
-                    """)
+                    return HTMLResponse(_ai_analysis_inner_html(analysis_content))
                 else:
-                    return HTMLResponse(f"""<div class="p-4 bg-red-900/20 text-red-400 rounded-lg">Ошибка API: {response.status_code}</div>""")
+                    return HTMLResponse(
+                        f'<p class="px-6 py-8 text-center text-sm text-red-400/90">Ошибка API: {response.status_code}</p>'
+                    )
         except Exception as e:
-            return HTMLResponse(f"""<div class="p-4 bg-red-900/20 text-red-400 rounded-lg">Ошибка: {str(e)}</div>""")
+            return HTMLResponse(
+                f'<p class="px-6 py-8 text-center text-sm text-red-400/90">Ошибка: {str(e)}</p>'
+            )
 
 
 @router.get("/api/ai/feedback", response_class=HTMLResponse)
 async def ai_feedback(request: Request, feedback: str = ""):
     """Повторный анализ с учётом обратной связи"""
     if not feedback.strip():
-        return HTMLResponse("""<div class="p-4 bg-yellow-900/20 text-yellow-400 rounded-lg">Введи текст обратной связи</div>""")
+        return HTMLResponse(
+            '<p class="px-6 py-6 text-center text-sm text-yellow-400/90">Введи текст обратной связи</p>'
+        )
     
     async with async_session() as db:
         last = await db.execute(
@@ -249,7 +264,9 @@ async def ai_feedback(request: Request, feedback: str = ""):
         )
         report = last.scalar_one_or_none()
         if not report:
-            return HTMLResponse("""<div class="p-4 bg-yellow-900/20 text-yellow-400 rounded-lg">Нет сохранённого анализа</div>""")
+            return HTMLResponse(
+                '<p class="px-6 py-6 text-center text-sm text-yellow-400/90">Нет сохранённого анализа</p>'
+            )
         
         tasks_res = await db.execute(
             select(Task).options(selectinload(Task.category))
@@ -291,25 +308,13 @@ async def ai_feedback(request: Request, feedback: str = ""):
                     report.content = new_content
                     await db.commit()
                     
-                    return HTMLResponse(f"""
-                        <div id="analysis-result" class="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
-                            <div class="text-xs text-green-400 mb-2">✅ Обновлено: «{feedback[:80]}»</div>
-                            <div class="prose prose-invert max-w-none text-sm">{new_content}</div>
-                            <div class="mt-4 pt-4 border-t border-gray-700">
-                                <p class="text-gray-500 text-xs mb-2">Ещё обратная связь?</p>
-                                <div class="flex gap-2">
-                                    <input type="text" name="feedback" placeholder="Что ещё поправить?"
-                                           class="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white"
-                                           hx-get="/api/ai/feedback" hx-trigger="keydown[key=='Enter']"
-                                           hx-include="this" hx-target="#analysis-result" hx-swap="outerHTML">
-                                    <button class="px-3 py-2 bg-accent text-white rounded-lg text-sm font-bold"
-                                            hx-get="/api/ai/feedback" hx-include="this"
-                                            hx-target="#analysis-result" hx-swap="outerHTML">→</button>
-                                </div>
-                            </div>
-                        </div>
-                    """)
+                    note = f"Обновлено: «{feedback[:80]}»"
+                    return HTMLResponse(_ai_analysis_inner_html(new_content, note=note))
         except Exception as e:
-            return HTMLResponse(f"""<div class="p-4 bg-red-900/20 text-red-400 rounded-lg">Ошибка: {str(e)}</div>""")
-    
-    return HTMLResponse("""<div class="p-4 bg-red-900/20 text-red-400 rounded-lg">Неизвестная ошибка</div>""")
+            return HTMLResponse(
+                f'<p class="px-6 py-8 text-center text-sm text-red-400/90">Ошибка: {str(e)}</p>'
+            )
+
+    return HTMLResponse(
+        '<p class="px-6 py-8 text-center text-sm text-red-400/90">Неизвестная ошибка</p>'
+    )
