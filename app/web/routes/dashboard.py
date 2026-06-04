@@ -25,6 +25,8 @@ from app.web.deps import (
     build_daily_load_warning,
     get_history_data,
     get_tasks_today,
+    load_subtasks_map,
+    repair_archived_subtasks,
     _strip_emoji,
     _render_shopping_list,
     _shopping_stats_script,
@@ -127,22 +129,9 @@ async def dashboard(request: Request):
         )
         tasks = list(result.scalars().all())
 
-        # Загружаем подзадачи отдельно и создаем словарь {task_id: [subtasks]}
-        subtasks_map = {}
-        if tasks:
-            task_ids = [t.id for t in tasks]
-            subtasks_result = await db.execute(
-                select(Task).where(
-                    Task.parent_task_id.in_(task_ids),
-                    Task.is_archived == False,
-                )
-            )
-            all_subtasks = subtasks_result.scalars().all()
-            
-            from collections import defaultdict
-            subtasks_map = defaultdict(list)
-            for st in all_subtasks:
-                subtasks_map[st.parent_task_id].append(st)
+        await repair_archived_subtasks(db)
+        subtasks_map = await load_subtasks_map(db, [t.id for t in tasks])
+        await db.commit()
 
         from app.services.recurring_schedule import get_recurring_templates_for_date
 

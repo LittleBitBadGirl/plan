@@ -288,7 +288,7 @@ class TestSubtasks:
         assert data["status"] == "выполнена"
         assert data["is_archived"] is False
 
-    async def test_complete_last_subtask_closes_parent(self, client):
+    async def test_complete_last_subtask_keeps_parent_open(self, client):
         parent = await client.post("/api/tasks", json={"title": "Родитель", "category_id": 1})
         parent_id = parent.json()["id"]
         sub = await client.post(f"/api/tasks/{parent_id}/subtasks", json={"title": "Единственный", "source": "web"})
@@ -298,8 +298,8 @@ class TestSubtasks:
 
         parent_resp = await client.get(f"/api/tasks/{parent_id}")
         parent_data = parent_resp.json()
-        assert parent_data["status"] == "выполнена"
-        assert parent_data["is_archived"] is True
+        assert parent_data["status"] != "выполнена"
+        assert parent_data["is_archived"] is False
 
 
 # ==================== Архив ====================

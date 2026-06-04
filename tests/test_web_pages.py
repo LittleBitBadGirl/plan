@@ -175,7 +175,7 @@ class TestSubtaskHTMX:
         assert "Шаг 1" in resp.text
         assert f"subtask-row-{sub_id}" in resp.text
 
-    async def test_complete_last_subtask_removes_parent_from_list(self, client):
+    async def test_complete_last_subtask_shows_strikethrough(self, client):
         today = date.today().isoformat()
         parent = await client.post("/api/tasks", json={"title": "Проект", "due_date": today, "category_id": 1})
         parent_id = parent.json()["id"]
@@ -184,7 +184,9 @@ class TestSubtaskHTMX:
 
         resp = await client.post(f"/tasks/{sub_id}/complete-subtask")
         assert resp.status_code == 200
-        assert "Проект" not in resp.text or "Нет задач" in resp.text
+        assert "line-through" in resp.text
+        assert "Единственный" in resp.text
+        assert "Проект" not in resp.text
 
 
 # ==================== HTMX бэклога ====================

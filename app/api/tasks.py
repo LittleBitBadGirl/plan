@@ -217,6 +217,8 @@ async def complete_task(
     if task.parent_task_id is None:
         task.is_archived = True
         task.item_kind = "task"
+    else:
+        task.is_archived = False
 
     # 1. Если это родительская задача — закрываем всех детей
     if task.parent_task_id is None:
@@ -228,25 +230,7 @@ async def complete_task(
             child.status = "выполнена"
             child.completed_at = datetime.utcnow()
 
-    # 2. Если это подзадача — проверяем, закрыты ли все siblings
-    if task.parent_task_id:
-        parent_result = await db.execute(select(Task).where(Task.id == task.parent_task_id))
-        parent = parent_result.scalar_one_or_none()
-        if parent:
-            # Проверяем, есть ли открытые дети у этого родителя
-            open_children = await db.execute(
-                select(Task).where(
-                    Task.parent_task_id == parent.id,
-                    Task.status != "выполнена"
-                )
-            )
-            if not open_children.scalars().first():
-                # Все дети закрыты — закрываем родителя
-                parent.status = "выполнена"
-                parent.completed_at = datetime.utcnow()
-                parent.is_archived = True
-                parent.item_kind = "task"
-
+    # 2. Если это подзадача — только отметить выполненной, родитель не трогаем
     await db.flush()
     return task
 

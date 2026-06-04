@@ -224,6 +224,36 @@ def _today_task_base_filter(today: date) -> list:
     ]
 
 
+async def load_subtasks_map(db: AsyncSession, task_ids: list[int]) -> dict[int, list[Task]]:
+    """Все подзадачи родителей (включая выполненные)."""
+    if not task_ids:
+        return {}
+    result = await db.execute(
+        select(Task)
+        .where(Task.parent_task_id.in_(task_ids))
+        .order_by(Task.created_at.asc())
+    )
+    subtasks_map: dict[int, list[Task]] = defaultdict(list)
+    for sub in result.scalars().all():
+        subtasks_map[sub.parent_task_id].append(sub)
+    return subtasks_map
+
+
+async def repair_archived_subtasks(db: AsyncSession) -> None:
+    """Снять архив с выполненных подзадач (legacy после старого /complete)."""
+    from sqlalchemy import update
+    await db.execute(
+        update(Task)
+        .where(
+            Task.parent_task_id.isnot(None),
+            Task.status == "выполнена",
+            Task.is_archived == True,
+        )
+        .values(is_archived=False)
+    )
+    await db.flush()
+
+
 def _completed_on_day(completed_at: Optional[datetime], day: date) -> bool:
     """Задача закрыта в указанный календарный день (UTC, как completed_at в БД)."""
     if not completed_at:
@@ -247,13 +277,15 @@ def _today_roots_filter(today: date) -> list:
 
 
 async def get_today_progress(db: AsyncSession) -> tuple[int, int]:
-    """Гибридный прогресс дня: подзадачи = частичный прогресс, листья = 1."""
+    """Прогресс дня: Y = карточки на сегодня, X = закрытые задачи + чекнутые подзадачи."""
     today = date.today()
 
     roots_result = await db.execute(select(Task).where(*_today_roots_filter(today)))
     roots = roots_result.scalars().all()
     if not roots:
         return 0, 0
+
+    total = len(roots)
 
     root_ids = [r.id for r in roots]
     subs_result = await db.execute(
@@ -264,18 +296,17 @@ async def get_today_progress(db: AsyncSession) -> tuple[int, int]:
         subs_by_parent[sub.parent_task_id].append(sub)
 
     completed = 0
-    total = 0
     for root in roots:
         subs = subs_by_parent.get(root.id, [])
         if subs:
-            total += len(subs)
-            for sub in subs:
-                if sub.status == "выполнена" and _completed_on_day(sub.completed_at, today):
-                    completed += 1
-        else:
-            total += 1
             if root.status == "выполнена" and _completed_on_day(root.completed_at, today):
                 completed += 1
+            else:
+                for sub in subs:
+                    if sub.status == "выполнена" and _completed_on_day(sub.completed_at, today):
+                        completed += 1
+        elif root.status == "выполнена" and _completed_on_day(root.completed_at, today):
+            completed += 1
 
     return completed, total
 
@@ -513,20 +544,10 @@ async def get_tasks_today(db: AsyncSession, request: Request):
     )
     tasks = result.scalars().all()
 
-    subtasks_map = {}
-    if tasks:
-        task_ids = [t.id for t in tasks]
-        subtasks_result = await db.execute(
-            select(Task).where(
-                Task.parent_task_id.in_(task_ids),
-                Task.is_archived == False,
-            )
-        )
-        all_subtasks = subtasks_result.scalars().all()
-        from collections import defaultdict
-        subtasks_map = defaultdict(list)
-        for st in all_subtasks:
-            subtasks_map[st.parent_task_id].append(st)
+    await repair_archived_subtasks(db)
+    task_ids = [t.id for t in tasks]
+    subtasks_map = await load_subtasks_map(db, task_ids)
+    await db.commit()
 
     template = templates.get_template("partials/tasks_list.html")
     content = template.render({"request": request, "tasks": tasks, "subtasks_map": subtasks_map})
@@ -541,6 +562,8 @@ __all__ = [
     "get_categories_list",
     "get_today_stats",
     "get_today_progress",
+    "load_subtasks_map",
+    "repair_archived_subtasks",
     "build_daily_load_warning",
     "get_avg_completed_per_day",
     "get_productivity_insights",

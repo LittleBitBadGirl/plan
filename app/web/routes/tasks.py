@@ -24,6 +24,8 @@ from app.web.deps import (
     get_today_stats,
     get_history_data,
     get_tasks_today,
+    load_subtasks_map,
+    repair_archived_subtasks,
     _strip_emoji,
     _render_shopping_list,
     _shopping_stats_script,
@@ -80,9 +82,8 @@ async def delete_subtask(request: Request, task_id: int):
             await db.delete(task)
             await db.commit()
 
-            # Возвращаем обновленный список подзадач
             subtasks_result = await db.execute(
-                select(Task).where(Task.parent_task_id == parent_id, Task.is_archived == False)
+                select(Task).where(Task.parent_task_id == parent_id).order_by(Task.created_at.asc())
             )
             subtasks = subtasks_result.scalars().all()
 
@@ -192,7 +193,7 @@ async def get_subtasks_htmx(request: Request, task_id: int):
     """HTMX: загрузить список подзадач для родителя"""
     async with async_session() as db:
         result = await db.execute(
-            select(Task).where(Task.parent_task_id == task_id, Task.is_archived == False)
+            select(Task).where(Task.parent_task_id == task_id).order_by(Task.created_at.asc())
         )
         subtasks = result.scalars().all()
 
@@ -222,7 +223,7 @@ async def create_subtask_htmx(
 
         # Вернуть обновленный список
         result = await db.execute(
-            select(Task).where(Task.parent_task_id == task_id, Task.is_archived == False)
+            select(Task).where(Task.parent_task_id == task_id).order_by(Task.created_at.asc())
         )
         subtasks = result.scalars().all()
 
@@ -333,22 +334,8 @@ async def task_create_htmx(
         )
         tasks = result.scalars().all()
 
-        # Загружаем подзадачи
-        subtasks_map = {}
-        if tasks:
-            task_ids = [t.id for t in tasks]
-            subtasks_result = await db.execute(
-                select(Task).where(
-                    Task.parent_task_id.in_(task_ids),
-                    Task.is_archived == False,
-                )
-            )
-            all_subtasks = subtasks_result.scalars().all()
-            
-            from collections import defaultdict
-            subtasks_map = defaultdict(list)
-            for st in all_subtasks:
-                subtasks_map[st.parent_task_id].append(st)
+        await repair_archived_subtasks(db)
+        subtasks_map = await load_subtasks_map(db, [t.id for t in tasks])
 
     # Статистика для OOB
     completed, total = await get_today_stats(db)
@@ -365,28 +352,11 @@ async def task_create_htmx(
     return HTMLResponse(content=content + stats_oob)
 
 
-async def _complete_subtask_impl(db: AsyncSession, subtask: Task) -> Optional[Task]:
-    """Закрыть подзадачу; вернуть родителя, если он автозакрылся."""
+async def _complete_subtask_impl(db: AsyncSession, subtask: Task) -> None:
+    """Закрыть подзадачу — остаётся в списке зачёркнутой."""
     subtask.status = "выполнена"
     subtask.completed_at = datetime.utcnow()
-
-    parent = None
-    if subtask.parent_task_id:
-        result = await db.execute(select(Task).where(Task.id == subtask.parent_task_id))
-        parent = result.scalar_one_or_none()
-        if parent:
-            open_children = await db.execute(
-                select(Task).where(
-                    Task.parent_task_id == parent.id,
-                    Task.status != "выполнена",
-                )
-            )
-            if not open_children.scalars().first():
-                parent.status = "выполнена"
-                parent.completed_at = datetime.utcnow()
-                parent.is_archived = True
-                parent.item_kind = "task"
-    return parent if parent and parent.is_archived else None
+    subtask.is_archived = False
 
 
 @router.post("/tasks/{task_id}/complete-subtask", response_class=HTMLResponse)
@@ -398,11 +368,8 @@ async def complete_subtask_htmx(request: Request, task_id: int):
         if not subtask or not subtask.parent_task_id:
             raise HTTPException(status_code=404, detail="Subtask not found")
 
-        parent_closed = await _complete_subtask_impl(db, subtask)
+        await _complete_subtask_impl(db, subtask)
         await db.commit()
-
-        if parent_closed:
-            return HTMLResponse(content=await get_tasks_today(db, request))
 
         row = templates.get_template("partials/subtask_row.html").render({
             "request": request,
@@ -435,6 +402,18 @@ async def complete_task(request: Request, task_id: int):
         result = await db.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
         if task:
+            if task.parent_task_id:
+                await _complete_subtask_impl(db, task)
+                await db.commit()
+                row = templates.get_template("partials/subtask_row.html").render({
+                    "request": request,
+                    "sub": task,
+                    "parent_id": task.parent_task_id,
+                })
+                completed, total = await get_today_stats(db)
+                stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
+                return HTMLResponse(content=row + stats_oob)
+
             is_backlog = task.due_date is None
             task.status = "выполнена"
             task.completed_at = datetime.utcnow()
@@ -450,6 +429,7 @@ async def complete_task(request: Request, task_id: int):
                 for child in children_result.scalars().all():
                     child.status = "выполнена"
                     child.completed_at = datetime.utcnow()
+                    child.is_archived = False
             await db.commit()
 
             target = request.headers.get("HX-Target", "")
