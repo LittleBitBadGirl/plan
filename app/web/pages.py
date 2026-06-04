@@ -248,10 +248,14 @@ async def dashboard(request: Request):
         from app.config import settings as app_settings
         from app.services.calendar_sync_service import sync_calendar_events
 
-        if app_settings.calendar_sync_enabled:
+        calendar_active = app_settings.calendar_sync_enabled or (
+            app_settings.google_calendar_sync_enabled
+            and app_settings.google_calendar_ical_url
+        )
+        if calendar_active:
             import asyncio
             try:
-                await asyncio.wait_for(sync_calendar_events(), timeout=30.0)
+                await asyncio.wait_for(sync_calendar_events(), timeout=45.0)
             except Exception as sync_exc:
                 from app.utils.logger import app_logger
                 app_logger.warning(f"Calendar sync on dashboard skipped: {sync_exc}")
@@ -333,49 +337,11 @@ async def dashboard(request: Request):
             for st in all_subtasks:
                 subtasks_map[st.parent_task_id].append(st)
 
-        # Периодические задачи на сегодня
-        recur_result = await db.execute(
-            select(RecurringTask).where(RecurringTask.is_active == True)
+        from app.services.recurring_schedule import get_recurring_templates_for_date
+
+        recurring_today = await get_recurring_templates_for_date(
+            db, today, exclude_completed=True
         )
-        all_recurring = recur_result.scalars().all()
-
-        from app.services.recurring_completion_service import get_completed_today_keys
-
-        try:
-            all_completed_today = await get_completed_today_keys(db, today)
-        except Exception:
-            all_completed_today = set()
-
-        day_of_week = today.weekday()
-        day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
-        recurring_today = []
-
-        for rt in all_recurring:
-            # Пропускаем только если уже ВЫПОЛНЕНА сегодня
-            if (rt.title, rt.category_id) in all_completed_today:
-                continue
-
-            if rt.end_date and today > rt.end_date:
-                continue
-            if today < rt.start_date:
-                continue
-
-            if rt.recurrence_type == "daily":
-                recurring_today.append(rt)
-            elif rt.recurrence_type == "weekly":
-                if rt.recurrence_days:
-                    days = rt.recurrence_days
-                    if isinstance(days, str):
-                        import json
-                        try:
-                            days = json.loads(days)
-                        except Exception:
-                            days = []
-                    if day_names[day_of_week] in days:
-                        recurring_today.append(rt)
-            elif rt.recurrence_type == "monthly":
-                if today.day == rt.start_date.day:
-                    recurring_today.append(rt)
 
         # Получаем статистику через хелпер
         completed, total = await get_today_stats(db)
@@ -397,10 +363,13 @@ async def dashboard(request: Request):
             ai_warning = f"Запланировано {len(tasks)} задач на сегодня. Обычно вы выполняете ~5."
 
         calendar_events = []
+        calendar_personal_events = []
         try:
-            from app.services.calendar_sync_service import get_visible_events_for_day
+            from app.services.calendar_sync_service import get_visible_events_grouped
 
-            calendar_events = await get_visible_events_for_day(db, today)
+            calendar_events, calendar_personal_events = await get_visible_events_grouped(
+                db, today
+            )
         except ImportError:
             pass
         except Exception as exc:
@@ -425,6 +394,7 @@ async def dashboard(request: Request):
             "remaining": len(shopping_items),
         },
         "calendar_events": calendar_events,
+        "calendar_personal_events": calendar_personal_events,
     })
 
 
@@ -1829,24 +1799,28 @@ async def _shopping_list_response(request: Request, db: AsyncSession) -> HTMLRes
 
 @router.post("/api/calendar/{event_id}/decline", response_class=HTMLResponse)
 async def decline_calendar_meeting(request: Request, event_id: int):
-    """«Не пойду» — скрыть встречу или всю повторяющуюся серию."""
+    """«Не пойду» / «Скрыть» — скрыть встречу или всю повторяющуюся серию."""
     from app.services.calendar_ignore_service import decline_calendar_event
-    from app.services.calendar_sync_service import get_visible_events_for_day
+    from app.services.calendar_sync_service import get_visible_events_grouped
 
     today = date.today()
     async with async_session() as db:
         declined = await decline_calendar_event(db, event_id)
         if not declined:
             return HTMLResponse(
-                content='<div id="calendar-meetings-block"></div>',
+                content='<div id="calendar-column-blocks"></div>',
                 status_code=404,
             )
-        events = await get_visible_events_for_day(db, today)
+        work_events, personal_events = await get_visible_events_grouped(db, today)
 
     return templates.TemplateResponse(
         request,
-        "partials/calendar_events_block.html",
-        {"request": request, "calendar_events": events},
+        "partials/calendar_column_blocks.html",
+        {
+            "request": request,
+            "calendar_events": work_events,
+            "calendar_personal_events": personal_events,
+        },
     )
 
 

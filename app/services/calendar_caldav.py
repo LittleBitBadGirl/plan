@@ -47,7 +47,7 @@ def _extract_event_row(ev: Any, calendar_name: str, calendar_url: str) -> dict[s
         location = str(vevent.location.value)[:500]
 
     return {
-        "external_uid": uid,
+        "external_uid": f"yandex:{uid}",
         "recurrence_id": recurrence_id,
         "calendar_name": calendar_name,
         "calendar_url": calendar_url,
@@ -56,6 +56,9 @@ def _extract_event_row(ev: Any, calendar_name: str, calendar_url: str) -> dict[s
         "end_at": end,
         "location": location,
         "is_recurring": hasattr(vevent, "rrule"),
+        "is_all_day": False,
+        "calendar_source": "yandex",
+        "calendar_kind": "work",
     }
 
 

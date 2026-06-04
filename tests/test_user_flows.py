@@ -41,7 +41,11 @@ class TestFlowCreateAndPlan:
         tomorrow = date.today() + timedelta(days=1)
         date_str = f"{tomorrow.day}.{tomorrow.month}"
 
-        plan_resp = await client.post(f"/tasks/{task_id}/plan", data={"due_date": date_str})
+        plan_resp = await client.post(
+            f"/tasks/{task_id}/plan",
+            data={"due_date": date_str},
+            headers={"HX-Target": f"task-{task_id}"},
+        )
         assert plan_resp.status_code == 200
         assert "📅" in plan_resp.text
 
@@ -259,29 +263,26 @@ class TestFlowBulkOperations:
     async def test_bulk_create_and_complete(self, client):
         today = date.today().isoformat()
 
-        # 1. Создать 10 задач
+        created_ids: list[int] = []
         for i in range(10):
             resp = await client.post("/api/tasks", json={
                 "title": f"Массовая задача {i}",
                 "due_date": today,
             })
             assert resp.status_code == 200
+            created_ids.append(resp.json()["id"])
 
-        # 2. Получить список (лимит по умолчанию 50)
         list_resp = await client.get("/api/tasks", params={"limit": 100})
         assert list_resp.status_code == 200
         assert len(list_resp.json()) >= 10
 
-        # 3. Завершить все
-        tasks = list_resp.json()
-        for t in tasks:
-            if t["status"] != "выполнена":
-                await client.post(f"/api/tasks/{t['id']}/complete")
+        for task_id in created_ids:
+            complete = await client.post(f"/api/tasks/{task_id}/complete")
+            assert complete.status_code == 200
 
-        # 4. Проверить что все завершены
-        list2 = await client.get("/api/tasks", params={"status": "выполнена", "limit": 100})
-        completed = list2.json()
-        assert len(completed) >= 10
+        for task_id in created_ids:
+            t = await client.get(f"/api/tasks/{task_id}")
+            assert t.json()["status"] == "выполнена"
 
 
 # ==================== Сценарий 8: Веб-форма создания → редактирование ====================

@@ -1,14 +1,16 @@
 from datetime import date
+
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.database import async_session
 from app.models.recurring import RecurringTask
 from app.models.task import Task
-from app.db.database import async_session
 from app.services.recurring_completion_service import (
     find_template_for_task,
     record_missed,
 )
-import json
+from app.services.recurring_schedule import get_recurring_templates_for_date
 
 
 async def _generate_impl(db: AsyncSession):
@@ -40,56 +42,31 @@ async def _generate_impl(db: AsyncSession):
         .values(is_archived=True)
     )
 
-    weekday_map = {
-        0: "mon", 1: "tue", 2: "wed",
-        3: "thu", 4: "fri", 5: "sat", 6: "sun"
-    }
-    today_weekday = weekday_map[today.weekday()]
-
-    result = await db.execute(
-        select(RecurringTask).where(RecurringTask.is_active == True)
-    )
-    templates = result.scalars().all()
-
+    templates = await get_recurring_templates_for_date(db, today, exclude_completed=False)
     created_count = 0
 
     for template in templates:
-        should_create = False
-
-        if template.recurrence_type == "daily":
-            should_create = True
-        elif template.recurrence_type == "weekly":
-            if template.recurrence_days:
-                days = json.loads(template.recurrence_days) if isinstance(template.recurrence_days, str) else template.recurrence_days
-                should_create = today_weekday in days
-        elif template.recurrence_type == "monthly":
-            should_create = today.day == template.start_date.day
-        elif template.recurrence_type == "custom":
-            days_diff = (today - template.start_date).days
-            should_create = days_diff % template.recurrence_interval == 0
-
-        if should_create:
-            existing = await db.execute(
-                select(Task).where(
-                    Task.title == template.title,
-                    Task.due_date == today,
-                    Task.is_archived == False,
-                )
+        existing = await db.execute(
+            select(Task).where(
+                Task.title == template.title,
+                Task.due_date == today,
+                Task.is_archived == False,
             )
-            if existing.scalar_one_or_none():
-                continue
+        )
+        if existing.scalar_one_or_none():
+            continue
 
-            task = Task(
-                title=template.title,
-                description=template.description,
-                category_id=template.category_id,
-                priority=template.priority,
-                due_date=today,
-                source="recurring",
-                item_kind="task",
-            )
-            db.add(task)
-            created_count += 1
+        task = Task(
+            title=template.title,
+            description=template.description,
+            category_id=template.category_id,
+            priority=template.priority,
+            due_date=today,
+            source="recurring",
+            item_kind="task",
+        )
+        db.add(task)
+        created_count += 1
 
     await db.flush()
 

@@ -244,36 +244,6 @@ async def get_recurring_for_date(
     db: AsyncSession = Depends(get_db_session),
 ):
     """Получить периодические задачи активные на конкретную дату"""
-    result = await db.execute(
-        select(RecurringTask).where(RecurringTask.is_active == True)
-    )
-    all_recurring = result.scalars().all()
+    from app.services.recurring_schedule import get_recurring_templates_for_date
 
-    matching = []
-    day_of_week = task_date.weekday()  # 0=mon, 6=sun
-    day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
-
-    for rt in all_recurring:
-        if rt.end_date and task_date > rt.end_date:
-            continue
-        if task_date < rt.start_date:
-            continue
-
-        if rt.recurrence_type == "daily":
-            matching.append(rt)
-        elif rt.recurrence_type == "weekly":
-            if rt.recurrence_days:
-                days = rt.recurrence_days
-                if isinstance(days, str):
-                    import json
-                    try:
-                        days = json.loads(days)
-                    except Exception:
-                        days = []
-                if day_names[day_of_week] in days:
-                    matching.append(rt)
-        elif rt.recurrence_type == "monthly":
-            if task_date.day == rt.start_date.day:
-                matching.append(rt)
-
-    return matching
+    return await get_recurring_templates_for_date(db, task_date, exclude_completed=False)

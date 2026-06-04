@@ -91,6 +91,51 @@ async def init_db():
             ))
         except Exception: pass
 
+        try:
+            await conn.execute(text(
+                "ALTER TABLE calendar_events ADD COLUMN is_all_day BOOLEAN DEFAULT 0;"
+            ))
+        except Exception:
+            pass
+
+        try:
+            await conn.execute(text(
+                "ALTER TABLE calendar_events ADD COLUMN calendar_source VARCHAR(20) DEFAULT 'yandex';"
+            ))
+        except Exception:
+            pass
+
+        try:
+            await conn.execute(text(
+                "ALTER TABLE calendar_events ADD COLUMN calendar_kind VARCHAR(20) DEFAULT 'work';"
+            ))
+        except Exception:
+            pass
+
+        try:
+            await conn.execute(text(
+                "UPDATE calendar_events SET calendar_source = 'yandex' "
+                "WHERE calendar_source IS NULL OR calendar_source = '';"
+            ))
+        except Exception:
+            pass
+
+        try:
+            await conn.execute(text(
+                "UPDATE calendar_events SET calendar_kind = 'work' "
+                "WHERE calendar_kind IS NULL OR calendar_kind = '';"
+            ))
+        except Exception:
+            pass
+
+        try:
+            await conn.execute(text(
+                "UPDATE calendar_events SET external_uid = 'yandex:' || external_uid "
+                "WHERE external_uid NOT LIKE 'yandex:%' AND external_uid NOT LIKE 'google:%';"
+            ))
+        except Exception:
+            pass
+
 
 
 async def get_db():

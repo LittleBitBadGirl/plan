@@ -1,0 +1,42 @@
+{% from 'partials/icons_macros.html' import icon_repeat %}
+
+{% if calendar_personal_events %}
+<div id="calendar-personal-block" class="space-y-4">
+    <h2 class="text-xl font-bold text-emerald-400 px-1">Личное</h2>
+    <div class="space-y-2">
+        {% for ev in calendar_personal_events %}
+        <div class="bg-emerald-900/10 rounded-xl p-3 border border-emerald-700/30 group" id="calendar-personal-{{ ev.id }}">
+            <div class="flex justify-between items-start gap-2">
+                <div class="flex-1 min-w-0">
+                    <p class="text-[10px] text-emerald-300/80 font-mono">
+                        {% if ev.is_all_day %}весь день{% else %}
+                        {{ ev.start_at.strftime('%H:%M') }}{% if ev.end_at %}–{{ ev.end_at.strftime('%H:%M') }}{% endif %}
+                        {% endif %}
+                    </p>
+                    <h3 class="font-semibold text-emerald-100 text-sm truncate" title="{{ ev.title }}">{{ ev.title }}</h3>
+                    <p class="text-[8px] text-gray-500 mt-0.5 truncate">{{ ev.calendar_name }}</p>
+                </div>
+                <div class="flex flex-col items-end gap-1 shrink-0">
+                    {% if ev.is_recurring %}
+                    <span class="text-emerald-400/80 inline-flex" title="Повторяющееся">{{ icon_repeat() }}</span>
+                    {% endif %}
+                    <form hx-post="/api/calendar/{{ ev.id }}/decline"
+                          hx-target="#calendar-column-blocks"
+                          hx-swap="outerHTML"
+                          hx-confirm="Скрыть «{{ ev.title }}»{% if ev.is_recurring %} (всю серию){% endif %}?"
+                          class="lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                        <button type="submit"
+                                class="text-[9px] text-gray-400 hover:text-emerald-300 border border-gray-600 hover:border-emerald-500/50 rounded px-1.5 py-0.5 whitespace-nowrap"
+                                title="Скрыть из планера">
+                            Скрыть
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+<div id="calendar-personal-block"></div>
+{% endif %}

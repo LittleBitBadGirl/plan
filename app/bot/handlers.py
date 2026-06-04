@@ -87,7 +87,11 @@ async def send_daily_plan(bot: Bot):
     """Отправка плана на день в 09:00 — встречи, задачи, регулярные."""
     from app.services.daily_plan_service import build_daily_plan_text, refresh_calendar_for_plan
 
-    admin_id = 163394712
+    chat_id = settings.telegram_admin_chat_id
+    if not chat_id:
+        app_logger.warning("TELEGRAM_ADMIN_CHAT_ID не задан — утренний план не отправлен")
+        return
+
     await refresh_calendar_for_plan()
 
     async with async_session() as db:
@@ -95,12 +99,12 @@ async def send_daily_plan(bot: Bot):
 
     if not text:
         await bot.send_message(
-            admin_id,
+            chat_id,
             "🌅 Доброе утро! На сегодня планов пока нет. Отличный день!",
         )
         return
 
-    await bot.send_message(admin_id, text)
+    await bot.send_message(chat_id, text)
 
 
 async def transcribe_audio_groq(file_path: Path) -> str:

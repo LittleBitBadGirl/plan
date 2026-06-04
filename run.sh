@@ -15,13 +15,13 @@ set -a
 source .env
 set +a
 
-echo "🚀 Запуск планировщика задач..."
+echo "🚀 Запуск веб-планировщика..."
 echo "🌐 Веб-интерфейс: http://localhost:8000"
 echo "📚 API Docs: http://localhost:8000/docs"
-echo "📂 Воркфлоу n8n: n8n-workflow.json"
 echo ""
-echo "⚠️  Telegram бот теперь через n8n (см. n8n-workflow.json)"
+echo "🤖 Telegram-бот (отдельный процесс): python run_bot.py"
+echo "   или: docker compose up -d bot"
 echo ""
 
-# Запуск
+# Запуск только FastAPI (бот — run_bot.py)
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

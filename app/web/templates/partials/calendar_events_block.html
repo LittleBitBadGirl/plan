@@ -19,7 +19,7 @@
                     <span class="text-sky-400/80 inline-flex" title="Повторяющаяся">{{ icon_repeat() }}</span>
                     {% endif %}
                     <form hx-post="/api/calendar/{{ ev.id }}/decline"
-                          hx-target="#calendar-meetings-block"
+                          hx-target="#calendar-column-blocks"
                           hx-swap="outerHTML"
                           hx-confirm="{% if ev.is_recurring %}Скрыть всю повторяющуюся серию «{{ ev.title }}»?{% else %}Скрыть эту встречу?{% endif %}"
                           class="lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">

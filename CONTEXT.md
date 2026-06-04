@@ -1,7 +1,9 @@
 # Контекст проекта: Планировщик задач (Vision 2.0)
 
-**Обновлено:** 2026-05-14
-**Статус:** Релиз «Зрячего ИИ». Полный переход на Llama 4 Scout. Все тесты (67/67) пройдены.
+**Обновлено:** 2026-06-04  
+**Актуальный handover:** [HANDOVER.md](HANDOVER.md) · **Тесты:** 95/95 · **Auth:** [docs/AUTH.md](docs/AUTH.md) · **NPM:** [docs/NPM_PROXY.md](docs/NPM_PROXY.md)
+
+> Ниже — исторический контекст (май 2026). Для деплоя и текущего состояния смотри HANDOVER и ROADMAP.
 
 ---
 
@@ -36,7 +38,7 @@
 - **Server:** Docker Compose на Ubuntu (91.186.217.66).
 - **Reverse Proxy:** Nginx Proxy Manager уже развёрнут на сервере (сеть `npm_default` — external).
   - NPM-панель: `http://91.186.217.66:81`
-  - Для добавления SSL: создать Proxy Host в NPM → Forward на `task_planner:8000` → вкладка SSL → Request Let's Encrypt.
+  - Для добавления SSL: Proxy Host → Forward `task_planner:8000` (порт 8000 **не** публикуется на IP). См. `docs/NPM_PROXY.md`.
   - Нужен домен (A-запись → 91.186.217.66). Без домена — вариант DuckDNS (бесплатный субдомен).
 
 ---
@@ -72,9 +74,9 @@
 
 ---
 
-## 🚀 Как продолжить?
-1. Заполнить `YANDEX_CALDAV_USER` в `.env`, прогнать Phase 0 (`scripts/caldav_probe.py` — когда появится).
-2. Зайти в `ROADMAP.md` — там список Q2 задач (экспорт в PDF, графики).
-3. Зайти в `HANDOVER.md` — там все пароли, явки и команды для сервера.
-4. Прогнать `pytest tests/` — если всё зеленое, можно пилить дальше.
-5. **SSL:** купить/привязать домен → настроить Proxy Host в NPM (инструкция выше).
+## Как продолжить (июнь 2026)
+
+1. [HANDOVER.md](HANDOVER.md) — деплой, `.env`, команды VPS.
+2. [docs/ROADMAP.md](docs/ROADMAP.md) — фичи (PDF, Chart.js, бот).
+3. `pytest tests/` перед пушем.
+4. Первый вход: `https://домен/login` + `API_TOKEN` в `.env`.

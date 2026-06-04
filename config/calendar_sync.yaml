@@ -5,6 +5,14 @@ sync:
   horizon_days_future: 14
   cron_minutes: 30
 
+# Личный календарь — Google iCal; при Google не тянем «личные дела» из Яндекса
+yandex_exclude_when_google_enabled:
+  - "личные дела"
+
+google:
+  horizon_days_future: 30
+  http_timeout_seconds: 60
+
 # Под-календари: не обязательные — не подписываемся (см. docs/calendar-yandex-integration.md)
 calendars:
   include_name_patterns:

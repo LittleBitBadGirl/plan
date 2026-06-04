@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход — Planner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class', theme: { extend: { colors: {
+            dark: { 900: '#0d0d0f', 800: '#1a1a2e', 700: '#252540' },
+            accent: { DEFAULT: '#3b82f6' }
+        }}}};
+    </script>
+</head>
+<body class="bg-dark-900 text-gray-100 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-dark-800 border border-dark-700 rounded-xl p-8 shadow-xl">
+        <h1 class="text-2xl font-semibold mb-2">📅 Planner</h1>
+        <p class="text-gray-400 text-sm mb-6">
+            Введите секретный ключ из <code class="text-accent">.env</code> (переменная <code class="text-accent">API_TOKEN</code>).
+            Браузер запомнит его в cookie на 30 дней.
+        </p>
+
+        {% if error %}
+        <div class="mb-4 p-3 rounded-lg bg-red-900/40 border border-red-700 text-red-200 text-sm">
+            Неверный ключ. Проверьте значение <strong>API_TOKEN</strong> в .env на сервере.
+        </div>
+        {% endif %}
+
+        <form method="post" action="/login" class="space-y-4">
+            <input type="hidden" name="next" value="{{ next }}">
+            <div>
+                <label for="token" class="block text-sm text-gray-400 mb-1">Секретный ключ</label>
+                <input
+                    id="token"
+                    name="token"
+                    type="password"
+                    autocomplete="current-password"
+                    required
+                    autofocus
+                    class="w-full px-4 py-3 rounded-lg bg-dark-900 border border-dark-700 focus:border-accent focus:outline-none"
+                    placeholder="API_TOKEN из .env"
+                >
+            </div>
+            <button
+                type="submit"
+                class="w-full py-3 rounded-lg bg-accent hover:bg-blue-600 font-medium transition"
+            >
+                Войти
+            </button>
+        </form>
+
+        <p class="mt-6 text-xs text-gray-500">
+            Один раз можно открыть ссылку <code>?token=ключ</code> — cookie установится автоматически, адрес очистится.
+        </p>
+    </div>
+</body>
+</html>

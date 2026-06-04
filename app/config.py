@@ -5,11 +5,12 @@ from pathlib import Path
 class Settings(BaseSettings):
     """Настройки приложения из .env"""
 
-    # Telegram (теперь через n8n)
-    telegram_bot_token: str = ""  # используется в n8n workflow
+    # Telegram (aiogram, run_bot.py / docker-compose service bot)
+    telegram_bot_token: str = ""
+    telegram_admin_chat_id: int = 0  # кому слать утренний план (09:00)
 
     # Аутентификация
-    api_token: str
+    api_token: str = ""
 
     # Пути
     project_dir: Path = Path(__file__).parent.parent
@@ -30,6 +31,10 @@ class Settings(BaseSettings):
     yandex_caldav_app_password: str = ""
     yandex_calendar_urls: str = ""  # comma-separated CalDAV calendar URLs
     calendar_sync_enabled: bool = False
+
+    # Google Calendar (личный, secret iCal URL)
+    google_calendar_ical_url: str = ""
+    google_calendar_sync_enabled: bool = False
 
     # База данных
     database_url: str = ""

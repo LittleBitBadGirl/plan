@@ -18,7 +18,10 @@ from app.services.calendar_sync_service import (
 async def test_sync_upserts_and_filters():
     fake_rows = [
         {
-            "external_uid": "uid-visible-1",
+            "external_uid": "yandex:uid-visible-1",
+            "is_all_day": False,
+            "calendar_source": "yandex",
+            "calendar_kind": "work",
             "recurrence_id": None,
             "calendar_name": "встречи внутри группы",
             "calendar_url": "https://caldav.yandex.ru/events-1/",
@@ -29,7 +32,10 @@ async def test_sync_upserts_and_filters():
             "is_recurring": False,
         },
         {
-            "external_uid": "uid-hidden-frontend",
+            "external_uid": "yandex:uid-hidden-frontend",
+            "is_all_day": False,
+            "calendar_source": "yandex",
+            "calendar_kind": "work",
             "recurrence_id": "uid-hidden-frontend",
             "calendar_name": "встречи внутри группы",
             "calendar_url": "https://caldav.yandex.ru/events-1/",
@@ -45,8 +51,10 @@ async def test_sync_upserts_and_filters():
         mock_settings.calendar_sync_enabled = True
         mock_settings.yandex_caldav_user = "test@dalee.ru"
         mock_settings.yandex_caldav_app_password = "secret"
+        mock_settings.google_calendar_sync_enabled = False
+        mock_settings.google_calendar_ical_url = ""
         with patch(
-            "app.services.calendar_sync_service.fetch_calendar_events",
+            "app.services.calendar_sync_service._fetch_all_provider_rows",
             return_value=fake_rows,
         ):
             result = await sync_calendar_events()
@@ -54,13 +62,17 @@ async def test_sync_upserts_and_filters():
     assert result.get("upserted") == 2
 
     async with async_session() as db:
-        visible = await get_visible_events_for_day(db, datetime(2026, 6, 3).date())
+        visible = await get_visible_events_for_day(
+            db,
+            datetime(2026, 6, 3).date(),
+            now=datetime(2026, 6, 3, 11, 0),
+        )
         assert len(visible) == 1
         assert visible[0].title == "1-1 Лышков"
 
         hidden = await db.execute(
             select(CalendarEvent).where(
-                CalendarEvent.external_uid == "uid-hidden-frontend"
+                CalendarEvent.external_uid == "yandex:uid-hidden-frontend"
             )
         )
         row = hidden.scalar_one()
@@ -74,30 +86,34 @@ async def test_past_meetings_hidden_from_dashboard():
     async with async_session() as db:
         db.add(
             CalendarEvent(
-                external_uid="past-1",
+                external_uid="yandex:past-1",
                 calendar_name="группа",
                 calendar_url="http://c",
                 title="Утренний статус",
                 start_at=datetime(2026, 6, 3, 9, 0),
                 end_at=datetime(2026, 6, 3, 9, 30),
                 planner_visible=True,
+                calendar_source="yandex",
+                calendar_kind="work",
             )
         )
         db.add(
             CalendarEvent(
-                external_uid="future-1",
+                external_uid="yandex:future-1",
                 calendar_name="группа",
                 calendar_url="http://c",
                 title="Созвон после обеда",
                 start_at=datetime(2026, 6, 3, 15, 0),
                 end_at=datetime(2026, 6, 3, 16, 0),
                 planner_visible=True,
+                calendar_source="yandex",
+                calendar_kind="work",
             )
         )
         await db.commit()
 
         visible = await get_visible_events_for_day(
-            db, day, now=datetime(2026, 6, 3, 12, 0)
+            db, day, now=datetime(2026, 6, 3, 12, 0), calendar_kind="work"
         )
         assert len(visible) == 1
         assert visible[0].title == "Созвон после обеда"

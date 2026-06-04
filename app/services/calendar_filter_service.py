@@ -39,6 +39,14 @@ def calendar_included(name: str, cfg: dict | None = None) -> bool:
     cal = cfg.get("calendars", {})
     if name_matches(name, cal.get("exclude_name_patterns", [])):
         return False
+    try:
+        from app.config import settings
+
+        if settings.google_calendar_sync_enabled and settings.google_calendar_ical_url:
+            if name_matches(name, cfg.get("yandex_exclude_when_google_enabled", [])):
+                return False
+    except Exception:
+        pass
     includes = cal.get("include_name_patterns", [])
     if includes:
         return name_matches(name, includes)
@@ -68,9 +76,13 @@ def event_planner_visible(
     cfg: dict | None = None,
     *,
     force_ignore: bool = False,
+    calendar_kind: str = "work",
 ) -> tuple[bool, str | None]:
     if force_ignore:
         return False, "user_ignore"
+
+    if calendar_kind == "personal":
+        return True, None
 
     cfg = cfg or load_calendar_sync_config()
     reason = title_excluded(title, cfg)

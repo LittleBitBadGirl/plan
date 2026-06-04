@@ -267,6 +267,17 @@ class AIService:
         ctx = settings.config_dir / "categories_context.md"
         return ctx.read_text(encoding="utf-8") if ctx.exists() else ""
 
+    def _simple_categorize(self, task_text: str) -> Dict[str, str]:
+        """Локальный fallback по ключевым словам (без LLM)."""
+        text = task_text.lower()
+        if any(k in text for k in ("марж", "майоли", "аналит", "финанс", "денег")):
+            return {"category": "Работа", "subcategory": "Финансы"}
+        if any(k in text for k in ("дан", "подарок", "семь")):
+            return {"category": "Личное", "subcategory": "Семья"}
+        if any(k in text for k in ("дони", "тз", "садовод")):
+            return {"category": "Личное", "subcategory": "Свои сайты"}
+        return {"category": "Личное", "subcategory": ""}
+
     def _save_feedback(self, task_text: str, old_cat: str, new_cat: str, reason: str):
         """Сохраняет фидбек для обучения."""
         from datetime import datetime

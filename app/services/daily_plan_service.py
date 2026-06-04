@@ -1,34 +1,46 @@
 """Текст плана на день — дашборд и Telegram (/plan, 09:00)."""
 from __future__ import annotations
 
-import json
 from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models.recurring import RecurringTask
 from app.models.task import Task
-from app.services.calendar_sync_service import get_visible_events_for_day, sync_calendar_events
-from app.services.recurring_completion_service import get_completed_today_keys
+from app.services.calendar_sync_service import (
+    get_visible_events_grouped,
+    sync_calendar_events,
+)
+from app.services.recurring_schedule import get_recurring_templates_for_date
 
 
 async def refresh_calendar_for_plan() -> None:
-    if settings.calendar_sync_enabled:
+    if settings.calendar_sync_enabled or (
+        settings.google_calendar_sync_enabled and settings.google_calendar_ical_url
+    ):
         await sync_calendar_events()
+
+
+def _format_event_line(ev) -> str:
+    if ev.is_all_day:
+        time_str = "весь день"
+    else:
+        time_str = ev.start_at.strftime("%H:%M")
+        if ev.end_at:
+            time_str += f"–{ev.end_at.strftime('%H:%M')}"
+    recur = " 🔁" if ev.is_recurring else ""
+    return f"• {time_str} {ev.title}{recur}"
 
 
 async def build_daily_plan_text(db: AsyncSession, today: date | None = None) -> str | None:
     """
     Собрать план на день. None — если задач, встреч и регулярных нет.
-    Порядок: встречи → задачи → регулярные (как колонка 3 над «Регулярными»).
+    Порядок: встречи → личное → задачи → регулярные.
     """
     today = today or date.today()
-    weekday_map = {0: "mon", 1: "tue", 2: "wed", 3: "thu", 4: "fri", 5: "sat", 6: "sun"}
-    today_weekday = weekday_map[today.weekday()]
 
-    meetings = await get_visible_events_for_day(db, today)
+    work_meetings, personal_events = await get_visible_events_grouped(db, today)
 
     task_result = await db.execute(
         select(Task)
@@ -44,48 +56,24 @@ async def build_daily_plan_text(db: AsyncSession, today: date | None = None) -> 
     )
     tasks = list(task_result.scalars().all())
 
-    recur_result = await db.execute(
-        select(RecurringTask).where(RecurringTask.is_active == True)
+    recurring_today = await get_recurring_templates_for_date(
+        db, today, exclude_completed=True
     )
-    all_recurring = recur_result.scalars().all()
-    completed_today = await get_completed_today_keys(db, today)
 
-    recurring_today: list[RecurringTask] = []
-    for rt in all_recurring:
-        if (rt.title, rt.category_id) in completed_today:
-            continue
-        if rt.end_date and today > rt.end_date:
-            continue
-        if today < rt.start_date:
-            continue
-        if rt.recurrence_type == "daily":
-            recurring_today.append(rt)
-        elif rt.recurrence_type == "weekly":
-            days = rt.recurrence_days
-            if isinstance(days, str):
-                try:
-                    days = json.loads(days)
-                except Exception:
-                    days = []
-            if days and today_weekday in days:
-                recurring_today.append(rt)
-        elif rt.recurrence_type == "monthly":
-            if today.day == rt.start_date.day:
-                recurring_today.append(rt)
-
-    if not meetings and not tasks and not recurring_today:
+    if not work_meetings and not personal_events and not tasks and not recurring_today:
         return None
 
     lines = [f"🌅 Доброе утро! План на сегодня ({today.strftime('%d.%m')}):\n"]
 
-    if meetings:
+    if work_meetings:
         lines.append("\n📅 Встречи:")
-        for ev in meetings:
-            time_str = ev.start_at.strftime("%H:%M")
-            if ev.end_at:
-                time_str += f"–{ev.end_at.strftime('%H:%M')}"
-            recur = " 🔁" if ev.is_recurring else ""
-            lines.append(f"• {time_str} {ev.title}{recur}")
+        for ev in work_meetings:
+            lines.append(_format_event_line(ev))
+
+    if personal_events:
+        lines.append("\n🌿 Личное:")
+        for ev in personal_events:
+            lines.append(_format_event_line(ev))
 
     if tasks:
         lines.append("\n🔸 Задачи:")

@@ -4,8 +4,8 @@ services:
   planner:
     build: .
     container_name: task_planner
-    ports:
-      - "8000:8000"
+    # Не открываем 8000 в интернет — только Nginx Proxy Manager (сеть npm_default).
+    # Проверка с VPS: docker exec task_planner curl -s http://127.0.0.1:8000/api/health
     volumes:
       - .:/app
       - /etc/localtime:/etc/localtime:ro

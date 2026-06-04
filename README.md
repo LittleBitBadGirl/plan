@@ -1,71 +1,116 @@
-# 📅 Task Planner & Finance Manager (AI-Powered)
+# Task Planner & Finance Manager (AI-Powered)
 
-Интеллектуальный планировщик задач и персональный финансовый менеджер в одном флаконе. Проект объединяет удобство веб-интерфейса и мощь AI через Telegram-бота.
-
----
-
-## 🚀 Основные возможности
-
-### 🤖 Умный Telegram Бот (aiogram 3.x + Groq)
-- **🧠 AI Категоризация:** Автоматически распределяет текстовые и голосовые задачи по категориям, используя Llama 3 (через Groq API).
-- **🏷️ AI Тегирование:** Самостоятельно находит в задачах упоминания людей или проектов (#Антон, #Сбер) и помечает их тегами.
-- **🎙️ Voice-to-Task:** Транскрибирует голосовые сообщения (Whisper) и создает задачи «на лету».
-- **📸 Smart OCR (Финансы):** Распознает банковские чеки и скриншоты. Автоматически извлекает сумму, дату совершения операции и описание.
-- **⏰ Morning Push:** Ежедневная утренняя рассылка плана на день (09:00).
-
-### 💰 Финансовый модуль (Professional Edition)
-- **📊 Сводка 3-го уровня:** Группировка трат: Месяц -> Группа (Дом/Еда) -> Подкатегория (Ипотека/Табак).
-- **🎯 Стратегические цели:** Визуализация прогресса по важным накоплениям (ИИС, Автомобиль, Подушка безопасности).
-- **💸 Баланс месяца:** Автоматический расчет доходов, расходов и чистого остатка в реальном времени.
-- **📈 Excel-стиль:** Удобная таблица всех операций с возможностью поиска и фильтрации.
-
-### 📋 Планировщик и Дашборд (HTMX + Tailwind)
-- **⚡ HTMX Power:** Максимально быстрый интерфейс без лишних перезагрузок страниц.
-- **📉 Прогресс дня:** Компактный индикатор выполнения задач прямо в шапке сайта.
-- **📅 Календарь:** Визуальный просмотр и планирование задач по датам.
-- **🛡️ Авто-миграции:** Система защиты сервера от падений — база данных сама обновляет свою структуру при деплое.
+Персональный планировщик задач и финансов: веб (HTMX) + Telegram-бот + SQLite.
 
 ---
 
-## 🛠 Технологический стек
+## Возможности
 
-- **Backend:** FastAPI (Python 3.10+)
-- **Frontend:** HTMX, Alpine.js, Tailwind CSS
-- **Database:** SQLite (SQLAlchemy 2.0 + aiosqlite)
-- **AI Integration:** Groq API (Llama 3.3, Whisper)
-- **Bot:** aiogram 3.x
-- **Infrastructure:** Docker, Docker-compose, Nginx Proxy Manager
+### Telegram (aiogram 3)
 
----
+- AI-категоризация и теги (DeepSeek / Groq)
+- Голос → задача (Groq Whisper)
+- Фото чеков → транзакции (Gemini / Groq Vision)
+- Утренний план в 09:00
 
-## 📦 Быстрый старт
+### Веб
 
-1.  **Клонировать репозиторий:**
-    ```bash
-    git clone https://github.com/LittleBitBadGirl/plan.git
-    cd plan
-    ```
+- Дашборд, бэклог, календарь, периодические, финансы, статистика
+- Синк Яндекс CalDAV и Google iCal (опционально)
+- Карьерный капитал (AI impacts + экспорт `.md`)
 
-2.  **Настроить окружение:**
-    Создайте файл `.env` на основе `.env.example` и заполните API ключи.
+### Безопасность (production)
 
-3.  **Запустить через Docker:**
-    ```bash
-    docker-compose up -d --build
-    ```
+- Секрет `API_TOKEN` в `.env`
+- Вход: `/login` → cookie на 30 дней
+- Доступ через Nginx Proxy Manager (HTTPS)
 
-4.  **Или локально:**
-    ```bash
-    python3 -m venv .venv
-    source .venv/bin/activate
-    pip install -r requirements.txt
-    python run_bot.py & uvicorn app.main:app --reload
-    ```
+Подробно: [docs/AUTH.md](docs/AUTH.md), [docs/NPM_PROXY.md](docs/NPM_PROXY.md).
 
 ---
 
-## ✅ Валидация
-Проект покрыт тестами (pytest). Перед каждым коммитом рекомендуется запуск:
+## Стек
+
+- FastAPI, SQLAlchemy 2, SQLite (WAL)
+- HTMX, Alpine.js, Tailwind
+- aiogram 3, APScheduler
+- DeepSeek, Gemini, Groq
+- Docker Compose + NPM
+
+---
+
+## Быстрый старт
+
 ```bash
-pytest tests/
+git clone https://github.com/LittleBitBadGirl/plan.git
+cd plan
+cp .env.example .env   # заполнить токены
 ```
+
+**Docker (VPS):**
+
+```bash
+docker compose up -d --build
+```
+
+**Локально:**
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+./run.sh              # только веб :8000
+python run_bot.py     # бот в отдельном терминале
+```
+
+**Вход (если задан `API_TOKEN`):** http://localhost:8000/login
+
+---
+
+## Переменные окружения
+
+| Переменная | Назначение |
+|------------|------------|
+| `API_TOKEN` | Пароль веб/API (пустой = dev без пароля) |
+| `TELEGRAM_BOT_TOKEN` | Бот |
+| `TELEGRAM_ADMIN_CHAT_ID` | Кому слать план 09:00 |
+| `DEEPSEEK_API_KEY` | Категории задач |
+| `GEMINI_API_KEY` | Vision / чеки |
+| `GROQ_API_KEY` | Whisper, fallback |
+| `CALENDAR_SYNC_ENABLED` | Yandex CalDAV |
+| `GOOGLE_CALENDAR_SYNC_ENABLED` | Google iCal URL |
+
+Полный шаблон: `.env.example`.
+
+---
+
+## Тесты
+
+```bash
+pytest tests/   # 95 passed
+```
+
+---
+
+## Документация
+
+| Файл | Содержание |
+|------|------------|
+| [HANDOVER.md](HANDOVER.md) | Состояние проекта, деплой, команды VPS |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | План фич (кратко) |
+| [docs/SUBAGENT_PLAN.md](docs/SUBAGENT_PLAN.md) | **Очередь шагов для субагентов** |
+| [docs/AUTH.md](docs/AUTH.md) | Cookie, API_TOKEN |
+| [docs/NPM_PROXY.md](docs/NPM_PROXY.md) | Nginx Proxy Manager |
+| [docs/calendar-yandex-integration.md](docs/calendar-yandex-integration.md) | CalDAV |
+
+---
+
+## Деплой на VPS
+
+```bash
+cd /opt/projects/planner
+git pull origin main
+docker compose down && docker compose up -d --build
+docker image prune -f
+```
+
+Первый заход: `https://ваш-домен/login`.

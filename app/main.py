@@ -20,7 +20,9 @@ from app.api.period import router as period_router
 from app.api.ai import router as ai_router
 from app.api.screenshot import router as screenshot_router
 from app.web.pages import router as web_router
+from app.web.auth_routes import router as auth_router
 from app.config import settings
+from app.middleware import ApiAuthMiddleware
 from app.services.rollover_service import rollover_overdue_tasks
 from app.services.recurring_service import generate_recurring_tasks
 from app.services.backup_service import create_backup
@@ -80,12 +82,15 @@ async def lifespan(app: FastAPI):
         name="Перенос просроченных задач",
     )
 
-    if settings.calendar_sync_enabled:
+    calendar_active = settings.calendar_sync_enabled or (
+        settings.google_calendar_sync_enabled and settings.google_calendar_ical_url
+    )
+    if calendar_active:
         scheduler.add_job(
             sync_calendar_events,
             IntervalTrigger(minutes=30),
             id="calendar_sync",
-            name="Синхронизация Яндекс.Календаря",
+            name="Синхронизация календарей",
         )
 
     scheduler.start()
@@ -93,7 +98,7 @@ async def lifespan(app: FastAPI):
     app_logger.info("✅ Планировщик запущен")
 
     async def _startup_calendar_sync() -> None:
-        if not settings.calendar_sync_enabled:
+        if not calendar_active:
             return
         try:
             await asyncio.wait_for(sync_calendar_events(), timeout=45.0)
@@ -115,6 +120,8 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+app.add_middleware(ApiAuthMiddleware)
 
 # CORS
 app.add_middleware(
@@ -142,6 +149,7 @@ app.include_router(habits_router)
 app.include_router(period_router)
 app.include_router(ai_router)
 app.include_router(screenshot_router)
+app.include_router(auth_router)
 app.include_router(web_router)
 
 
