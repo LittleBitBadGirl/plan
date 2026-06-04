@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, and_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -224,24 +224,40 @@ def _today_task_base_filter(today: date) -> list:
     ]
 
 
+def _completed_on_day(completed_at: Optional[datetime], day: date) -> bool:
+    """Задача закрыта в указанный календарный день (UTC, как completed_at в БД)."""
+    if not completed_at:
+        return False
+    return completed_at.date() == day
+
+
+def _today_roots_filter(today: date) -> list:
+    """Корневые задачи на сегодня: открытые или закрытые сегодня."""
+    return [
+        *_today_task_base_filter(today),
+        or_(
+            Task.is_archived == False,
+            and_(
+                Task.status == "выполнена",
+                Task.completed_at.isnot(None),
+                func.date(Task.completed_at) == today.isoformat(),
+            ),
+        ),
+    ]
+
+
 async def get_today_progress(db: AsyncSession) -> tuple[int, int]:
     """Гибридный прогресс дня: подзадачи = частичный прогресс, листья = 1."""
     today = date.today()
-    base_filter = _today_task_base_filter(today)
 
-    roots_result = await db.execute(
-        select(Task).where(*base_filter, Task.is_archived == False)
-    )
+    roots_result = await db.execute(select(Task).where(*_today_roots_filter(today)))
     roots = roots_result.scalars().all()
     if not roots:
         return 0, 0
 
     root_ids = [r.id for r in roots]
     subs_result = await db.execute(
-        select(Task).where(
-            Task.parent_task_id.in_(root_ids),
-            Task.is_archived == False,
-        )
+        select(Task).where(Task.parent_task_id.in_(root_ids))
     )
     subs_by_parent: dict[int, list[Task]] = defaultdict(list)
     for sub in subs_result.scalars().all():
@@ -254,19 +270,11 @@ async def get_today_progress(db: AsyncSession) -> tuple[int, int]:
         if subs:
             total += len(subs)
             for sub in subs:
-                if (
-                    sub.status == "выполнена"
-                    and sub.completed_at
-                    and sub.completed_at.date() == today
-                ):
+                if sub.status == "выполнена" and _completed_on_day(sub.completed_at, today):
                     completed += 1
         else:
             total += 1
-            if (
-                root.status == "выполнена"
-                and root.completed_at
-                and root.completed_at.date() == today
-            ):
+            if root.status == "выполнена" and _completed_on_day(root.completed_at, today):
                 completed += 1
 
     return completed, total

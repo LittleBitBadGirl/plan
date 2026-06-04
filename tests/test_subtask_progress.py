@@ -80,3 +80,57 @@ async def test_progress_subtask_completed_yesterday_not_counted(db):
     completed, total = await get_today_progress(db)
     assert total == 2
     assert completed == 0
+
+
+@pytest.mark.asyncio
+async def test_progress_archived_leaf_completed_today(db):
+    """Закрытая сегодня листовая задача учитывается в X и Y."""
+    today = date.today()
+    done = Task(
+        title="Сделано",
+        due_date=today,
+        status="выполнена",
+        completed_at=datetime.utcnow(),
+        is_archived=True,
+        source="web",
+    )
+    open_task = Task(title="Осталось", due_date=today, status="новая", source="web")
+    db.add(done)
+    db.add(open_task)
+    await db.commit()
+
+    completed, total = await get_today_progress(db)
+    assert total == 2
+    assert completed == 1
+
+
+@pytest.mark.asyncio
+async def test_progress_all_subtasks_done_today(db):
+    """Проект с подзадачами, закрытый сегодня — финальный прогресс N/N."""
+    today = date.today()
+    parent = Task(
+        title="Проект",
+        due_date=today,
+        status="выполнена",
+        completed_at=datetime.utcnow(),
+        is_archived=True,
+        source="web",
+    )
+    db.add(parent)
+    await db.flush()
+
+    now = datetime.utcnow()
+    for title in ("A", "B"):
+        db.add(Task(
+            title=title,
+            parent_task_id=parent.id,
+            status="выполнена",
+            completed_at=now,
+            source="web",
+            is_archived=False,
+        ))
+    await db.commit()
+
+    completed, total = await get_today_progress(db)
+    assert total == 2
+    assert completed == 2
