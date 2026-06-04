@@ -18,7 +18,11 @@ def _fresh_config():
     reload_calendar_sync_config()
 
 
-def test_calendar_include_exclude():
+def test_calendar_include_exclude(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "google_calendar_sync_enabled", False)
+    monkeypatch.setattr(settings, "google_calendar_ical_url", "")
     assert calendar_included("встречи внутри группы")
     assert calendar_included("личные дела")
     assert not calendar_included("не обязательные")

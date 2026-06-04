@@ -16,6 +16,7 @@
 ### Веб
 
 - Дашборд, бэклог, календарь, периодические, финансы, статистика
+- **Финансы:** сводка по категориям + круговая диаграмма расходов (Chart.js) на `/finance`
 - Синк Яндекс CalDAV и Google iCal (опционально)
 - Карьерный капитал (AI impacts + экспорт `.md`)
 
@@ -31,8 +32,9 @@
 
 ## Стек
 
-- FastAPI, SQLAlchemy 2, SQLite (WAL)
-- HTMX, Alpine.js, Tailwind
+- FastAPI, SQLAlchemy 2, SQLite (WAL), Alembic
+- HTMX, Alpine.js, Tailwind, Chart.js (страница `/finance`)
+- Веб-UI: `app/web/pages.py` + доменные роуты в `app/web/routes/`, общие хелперы в `app/web/deps.py`
 - aiogram 3, APScheduler
 - DeepSeek, Gemini, Groq
 - Docker Compose + NPM
@@ -86,7 +88,7 @@ python run_bot.py     # бот в отдельном терминале
 ## Тесты
 
 ```bash
-pytest tests/   # 95 passed
+pytest tests/   # 99 passed
 ```
 
 ---
@@ -97,7 +99,7 @@ pytest tests/   # 95 passed
 |------|------------|
 | [HANDOVER.md](HANDOVER.md) | Состояние проекта, деплой, команды VPS |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | План фич (кратко) |
-| [docs/SUBAGENT_PLAN.md](docs/SUBAGENT_PLAN.md) | **Очередь шагов для субагентов** |
+| [docs/SUBAGENT_PLAN.md](docs/SUBAGENT_PLAN.md) | **Очередь для субагентов** (Deploy VPS / техдолг по запросу) |
 | [docs/AUTH.md](docs/AUTH.md) | Cookie, API_TOKEN |
 | [docs/NPM_PROXY.md](docs/NPM_PROXY.md) | Nginx Proxy Manager |
 | [docs/calendar-yandex-integration.md](docs/calendar-yandex-integration.md) | CalDAV |

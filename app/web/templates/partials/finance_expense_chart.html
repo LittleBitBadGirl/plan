@@ -1,0 +1,26 @@
+<div id="finance-chart-panel" class="bg-dark-800 rounded-2xl border border-dark-600 shadow-2xl overflow-hidden">
+    <div class="bg-dark-700/30 p-4 border-b border-dark-600">
+        <h2 class="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <span>🥧</span> Расходы по категориям
+        </h2>
+    </div>
+    <div class="p-4">
+        {% if category_summary %}
+        <div class="relative mx-auto" style="max-width: 220px;">
+            <canvas id="finance-expense-chart"
+                    role="img"
+                    aria-label="Круговая диаграмма расходов за месяц"
+                    data-chart-labels='{{ category_summary | map(attribute="name") | list | tojson }}'
+                    data-chart-amounts='{{ category_summary | map(attribute="amount") | list | tojson }}'
+                    data-chart-total="{{ chart_expense_total }}"></canvas>
+        </div>
+        <ul id="finance-chart-legend" class="mt-4 space-y-2 max-h-48 overflow-y-auto"></ul>
+        {% else %}
+        <div id="finance-chart-empty" class="py-10 text-center">
+            <p class="text-3xl mb-2 opacity-40">📭</p>
+            <p class="text-sm font-bold text-gray-400">Нет расходов</p>
+            <p class="text-[11px] text-gray-600 mt-1">За выбранный месяц нет трат с положительной суммой</p>
+        </div>
+        {% endif %}
+    </div>
+</div>

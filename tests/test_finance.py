@@ -40,6 +40,45 @@ async def test_finance_page_renders(client, db):
     assert "Финансы" in response.text
     assert "Остаток" in response.text
     assert "Сводка" in response.text
+    assert "Расходы по категориям" in response.text
+
+
+@pytest.mark.asyncio
+async def test_finance_page_empty_chart_state(client, db):
+    """Без расходов за месяц — заглушка вместо canvas"""
+    response = await client.get("/finance?month=1&year=2099")
+    assert response.status_code == 200
+    assert "finance-chart-empty" in response.text
+    assert "Нет расходов" in response.text
+    assert "finance-expense-chart" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_finance_expense_chart_with_data(client, db):
+    """Круговая диаграмма: canvas, Chart.js и данные категории"""
+    cat = Category(name="Продукты", type="finance")
+    db.add(cat)
+    await db.commit()
+    await db.refresh(cat)
+
+    tx_date = date(2026, 3, 15)
+    db.add(Transaction(
+        amount=2500.0,
+        description="Магазин",
+        date=tx_date,
+        category_id=cat.id,
+        source="manual",
+    ))
+    await db.commit()
+
+    response = await client.get("/finance?month=3&year=2026")
+    assert response.status_code == 200
+    assert 'id="finance-expense-chart"' in response.text
+    assert "chart.js" in response.text.lower()
+    assert "Продукты" in response.text
+    assert "finance-chart-legend" in response.text
+    assert "finance-chart-empty" not in response.text
+    assert "2500" in response.text
 
 @pytest.mark.asyncio
 async def test_financial_goals_init(db):

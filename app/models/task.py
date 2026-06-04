@@ -32,6 +32,8 @@ class Task(Base):
     # Карьерный капитал и аналитика
     impact_notes = Column(Text, nullable=True) # Заметки о результате/влиянии
     is_milestone = Column(Boolean, default=False, index=True) # Флаг важного достижения
+    estimated_minutes = Column(Integer, nullable=True)
+    actual_minutes = Column(Integer, nullable=True)
 
     # Связи
     category = relationship("Category", back_populates="tasks")

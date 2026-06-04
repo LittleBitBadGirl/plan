@@ -225,8 +225,10 @@
             </div>
         </div>
 
-        <!-- Right Sidebar (Summary) -->
+        <!-- Right Sidebar (Chart + Summary) -->
         <div class="space-y-8">
+            {% include "partials/finance_expense_chart.html" %}
+
             <div class="bg-dark-800 rounded-2xl border border-dark-600 shadow-2xl overflow-hidden">
                 <div class="bg-dark-700/30 p-4 border-b border-dark-600">
                     <h2 class="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
@@ -258,4 +260,78 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if category_summary %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    const canvas = document.getElementById('finance-expense-chart');
+    const legendEl = document.getElementById('finance-chart-legend');
+    if (!canvas || !legendEl || typeof Chart === 'undefined') return;
+
+    const labels = JSON.parse(canvas.dataset.chartLabels || '[]');
+    const amounts = JSON.parse(canvas.dataset.chartAmounts || '[]');
+    const total = parseFloat(canvas.dataset.chartTotal || '0') || 0;
+
+    const COLORS = [
+        '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#22c55e',
+        '#06b6d4', '#f97316', '#a855f7', '#14b8a6', '#ef4444',
+        '#6366f1', '#84cc16',
+    ];
+
+    const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
+
+    new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+            labels,
+            datasets: [{
+                data: amounts,
+                backgroundColor: labels.map((_, i) => COLORS[i % COLORS.length]),
+                borderColor: '#1a1a2e',
+                borderWidth: 2,
+                hoverOffset: 6,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: '58%',
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#252540',
+                    titleColor: '#e5e7eb',
+                    bodyColor: '#9ca3af',
+                    borderColor: '#3a3a5c',
+                    borderWidth: 1,
+                    callbacks: {
+                        label(ctx) {
+                            const v = ctx.parsed || 0;
+                            const pct = total ? ((v / total) * 100).toFixed(1) : '0';
+                            return ` ${fmt(v)} ₽ (${pct}%)`;
+                        },
+                    },
+                },
+            },
+        },
+    });
+
+    legendEl.innerHTML = labels.map((name, i) => {
+        const amount = amounts[i] || 0;
+        const pct = total ? ((amount / total) * 100).toFixed(1) : '0';
+        const color = COLORS[i % COLORS.length];
+        return `<li class="flex items-center justify-between gap-2 text-[11px]">
+            <span class="flex items-center gap-2 min-w-0">
+                <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${color}"></span>
+                <span class="text-gray-300 truncate">${name}</span>
+            </span>
+            <span class="text-gray-500 shrink-0 tabular-nums">${fmt(amount)} · ${pct}%</span>
+        </li>`;
+    }).join('');
+})();
+</script>
+{% endif %}
 {% endblock %}

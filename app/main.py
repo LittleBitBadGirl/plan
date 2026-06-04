@@ -37,13 +37,6 @@ async def lifespan(app: FastAPI):
     # Startup
     await init_db()
 
-    # Создание таблиц
-    from app.models import Base
-    from app.db.database import engine
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    # ... (код с миграциями sqlite3) ...
     # Seed категорий, если БД пуста
     async with async_session() as db:
         await seed_categories(db)

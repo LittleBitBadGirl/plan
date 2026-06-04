@@ -2,7 +2,7 @@
 
 ## Роль
 
-Senior AI-инженер: архитектура, код, тесты перед пушем.
+Senior AI-инженер: архитектура, код, `pytest tests/` перед пушем. **Не расширять scope** без запроса.
 
 ## Ключевые модули
 
@@ -12,7 +12,7 @@ Senior AI-инженер: архитектура, код, тесты перед 
 | `app/services/daily_plan_service.py` | Текст плана / Telegram 09:00 |
 | `app/services/calendar_sync_service.py` | CalDAV + Google → `calendar_events` |
 | `app/auth.py` + middleware | `API_TOKEN`, cookie |
-| `app/web/pages.py` | HTMX UI (монолит — осторожно при правках) |
+| `app/web/pages.py` | Сборка `APIRouter`; доменная логика — `app/web/routes/*`, `deps.py` |
 
 ## Бот
 
@@ -25,6 +25,7 @@ Senior AI-инженер: архитектура, код, тесты перед 
 
 - Траты `+`, доходы `-` в `transactions`.
 - Цели: `financial_goals` на `/finance`.
+- **UI:** `category_summary` + Chart.js doughnut в `partials/finance_expense_chart.html` (только расходы за выбранный месяц).
 
 ## Безопасность и деплой
 
@@ -32,6 +33,6 @@ Senior AI-инженер: архитектура, код, тесты перед 
 - **VPS:** `API_TOKEN` обязателен; вход `/login`; порт 8000 только внутри Docker.
 - После билда: `docker image prune -f` (диск 30 ГБ).
 - `init_db` — ручные ALTER; осторожно с новыми колонками.
-- Тесты: `pytest tests/` (95).
+- Тесты: `pytest tests/` (**97**).
 
-Доки: `docs/AUTH.md`, `docs/NPM_PROXY.md`, `HANDOVER.md`, `docs/ROADMAP.md`.
+Доки: `docs/AUTH.md`, `docs/NPM_PROXY.md`, `HANDOVER.md`, `docs/ROADMAP.md`, `docs/SUBAGENT_PLAN.md`.

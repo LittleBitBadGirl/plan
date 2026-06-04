@@ -142,6 +142,12 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
             sorted(grouped_summary.items(), key=lambda x: x[1]["total"], reverse=True)
         )
 
+        category_summary = [
+            {"name": name, "amount": float(data["total"])}
+            for name, data in grouped_summary.items()
+        ]
+        chart_expense_total = sum(item["amount"] for item in category_summary)
+
         # ЦЕЛИ
         goals_res = await db.execute(select(FinancialGoal))
         goals = goals_res.scalars().all()
@@ -180,6 +186,8 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         "request": request,
         "transactions": transactions,
         "grouped_summary": grouped_summary,
+        "category_summary": category_summary,
+        "chart_expense_total": chart_expense_total,
         "goals": goals,
         "yearly_stats": {"income": yearly_income, "expense": yearly_expense, "balance": yearly_income - yearly_expense},
         "month_tabs": month_tabs,

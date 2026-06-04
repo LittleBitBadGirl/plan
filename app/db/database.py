@@ -1,141 +1,40 @@
-import sqlalchemy
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+import asyncio
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from app.config import settings
+from app.db.migrate import run_migrations
+from app.models.base import Base
+
+# Импорты регистрируют таблицы в metadata
+from app.models import calendar_event as _calendar_event_import  # noqa: F401
+from app.models import calendar_ignore_rule as _calendar_ignore_rule_import  # noqa: F401
+from app.models import period_entry as _period_entry_import  # noqa: F401
+from app.models import recurring_completion as _recurring_completion_import  # noqa: F401
 
 engine = create_async_engine(
     settings.database_url,
     echo=False,
-    connect_args={"check_same_thread": False}
+    connect_args={"check_same_thread": False},
 )
 
 async_session = async_sessionmaker(
     engine,
     class_=AsyncSession,
-    expire_on_commit=False
+    expire_on_commit=False,
 )
 
 
-
-from app.models.base import Base
-from app.models import period_entry as _period_entry_import  # noqa: F401 – ensures table is created
-from app.models import recurring_completion as _recurring_completion_import  # noqa: F401
-from app.models import calendar_event as _calendar_event_import  # noqa: F401
-from app.models import calendar_ignore_rule as _calendar_ignore_rule_import  # noqa: F401
-import sqlalchemy
-from sqlalchemy import text
-
 async def init_db():
-    """Инициализация БД, миграции и WAL режим"""
+    """Создание таблиц, PRAGMA SQLite, Alembic до head."""
     async with engine.begin() as conn:
-        # 1. Создаем новые таблицы (transactions, financial_goals и т.д.)
         await conn.run_sync(Base.metadata.create_all)
-        
-        # 2. Настройки SQLite
         await conn.execute(text("PRAGMA journal_mode=WAL"))
         await conn.execute(text("PRAGMA busy_timeout=5000"))
         await conn.execute(text("PRAGMA synchronous=NORMAL"))
 
-        # 3. Ручные миграции для существующих таблиц
-        try:
-            await conn.execute(text("ALTER TABLE categories ADD COLUMN type VARCHAR(20) DEFAULT 'task';"))
-        except Exception: pass
-            
-        try:
-            await conn.execute(text("ALTER TABLE tasks ADD COLUMN tags VARCHAR(500);"))
-        except Exception: pass
-
-        try:
-            await conn.execute(text("ALTER TABLE tasks ADD COLUMN impact_notes TEXT;"))
-        except Exception: pass
-
-        try:
-            await conn.execute(text("ALTER TABLE tasks ADD COLUMN is_milestone BOOLEAN DEFAULT 0;"))
-        except Exception: pass
-
-        try:
-            await conn.execute(text("ALTER TABLE tasks ADD COLUMN estimated_minutes INTEGER;"))
-        except Exception: pass
-
-        try:
-            await conn.execute(text("ALTER TABLE tasks ADD COLUMN actual_minutes INTEGER;"))
-        except Exception: pass
-
-        try:
-            await conn.execute(text("ALTER TABLE tasks ADD COLUMN item_kind VARCHAR(20) DEFAULT 'task';"))
-        except Exception: pass
-
-        try:
-            await conn.execute(text("UPDATE tasks SET item_kind = 'task' WHERE item_kind IS NULL;"))
-        except Exception: pass
-
-        try:
-            await conn.execute(text("ALTER TABLE shopping_items ADD COLUMN is_archived BOOLEAN DEFAULT 0;"))
-        except Exception: pass
-
-        try:
-            await conn.execute(text("ALTER TABLE shopping_items ADD COLUMN item_kind VARCHAR(20) DEFAULT 'purchase';"))
-        except Exception: pass
-
-        try:
-            await conn.execute(text("UPDATE shopping_items SET item_kind = 'purchase' WHERE item_kind IS NULL;"))
-        except Exception: pass
-
-        try:
-            await conn.execute(text("ALTER TABLE recurring_tasks ADD COLUMN missed_count INTEGER DEFAULT 0;"))
-        except Exception: pass
-
-        # Купленные позиции → в архив
-        try:
-            await conn.execute(text(
-                "UPDATE shopping_items SET is_archived = 1 WHERE is_purchased = 1 AND (is_archived IS NULL OR is_archived = 0);"
-            ))
-        except Exception: pass
-
-        try:
-            await conn.execute(text(
-                "ALTER TABLE calendar_events ADD COLUMN is_all_day BOOLEAN DEFAULT 0;"
-            ))
-        except Exception:
-            pass
-
-        try:
-            await conn.execute(text(
-                "ALTER TABLE calendar_events ADD COLUMN calendar_source VARCHAR(20) DEFAULT 'yandex';"
-            ))
-        except Exception:
-            pass
-
-        try:
-            await conn.execute(text(
-                "ALTER TABLE calendar_events ADD COLUMN calendar_kind VARCHAR(20) DEFAULT 'work';"
-            ))
-        except Exception:
-            pass
-
-        try:
-            await conn.execute(text(
-                "UPDATE calendar_events SET calendar_source = 'yandex' "
-                "WHERE calendar_source IS NULL OR calendar_source = '';"
-            ))
-        except Exception:
-            pass
-
-        try:
-            await conn.execute(text(
-                "UPDATE calendar_events SET calendar_kind = 'work' "
-                "WHERE calendar_kind IS NULL OR calendar_kind = '';"
-            ))
-        except Exception:
-            pass
-
-        try:
-            await conn.execute(text(
-                "UPDATE calendar_events SET external_uid = 'yandex:' || external_uid "
-                "WHERE external_uid NOT LIKE 'yandex:%' AND external_uid NOT LIKE 'google:%';"
-            ))
-        except Exception:
-            pass
-
+    await asyncio.to_thread(run_migrations)
 
 
 async def get_db():
