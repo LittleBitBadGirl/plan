@@ -119,7 +119,8 @@ def fetch_google_calendar_events(
         if rrule is None:
             continue
         rrule_d = dict(rrule)
-        freq = str(rrule_d.get("FREQ", "")).upper()
+        freq_val = rrule_d.get("FREQ", "")
+        freq = str(freq_val[0] if isinstance(freq_val, list) else freq_val).upper()
         if freq != "YEARLY":
             continue
         if "BYMONTH" in rrule_d:
