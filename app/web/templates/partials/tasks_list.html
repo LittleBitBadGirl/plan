@@ -57,9 +57,9 @@
                           hx-target="#tasks-list"
                           hx-swap="innerHTML"
                           class="flex items-center gap-1">
-                        <input type="text" name="due_date" id="date-input-{{ task.id }}" placeholder="ДД.ММ" maxlength="5"
-                               class="bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white hidden w-16"
-                               onkeypress="if(event.key==='Enter'){event.preventDefault(); this.form.requestSubmit()}">
+                        <input type="text" name="due_date" id="date-input-{{ task.id }}" placeholder="0606" maxlength="5"
+                               inputmode="numeric" autocomplete="off" title="ДД.ММ — введите 4 цифры, например 0606"
+                               class="date-mask-ddmm bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white hidden w-16">
                         <button type="button"
                                 onclick="document.getElementById('date-input-{{ task.id }}').classList.toggle('hidden'); document.getElementById('date-input-{{ task.id }}').focus()"
                                 class="icon-action icon-action--info"

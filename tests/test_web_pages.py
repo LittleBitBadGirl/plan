@@ -261,11 +261,23 @@ class TestBacklogHTMX:
         task_id = create_resp.json()["id"]
 
         tomorrow = date.today() + timedelta(days=1)
-        date_str = f"{tomorrow.day}.{tomorrow.month}"
+        date_str = f"{tomorrow.day:02d}.{tomorrow.month:02d}"
 
         response = await client.post(f"/tasks/{task_id}/plan", data={"due_date": date_str})
         assert response.status_code == 200
         assert "📅" in response.text or response.status_code == 200
+
+    async def test_plan_task_compact_date(self, client):
+        """Запланировать задачу — формат DDMM без точки (0606 → 06.06)"""
+        create_resp = await client.post("/api/tasks", json={"title": "Компактная дата"})
+        task_id = create_resp.json()["id"]
+
+        tomorrow = date.today() + timedelta(days=1)
+        compact = f"{tomorrow.day:02d}{tomorrow.month:02d}"
+
+        response = await client.post(f"/tasks/{task_id}/plan", data={"due_date": compact})
+        assert response.status_code == 200
+        assert "📅" in response.text
 
     async def test_plan_task_invalid_date(self, client):
         """Запланировать с неправильной датой"""

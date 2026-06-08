@@ -34,6 +34,21 @@ from app.web.deps import (
 
 router = APIRouter()
 
+
+def _parse_ddmm(value: str) -> tuple[int, int]:
+    """Парсит ДД.ММ или DDMM (например 06.06 или 0606)."""
+    raw = (value or "").strip()
+    if "." in raw:
+        day_str, month_str = raw.split(".", 1)
+    elif len(raw) == 4 and raw.isdigit():
+        day_str, month_str = raw[:2], raw[2:]
+    else:
+        raise ValueError("invalid date format")
+    day, month = int(day_str), int(month_str)
+    if not (1 <= day <= 31 and 1 <= month <= 12):
+        raise ValueError("invalid date values")
+    return day, month
+
 from app.services.ai_service import ai_service
 
 @router.get("/tasks", response_class=HTMLResponse)
@@ -471,8 +486,8 @@ async def plan_task(request: Request, task_id: int, due_date: str = Form(None)):
 
         try:
             if due_date:
-                day, month = due_date.split(".")
-                task.due_date = date(date.today().year, int(month), int(day))
+                day, month = _parse_ddmm(due_date)
+                task.due_date = date(date.today().year, month, day)
             else:
                 task.due_date = date.today()
             task.status = "новая"

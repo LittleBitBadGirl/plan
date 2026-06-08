@@ -38,9 +38,9 @@
                       hx-target="#task-{{ task.id }}"
                       hx-swap="outerHTML"
                       class="inline-flex items-center">
-                    <input type="text" name="due_date" id="date-input-{{ task.id }}" placeholder="ДД.ММ" maxlength="5"
-                           class="bg-dark-900 border border-dark-600 rounded px-1.5 py-0.5 text-[10px] text-white hidden w-14 mr-0.5"
-                           onkeypress="if(event.key==='Enter'){event.preventDefault(); this.form.requestSubmit()}">
+                    <input type="text" name="due_date" id="date-input-{{ task.id }}" placeholder="0606" maxlength="5"
+                           inputmode="numeric" autocomplete="off" title="ДД.ММ — введите 4 цифры, например 0606"
+                           class="date-mask-ddmm bg-dark-900 border border-dark-600 rounded px-1.5 py-0.5 text-[10px] text-white hidden w-16 mr-0.5">
                     <button type="button"
                             onclick="document.getElementById('date-input-{{ task.id }}').classList.toggle('hidden'); document.getElementById('date-input-{{ task.id }}').focus()"
                             class="icon-action icon-action--info"
