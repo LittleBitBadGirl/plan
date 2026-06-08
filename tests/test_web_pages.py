@@ -19,6 +19,35 @@ class TestPages:
         assert "text/html" in response.headers["content-type"]
         assert "Task Planner" in response.text or "Дашборд" in response.text
 
+    async def test_dashboard_tasks_old_first(self, client, db):
+        """Старые/перенесённые задачи выше новых на дашборде"""
+        from datetime import datetime, timedelta, timezone
+        from app.models.task import Task
+
+        today = date.today()
+        old = Task(
+            title="Старая просроченная",
+            due_date=today,
+            status="новая",
+            postpones=3,
+            created_at=datetime.now(timezone.utc) - timedelta(days=10),
+        )
+        new = Task(
+            title="Свежая сегодня",
+            due_date=today,
+            status="новая",
+            postpones=0,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add_all([new, old])  # порядок вставки не должен влиять
+        await db.commit()
+
+        response = await client.get("/")
+        assert response.status_code == 200
+        pos_old = response.text.index("Старая просроченная")
+        pos_new = response.text.index("Свежая сегодня")
+        assert pos_old < pos_new
+
     async def test_tasks_page(self, client):
         """Страница задач"""
         response = await client.get("/tasks")

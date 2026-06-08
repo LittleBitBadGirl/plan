@@ -27,6 +27,7 @@ from app.web.deps import (
     get_tasks_today,
     load_subtasks_map,
     repair_archived_subtasks,
+    dashboard_task_order_by,
     _strip_emoji,
     _render_shopping_list,
     _shopping_stats_script,
@@ -125,7 +126,7 @@ async def dashboard(request: Request):
                 Task.parent_task_id == None,
                 Task.source.is_distinct_from("recurring"),
                 Task.item_kind == "task",
-            ).order_by(Task.sort_order.asc())
+            ).order_by(*dashboard_task_order_by())
         )
         tasks = list(result.scalars().all())
 

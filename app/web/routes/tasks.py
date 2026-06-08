@@ -26,6 +26,7 @@ from app.web.deps import (
     get_tasks_today,
     load_subtasks_map,
     repair_archived_subtasks,
+    dashboard_task_order_by,
     _strip_emoji,
     _render_shopping_list,
     _shopping_stats_script,
@@ -345,7 +346,7 @@ async def task_create_htmx(
                 Task.due_date == today,
                 Task.is_archived == False,
                 Task.parent_task_id == None
-            ).order_by(Task.sort_order.asc(), Task.created_at.asc())
+            ).order_by(*dashboard_task_order_by())
         )
         tasks = result.scalars().all()
 

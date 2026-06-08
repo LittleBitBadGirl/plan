@@ -224,6 +224,16 @@ def _today_task_base_filter(today: date) -> list:
     ]
 
 
+def dashboard_task_order_by():
+    """Порядок на дашборде: перенесённые/старые наверх, новые — вниз."""
+    return (
+        Task.postpones.desc(),
+        Task.created_at.asc(),
+        Task.sort_order.asc(),
+        Task.id.asc(),
+    )
+
+
 async def load_subtasks_map(db: AsyncSession, task_ids: list[int]) -> dict[int, list[Task]]:
     """Все подзадачи родителей (включая выполненные)."""
     if not task_ids:
@@ -540,7 +550,7 @@ async def get_tasks_today(db: AsyncSession, request: Request):
             Task.parent_task_id == None,
             Task.source.is_distinct_from("recurring"),
             Task.item_kind == "task",
-        ).order_by(Task.sort_order.asc(), Task.created_at.asc())
+        ).order_by(*dashboard_task_order_by())
     )
     tasks = result.scalars().all()
 
@@ -569,6 +579,7 @@ __all__ = [
     "get_productivity_insights",
     "get_history_data",
     "get_tasks_today",
+    "dashboard_task_order_by",
     "_strip_emoji",
     "_render_shopping_list",
     "_shopping_stats_script",
