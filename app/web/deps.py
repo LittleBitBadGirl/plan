@@ -227,7 +227,7 @@ def _today_task_base_filter(today: date) -> list:
 def dashboard_task_order_by():
     """Порядок на дашборде: перенесённые/старые наверх, новые — вниз."""
     return (
-        Task.postpones.desc(),
+        func.coalesce(Task.postpones, 0).desc(),
         Task.created_at.asc(),
         Task.sort_order.asc(),
         Task.id.asc(),
@@ -287,43 +287,70 @@ def _today_roots_filter(today: date) -> list:
 
 
 async def get_today_progress(db: AsyncSession) -> tuple[int, int]:
-    """Прогресс дня: Y = карточки на сегодня, X = закрытые задачи + чекнутые подзадачи."""
+    """Прогресс дня: Y = карточки + регулярные на сегодня, X = закрытые + чекнутые подзадачи + регулярные."""
     today = date.today()
 
     roots_result = await db.execute(select(Task).where(*_today_roots_filter(today)))
     roots = roots_result.scalars().all()
-    if not roots:
-        return 0, 0
 
     total = len(roots)
-
-    root_ids = [r.id for r in roots]
-    subs_result = await db.execute(
-        select(Task).where(Task.parent_task_id.in_(root_ids))
-    )
-    subs_by_parent: dict[int, list[Task]] = defaultdict(list)
-    for sub in subs_result.scalars().all():
-        subs_by_parent[sub.parent_task_id].append(sub)
-
     completed = 0
-    for root in roots:
-        subs = subs_by_parent.get(root.id, [])
-        if subs:
-            if root.status == "выполнена" and _completed_on_day(root.completed_at, today):
-                completed += 1
-            else:
-                for sub in subs:
-                    if sub.status == "выполнена" and _completed_on_day(sub.completed_at, today):
-                        completed += 1
-        elif root.status == "выполнена" and _completed_on_day(root.completed_at, today):
-            completed += 1
 
-    return completed, total
+    if roots:
+        root_ids = [r.id for r in roots]
+        subs_result = await db.execute(
+            select(Task).where(Task.parent_task_id.in_(root_ids))
+        )
+        subs_by_parent: dict[int, list[Task]] = defaultdict(list)
+        for sub in subs_result.scalars().all():
+            subs_by_parent[sub.parent_task_id].append(sub)
+
+        for root in roots:
+            subs = subs_by_parent.get(root.id, [])
+            if subs:
+                if root.status == "выполнена" and _completed_on_day(root.completed_at, today):
+                    completed += 1
+                else:
+                    for sub in subs:
+                        if sub.status == "выполнена" and _completed_on_day(sub.completed_at, today):
+                            completed += 1
+            elif root.status == "выполнена" and _completed_on_day(root.completed_at, today):
+                completed += 1
+
+    from app.services.recurring_schedule import get_recurring_templates_for_date
+    from app.services.recurring_completion_service import get_completed_today_keys
+
+    recurring_today = await get_recurring_templates_for_date(
+        db, today, exclude_completed=False
+    )
+    completed_keys = await get_completed_today_keys(db, today)
+    recurring_completed = sum(
+        1 for rt in recurring_today if (rt.title, rt.category_id) in completed_keys
+    )
+
+    return completed + recurring_completed, total + len(recurring_today)
 
 
 async def get_today_stats(db: AsyncSession):
-    """Статистика сегодняшнего дня (колонка 1, без recurring-вхождений)."""
+    """Статистика сегодняшнего дня: обычные задачи + регулярные шаблоны на сегодня."""
     return await get_today_progress(db)
+
+
+def today_stats_oob_html(completed: int, total: int) -> str:
+    """HTMX OOB: счётчик и полоска прогресса на дашборде."""
+    pct = min(int(completed / total * 100), 100) if total > 0 else 0
+    return (
+        f'<span id="today-stats-counter" hx-swap-oob="true" '
+        f'class="font-bold text-sm text-green-400">{completed}/{total}</span>'
+        f'<div id="today-progress-bar" hx-swap-oob="true" '
+        f'class="bg-green-500 h-full transition-all duration-500 '
+        f'shadow-[0_0_8px_rgba(34,197,94,0.4)]" style="width: {pct}%"></div>'
+    )
+
+
+async def append_today_stats_oob(content: str, db: AsyncSession) -> str:
+    completed, total = await get_today_stats(db)
+    return content + today_stats_oob_html(completed, total)
 
 
 def _completed_tasks_base_filter(start: date, end: date):
@@ -463,19 +490,17 @@ async def build_daily_load_warning(
     )
 
 
-def _shopping_stats_script(total: int, archived_count: int) -> str:
-    return f'''<script>
-        const tc = document.getElementById('total-count');
-        const rc = document.getElementById('remaining-count');
-        const ac = document.getElementById('archived-count');
-        if (tc) tc.textContent = '{total}';
-        if (rc) rc.textContent = '{total}';
-        if (ac) ac.textContent = '{archived_count}';
-    </script>'''
+def _shopping_stats_oob(total: int, archived_count: int) -> str:
+    """HTMX OOB: счётчики на странице /shopping (не внутри #shopping-list)."""
+    return (
+        f'<span id="total-count" hx-swap-oob="true" '
+        f'class="font-bold text-white text-lg">{total}</span>'
+        f'<span id="archived-count" hx-swap-oob="true" '
+        f'class="font-bold text-green-400 text-lg">{archived_count}</span>'
+    )
 
 
-async def _shopping_list_response(request: Request, db: AsyncSession):
-    from fastapi.responses import HTMLResponse
+async def _shopping_counts(db: AsyncSession) -> tuple[int, int]:
     from app.models.shopping import ShoppingItem
     from app.services.shopping_service import load_active_shopping
 
@@ -484,8 +509,25 @@ async def _shopping_list_response(request: Request, db: AsyncSession):
         select(func.count(ShoppingItem.id)).where(ShoppingItem.is_archived == True)
     )
     archived_count = archived_count_result.scalar() or 0
-    html = _render_shopping_list(request, items) + _shopping_stats_script(len(items), archived_count)
+    return len(items), archived_count
+
+
+async def _shopping_list_response(request: Request, db: AsyncSession):
+    from fastapi.responses import HTMLResponse
+    from app.services.shopping_service import load_active_shopping
+
+    items = await load_active_shopping(db)
+    total, archived_count = await _shopping_counts(db)
+    html = _render_shopping_list(request, items) + _shopping_stats_oob(total, archived_count)
     return HTMLResponse(content=html)
+
+
+async def _shopping_toggle_response(db: AsyncSession):
+    """Ответ на «куплено»: OOB-счётчики; строка удаляется через hx-swap=delete."""
+    from fastapi.responses import HTMLResponse
+
+    total, archived_count = await _shopping_counts(db)
+    return HTMLResponse(content=_shopping_stats_oob(total, archived_count))
 
 
 async def get_history_data(db, period: str):
@@ -562,9 +604,7 @@ async def get_tasks_today(db: AsyncSession, request: Request):
     template = templates.get_template("partials/tasks_list.html")
     content = template.render({"request": request, "tasks": tasks, "subtasks_map": subtasks_map})
 
-    completed, total = await get_today_stats(db)
-    stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
-    return content + stats_oob
+    return await append_today_stats_oob(content, db)
 
 __all__ = [
     "templates",
@@ -572,6 +612,8 @@ __all__ = [
     "get_categories_list",
     "get_today_stats",
     "get_today_progress",
+    "today_stats_oob_html",
+    "append_today_stats_oob",
     "load_subtasks_map",
     "repair_archived_subtasks",
     "build_daily_load_warning",
@@ -582,6 +624,8 @@ __all__ = [
     "dashboard_task_order_by",
     "_strip_emoji",
     "_render_shopping_list",
-    "_shopping_stats_script",
+    "_shopping_stats_oob",
     "_shopping_list_response",
+    "_shopping_toggle_response",
+    "_shopping_counts",
 ]

@@ -27,6 +27,7 @@ from app.models.task import Task
 from app.models.calendar_event import CalendarEvent
 from app.models.recurring import RecurringTask
 from app.models.recurring_completion import RecurringCompletion
+from app.models.shopping import ShoppingItem
 
 TEST_AUTH_HEADERS = {
     "Authorization": "Bearer test-api-token",
@@ -57,6 +58,7 @@ async def isolate_tasks_and_calendar():
     async with async_session() as session:
         await session.execute(delete(RecurringCompletion))
         await session.execute(delete(CalendarEvent))
+        await session.execute(delete(ShoppingItem))
         await session.execute(delete(Task))
         await session.execute(delete(RecurringTask))
         await session.commit()

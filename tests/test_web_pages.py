@@ -19,6 +19,56 @@ class TestPages:
         assert "text/html" in response.headers["content-type"]
         assert "Task Planner" in response.text or "Дашборд" in response.text
 
+    async def test_dashboard_today_stats_fragment(self, client, db):
+        """OOB-фрагмент прогресса дня для HTMX"""
+        from app.models.task import Task
+
+        today = date.today()
+        db.add(Task(title="Одна", due_date=today, status="новая", source="web"))
+        await db.commit()
+
+        response = await client.get("/dashboard/today-stats")
+        assert response.status_code == 200
+        assert 'id="today-stats-counter"' in response.text
+        assert 'hx-swap-oob="true"' in response.text
+        assert 'id="today-progress-bar"' in response.text
+        assert "0/1" in response.text
+
+    async def test_task_create_updates_stats_oob(self, client, db):
+        """Создание задачи возвращает OOB для счётчика и прогресс-бара"""
+        response = await client.post(
+            "/tasks/create",
+            data={"title": "Новая через HTMX", "category_id": ""},
+        )
+        assert response.status_code == 200
+        assert 'id="today-stats-counter"' in response.text
+        assert 'id="today-progress-bar"' in response.text
+        assert "Новая через HTMX" in response.text
+
+    async def test_task_create_excludes_recurring_source_tasks(self, client, db):
+        """Быстрое добавление не подмешивает recurring-вхождения в колонку задач"""
+        from app.models.task import Task
+
+        today = date.today()
+        db.add(
+            Task(
+                title="Регулярная вхождение",
+                due_date=today,
+                status="новая",
+                source="recurring",
+                item_kind="task",
+            )
+        )
+        await db.commit()
+
+        response = await client.post(
+            "/tasks/create",
+            data={"title": "Обычная задача", "category_id": ""},
+        )
+        assert response.status_code == 200
+        assert "Обычная задача" in response.text
+        assert "Регулярная вхождение" not in response.text
+
     async def test_dashboard_tasks_old_first(self, client, db):
         """Старые/перенесённые задачи выше новых на дашборде"""
         from datetime import datetime, timedelta, timezone

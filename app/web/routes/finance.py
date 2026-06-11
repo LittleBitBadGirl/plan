@@ -26,7 +26,7 @@ from app.web.deps import (
     get_tasks_today,
     _strip_emoji,
     _render_shopping_list,
-    _shopping_stats_script,
+    _shopping_stats_oob,
     _shopping_list_response,
 )
 

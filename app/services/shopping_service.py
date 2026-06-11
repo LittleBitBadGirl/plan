@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,8 +19,7 @@ async def load_active_shopping(db: AsyncSession) -> list[ShoppingItem]:
     return list(result.scalars().all())
 
 
-async def archive_purchased_item(item: ShoppingItem) -> None:
+def archive_purchased_item(item: ShoppingItem) -> None:
     item.is_purchased = True
     item.is_archived = True
-    from datetime import datetime
     item.purchased_at = datetime.utcnow()

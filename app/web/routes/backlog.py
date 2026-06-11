@@ -26,7 +26,7 @@ from app.web.deps import (
     get_tasks_today,
     _strip_emoji,
     _render_shopping_list,
-    _shopping_stats_script,
+    _shopping_stats_oob,
     _shopping_list_response,
 )
 
@@ -160,6 +160,7 @@ async def plan_task_today(task_id: int):
         task = result.scalar_one_or_none()
         if task:
             task.due_date = today
+            task.postpones = 0
             task.status = "новая"
             await db.commit()
             return HTMLResponse(f'<div id="task-{task_id}" class="hidden"></div>')

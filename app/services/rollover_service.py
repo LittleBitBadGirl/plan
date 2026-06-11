@@ -1,9 +1,9 @@
 from datetime import date
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.task import Task
 from app.db.database import async_session
+from app.services.postpones_service import apply_rollover
 
 
 async def _rollover_impl(db: AsyncSession):
@@ -11,6 +11,7 @@ async def _rollover_impl(db: AsyncSession):
 
     Исключаем source='recurring' — они эфемерны, генератор создаст свежую копию сам.
     Переносим все задачи независимо от дня недели — пользователь сам решает, что делать.
+    Счётчик переносов += число просроченных календарных дней (не всегда +1).
     """
     today = date.today()
 
@@ -27,18 +28,13 @@ async def _rollover_impl(db: AsyncSession):
 
     moved_count = 0
     chronic_count = 0
+    chronic_before = {t.id: t.chronic_task for t in overdue_tasks}
 
     for task in overdue_tasks:
-        if task.postpones is None:
-            task.postpones = 0
-        task.postpones += 1
-        task.due_date = today
-
-        if task.postpones > 7 and not task.chronic_task:
-            task.chronic_task = True
-            chronic_count += 1
-
+        apply_rollover(task, today)
         moved_count += 1
+        if task.chronic_task and not chronic_before.get(task.id):
+            chronic_count += 1
 
     await db.flush()
 

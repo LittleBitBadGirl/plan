@@ -25,12 +25,13 @@ from app.web.deps import (
     build_daily_load_warning,
     get_history_data,
     get_tasks_today,
+    append_today_stats_oob,
     load_subtasks_map,
     repair_archived_subtasks,
     dashboard_task_order_by,
     _strip_emoji,
     _render_shopping_list,
-    _shopping_stats_script,
+    _shopping_stats_oob,
     _shopping_list_response,
 )
 
@@ -190,3 +191,10 @@ async def dashboard(request: Request):
         "calendar_events": calendar_events,
         "calendar_personal_events": calendar_personal_events,
     })
+
+
+@router.get("/dashboard/today-stats", response_class=HTMLResponse)
+async def dashboard_today_stats():
+    """HTMX OOB-фрагмент: счётчик и полоска прогресса дня."""
+    async with async_session() as db:
+        return HTMLResponse(content=await append_today_stats_oob("", db))

@@ -24,12 +24,10 @@ from app.web.deps import (
     get_today_stats,
     get_history_data,
     get_tasks_today,
-    load_subtasks_map,
-    repair_archived_subtasks,
-    dashboard_task_order_by,
+    append_today_stats_oob,
     _strip_emoji,
     _render_shopping_list,
-    _shopping_stats_script,
+    _shopping_stats_oob,
     _shopping_list_response,
 )
 
@@ -51,6 +49,7 @@ def _parse_ddmm(value: str) -> tuple[int, int]:
     return day, month
 
 from app.services.ai_service import ai_service
+from app.services.postpones_service import apply_manual_plan
 
 @router.get("/tasks", response_class=HTMLResponse)
 async def tasks_page(request: Request, status: Optional[str] = None):
@@ -338,34 +337,7 @@ async def task_create_htmx(
         db.add(task)
         await db.commit()
 
-        # Вернуть обновлённый список со всей нужной информацией
-        result = await db.execute(
-            select(Task)
-            .options(selectinload(Task.category).selectinload(Category.parent))
-            .where(
-                Task.due_date == today,
-                Task.is_archived == False,
-                Task.parent_task_id == None
-            ).order_by(*dashboard_task_order_by())
-        )
-        tasks = result.scalars().all()
-
-        await repair_archived_subtasks(db)
-        subtasks_map = await load_subtasks_map(db, [t.id for t in tasks])
-
-    # Статистика для OOB
-    completed, total = await get_today_stats(db)
-    stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
-
-    # Отрисовка шаблона
-    template = templates.get_template("partials/tasks_list.html")
-    content = template.render({
-        "request": request,
-        "tasks": tasks,
-        "subtasks_map": subtasks_map,
-    })
-    
-    return HTMLResponse(content=content + stats_oob)
+        return HTMLResponse(content=await get_tasks_today(db, request))
 
 
 async def _complete_subtask_impl(db: AsyncSession, subtask: Task) -> None:
@@ -392,9 +364,7 @@ async def complete_subtask_htmx(request: Request, task_id: int):
             "sub": subtask,
             "parent_id": subtask.parent_task_id,
         })
-        completed, total = await get_today_stats(db)
-        stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
-        return HTMLResponse(content=row + stats_oob)
+        return HTMLResponse(content=await append_today_stats_oob(row, db))
 
 
 @router.post("/tasks/{task_id}/backlog", response_class=HTMLResponse)
@@ -405,6 +375,7 @@ async def task_to_backlog(request: Request, task_id: int):
         task = result.scalar_one_or_none()
         if task:
             task.due_date = None
+            task.postpones = 0
             task.status = "новая"
             await db.commit()
             return HTMLResponse(content=await get_tasks_today(db, request))
@@ -426,9 +397,7 @@ async def complete_task(request: Request, task_id: int):
                     "sub": task,
                     "parent_id": task.parent_task_id,
                 })
-                completed, total = await get_today_stats(db)
-                stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
-                return HTMLResponse(content=row + stats_oob)
+                return HTMLResponse(content=await append_today_stats_oob(row, db))
 
             is_backlog = task.due_date is None
             task.status = "выполнена"
@@ -486,11 +455,16 @@ async def plan_task(request: Request, task_id: int, due_date: str = Form(None)):
             raise HTTPException(status_code=404, detail="Задача не найдена")
 
         try:
+            today = date.today()
+            old_due = task.due_date
             if due_date:
                 day, month = _parse_ddmm(due_date)
-                task.due_date = date(date.today().year, month, day)
+                new_due = date(today.year, month, day)
             else:
-                task.due_date = date.today()
+                new_due = today
+
+            apply_manual_plan(task, old_due, new_due)
+            task.due_date = new_due
             task.status = "новая"
             await db.commit()
 

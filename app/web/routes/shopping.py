@@ -26,8 +26,9 @@ from app.web.deps import (
     get_tasks_today,
     _strip_emoji,
     _render_shopping_list,
-    _shopping_stats_script,
+    _shopping_stats_oob,
     _shopping_list_response,
+    _shopping_toggle_response,
 )
 
 router = APIRouter()
@@ -50,7 +51,6 @@ async def shopping_page(request: Request):
         "request": request,
         "items": items,
         "total": len(items),
-        "remaining": len(items),
         "archived_count": archived_count,
     })
 
@@ -67,8 +67,6 @@ async def create_shopping_item(request: Request, title: str = Form(...)):
 @router.post("/api/shopping/{item_id}/toggle", response_class=HTMLResponse)
 async def toggle_shopping_item(request: Request, item_id: int):
     """Отметить купленным → убрать из списка, положить в архив."""
-    from app.services.shopping_service import archive_purchased_item
-
     async with async_session() as db:
         result = await db.execute(
             select(ShoppingItem).where(
@@ -77,11 +75,12 @@ async def toggle_shopping_item(request: Request, item_id: int):
             )
         )
         item = result.scalar_one_or_none()
-        if item:
-            archive_purchased_item(item)
-            await db.commit()
-            return await _shopping_list_response(request, db)
-    return HTMLResponse(content='<div class="hidden"></div>')
+        if not item:
+            raise HTTPException(status_code=404, detail="Позиция не найдена")
+
+        archive_purchased_item(item)
+        await db.commit()
+        return await _shopping_toggle_response(db)
 
 
 @router.delete("/api/shopping/{item_id}", response_class=HTMLResponse)

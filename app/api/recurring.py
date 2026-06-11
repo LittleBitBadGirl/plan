@@ -196,7 +196,7 @@ async def complete_recurring(
 ):
     """Отметить регулярную задачу выполненной — журнал, без новых Task."""
     from datetime import datetime
-    from app.web.pages import get_today_stats
+    from app.web.deps import append_today_stats_oob
     from fastapi.responses import HTMLResponse
     from app.models.task import Task
     from sqlalchemy import update
@@ -229,13 +229,10 @@ async def complete_recurring(
 
     await db.commit()
 
-    completed, total = await get_today_stats(db)
-
-    stats_oob = f'<span id="today-stats-counter" hx-swap-oob="true">{completed}/{total}</span>'
-    # Убираем карточку с дашборда
     hide_card = f'<div id="recurring-{recurring_id}" hx-swap-oob="true"></div>'
-
-    return HTMLResponse(content=f"{stats_oob}{hide_card}")
+    return HTMLResponse(
+        content=await append_today_stats_oob(hide_card, db)
+    )
 
 
 @router.get("/for-date/{task_date}")

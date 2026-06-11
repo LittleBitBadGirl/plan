@@ -2,6 +2,8 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
+from app.models.recurring import RecurringTask
+from app.models.recurring_completion import RecurringCompletion
 from app.models.task import Task
 from app.web.deps import get_today_progress
 
@@ -165,6 +167,81 @@ async def test_progress_parent_closed_today_counts_as_one(db):
 
     completed, total = await get_today_progress(db)
     assert total == 1
+    assert completed == 1
+
+
+@pytest.mark.asyncio
+async def test_progress_includes_recurring_templates(db):
+    """Регулярные шаблоны на сегодня входят в total."""
+    today = date.today()
+    db.add(Task(title="Обычная", due_date=today, status="новая", source="web"))
+    db.add(
+        RecurringTask(
+            title="Йога",
+            recurrence_type="daily",
+            start_date=today,
+            is_active=True,
+        )
+    )
+    await db.commit()
+
+    completed, total = await get_today_progress(db)
+    assert total == 2
+    assert completed == 0
+
+
+@pytest.mark.asyncio
+async def test_progress_recurring_completed_today(db):
+    """Выполненная регулярная задача увеличивает completed."""
+    today = date.today()
+    rt = RecurringTask(
+        title="Вечерний уход",
+        recurrence_type="daily",
+        start_date=today,
+        is_active=True,
+    )
+    db.add(rt)
+    await db.flush()
+    db.add(
+        RecurringCompletion(
+            recurring_task_id=rt.id,
+            occurrence_date=today,
+            status="completed",
+        )
+    )
+    await db.commit()
+
+    completed, total = await get_today_progress(db)
+    assert total == 1
+    assert completed == 1
+
+
+@pytest.mark.asyncio
+async def test_progress_mixed_regular_and_recurring(db):
+    """1/2: одна обычная закрыта, одна регулярная открыта."""
+    today = date.today()
+    db.add(
+        Task(
+            title="Сделано",
+            due_date=today,
+            status="выполнена",
+            completed_at=datetime.utcnow(),
+            is_archived=True,
+            source="web",
+        )
+    )
+    db.add(
+        RecurringTask(
+            title="Регулярная",
+            recurrence_type="daily",
+            start_date=today,
+            is_active=True,
+        )
+    )
+    await db.commit()
+
+    completed, total = await get_today_progress(db)
+    assert total == 2
     assert completed == 1
 
 
