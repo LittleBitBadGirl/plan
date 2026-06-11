@@ -1,0 +1,62 @@
+<form hx-post="/backlog/create"
+      hx-target="#backlog-list"
+      hx-swap="innerHTML"
+      hx-on::after-request="this.reset(); const ta = this.querySelector('textarea'); ta.style.height = 'auto'; ta.focus();"
+      class="flex flex-col gap-2"
+      x-data="{
+          resize() {
+              const el = $el.querySelector('textarea');
+              el.style.height = 'auto';
+              el.style.height = el.scrollHeight + 'px';
+          },
+          submitIfEnter(e) {
+              if (!e.shiftKey) {
+                  e.preventDefault();
+                  $el.requestSubmit();
+              }
+          }
+      }">
+    <div class="flex gap-2 items-end">
+        <textarea name="title" required
+                  rows="1"
+                  enterkeyhint="go"
+                  autocomplete="off"
+                  autocapitalize="sentences"
+                  @input="resize()"
+                  @keydown.enter="submitIfEnter($event)"
+                  placeholder="Скинуть в бэклог..."
+                  class="flex-1 bg-dark-700 border border-dark-500 rounded-lg px-3 py-3 lg:py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-all resize-none min-h-[48px] lg:min-h-[44px] text-base lg:text-sm leading-snug"></textarea>
+
+        <div class="relative shrink-0 hidden sm:block">
+            <select name="category_id"
+                    class="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer">
+                <option value="">Категория</option>
+                {% for cat in categories %}
+                    {% if cat.is_global %}
+                        <optgroup label="{{ cat.name }}">
+                            {% for subcat in categories %}
+                                {% if subcat.parent_id == cat.id %}
+                                <option value="{{ subcat.id }}">{{ subcat.name }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </optgroup>
+                    {% endif %}
+                {% endfor %}
+            </select>
+            <div class="bg-dark-700 border border-dark-500 rounded-lg w-11 h-11 lg:w-10 lg:h-10 flex items-center justify-center text-gray-400" title="Категория">
+                {{ icon_folder('w-4 h-4') }}
+            </div>
+        </div>
+
+        <button type="submit"
+                class="lg:hidden shrink-0 w-12 h-12 bg-accent hover:bg-blue-600 active:scale-95 text-white font-bold rounded-xl transition-all flex items-center justify-center text-xl shadow-lg"
+                aria-label="Добавить">
+            +
+        </button>
+    </div>
+
+    <button type="submit"
+            class="hidden lg:flex bg-accent hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-all items-center justify-center gap-2 text-sm active:scale-[0.98]">
+        <span>Добавить</span>
+    </button>
+</form>

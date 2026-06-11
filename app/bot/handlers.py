@@ -2,12 +2,11 @@ import os
 import hashlib
 from datetime import date, datetime
 from pathlib import Path
-from typing import Literal
 
 from aiogram import Router, F, Bot
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.filters import Command
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from app.utils.logger import app_logger
 from app.services.ai_service import ai_service
@@ -16,72 +15,43 @@ from app.models.missed import MissedMessage
 from app.models.task import Task
 from app.models.category import Category
 from app.models.finance import Transaction
-from app.models.goal import FinancialGoal
 from app.config import settings
 
+from app.bot.task_logic import (
+    detect_intent,
+    create_task_from_text,
+    mark_task_complete,
+    plan_task_for_today,
+    fetch_today_tasks,
+    fetch_backlog_tasks,
+    find_tasks_to_complete,
+    format_today_stats,
+)
+
 import httpx
-import json
 import re
 
 router = Router()
 
-# ─── Intent Detection ────────────────────────────────────────────────────────
-
-# Слова-маркеры завершения задачи (в конце фразы или после дефиса/тире)
+# Слова-маркеры завершения задачи
 _DONE_WORDS = (
     r"сделала?|выполнила?|выполнено|готово|завершила?|закончила?|done|ок|окей"
 )
-_DONE_SUFFIX = re.compile(
-    rf"\s*[-–—]\s*({_DONE_WORDS})\s*$", re.IGNORECASE
-)
-_DONE_PREFIX = re.compile(
-    rf"^\s*({_DONE_WORDS})\s*[-–—:]\s*", re.IGNORECASE
-)
-
-# Маркеры списков для bulk-режима
+_DONE_SUFFIX = re.compile(rf"\s*[-–—]\s*({_DONE_WORDS})\s*$", re.IGNORECASE)
+_DONE_PREFIX = re.compile(rf"^\s*({_DONE_WORDS})\s*[-–—:]\s*", re.IGNORECASE)
 _BULLET = re.compile(r"^\s*[-•*]\s+", re.MULTILINE)
 _NUMBERED = re.compile(r"^\s*\d+[.)]\s+", re.MULTILINE)
 
 
 def _detect_intent(text: str) -> dict:
-    """
-    Определяет намерение пользователя.
+    return detect_intent(
+        text,
+        done_suffix=_DONE_SUFFIX,
+        done_prefix=_DONE_PREFIX,
+        bullet=_BULLET,
+        numbered=_NUMBERED,
+    )
 
-    Возвращает dict с полями:
-      intent: 'complete' | 'bulk_add' | 'add'
-      task_name: str  (для complete — что выполнено)
-      tasks: list[str]  (для bulk_add — список задач)
-    """
-    text = text.strip()
-
-    # 1. Завершение: "X — сделала" или "сделала X"
-    m = _DONE_SUFFIX.search(text)
-    if m:
-        task_name = text[: m.start()].strip().rstrip("-–—").strip()
-        return {"intent": "complete", "task_name": task_name}
-
-    m = _DONE_PREFIX.match(text)
-    if m:
-        task_name = text[m.end():].strip()
-        return {"intent": "complete", "task_name": task_name}
-
-    # 2. Bulk-add: многострочный текст с буллетами/нумерацией или просто несколько строк
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
-    if len(lines) > 1:
-        # Убираем маркеры списков
-        clean = [_BULLET.sub("", _NUMBERED.sub("", l)).strip() for l in lines]
-        clean = [t for t in clean if t]
-        if len(clean) > 1:
-            return {"intent": "bulk_add", "tasks": clean}
-
-    # 3. Bulk через запятую (для голосовых: "позвонить маме, написать отчёт, купить молоко")
-    if text.count(",") >= 2:
-        parts = [p.strip() for p in text.split(",") if p.strip()]
-        if len(parts) >= 2:
-            return {"intent": "bulk_add", "tasks": parts}
-
-    # 4. Обычное добавление
-    return {"intent": "add", "task_name": text}
 
 async def send_daily_plan(bot: Bot):
     """Отправка плана на день в 09:00 — встречи, задачи, регулярные."""
@@ -111,14 +81,14 @@ async def transcribe_audio_groq(file_path: Path) -> str:
     """Транскрибация аудио через Groq API (Whisper)"""
     if not settings.groq_api_key:
         raise ValueError("GROQ_API_KEY не установлен")
-        
+
     url = "https://api.groq.com/openai/v1/audio/transcriptions"
     headers = {"Authorization": f"Bearer {settings.groq_api_key}"}
-    
+
     with open(file_path, "rb") as audio_file:
         files = {"file": (file_path.name, audio_file, "audio/ogg")}
         data = {"model": "whisper-large-v3", "temperature": "0.0", "language": "ru"}
-        
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(url, headers=headers, files=files, data=data)
             response.raise_for_status()
@@ -130,14 +100,18 @@ async def transcribe_audio_groq(file_path: Path) -> str:
 async def cmd_start(message: Message):
     """Команда /start"""
     await message.answer(
-        "👋 Привет! Я ваш планировщик задач.\n\n"
-        "Просто напишите задачу — я добавлю её в план.\n"
-        "Можете отправить голосовое или скриншот календаря.\n\n"
+        "👋 Привет! Я планировщик задач.\n\n"
+        "📝 Текст или голос → задача на сегодня\n"
+        "📥 «бэклог: …» или список строк → в бэклог без даты\n"
+        "✅ «задача — сделала» → отметить выполненной\n"
+        "🎙 Голосовое и скриншот календаря/финансов — тоже ок\n\n"
         "Команды:\n"
-        "/plan — план на сегодня\n"
-        "/tasks — все задачи на сегодня\n"
-        "/stats — статистика\n"
+        "/plan — план на сегодня (встречи + задачи)\n"
+        "/tasks — задачи на сегодня\n"
+        "/backlog — бэклог без даты\n"
+        "/stats — прогресс дня\n"
     )
+
 
 @router.message(Command("plan"))
 async def cmd_plan(message: Message):
@@ -150,32 +124,52 @@ async def cmd_plan(message: Message):
         text = await build_daily_plan_text(db)
 
     if not text:
-        await message.answer(
-            "🌅 Доброе утро! На сегодня планов пока нет. Отличный день!"
-        )
+        await message.answer("🌅 На сегодня планов пока нет. Отличный день!")
         return
 
     await message.answer(text)
 
+
 @router.message(Command("tasks"))
 async def cmd_tasks(message: Message):
-    """Список задач с кнопками для выполнения"""
+    """Список задач на сегодня с кнопками"""
     async with async_session() as db:
-        today = date.today()
-        result = await db.execute(select(Task).where(Task.due_date == today, Task.status != "выполнена"))
-        tasks = result.scalars().all()
-        
+        tasks = await fetch_today_tasks(db)
+
         if not tasks:
             await message.answer("📋 На сегодня активных задач нет!")
             return
-            
-        await message.answer("📋 Ваши задачи на сегодня:")
+
+        await message.answer("📋 Задачи на сегодня:")
         for task in tasks:
             kb = InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="✅ Выполнено", callback_data=f"done_{task.id}")
             ]])
-            time_str = f" [{task.due_time.strftime('%H:%M')}]" if getattr(task, 'due_time', None) else ""
+            time_str = f" [{task.due_time.strftime('%H:%M')}]" if task.due_time else ""
             await message.answer(f"🔸 {task.title}{time_str}", reply_markup=kb)
+
+
+@router.message(Command("backlog"))
+async def cmd_backlog(message: Message):
+    """Бэклог — задачи без даты"""
+    async with async_session() as db:
+        tasks = await fetch_backlog_tasks(db)
+
+    if not tasks:
+        await message.answer("📥 Бэклог пуст. Напишите «бэклог: идея» или список строк.")
+        return
+
+    await message.answer(f"📥 Бэклог ({len(tasks)}):")
+    for task in tasks[:15]:
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="⚡ Сегодня", callback_data=f"plan_today_{task.id}"),
+            InlineKeyboardButton(text="✅ Готово", callback_data=f"done_{task.id}"),
+        ]])
+        await message.answer(f"🔸 {task.title}", reply_markup=kb)
+
+    if len(tasks) > 15:
+        await message.answer(f"… и ещё {len(tasks) - 15}. Полный список — в вебе /backlog")
+
 
 @router.callback_query(F.data.startswith("done_"))
 async def process_task_done(callback: CallbackQuery):
@@ -185,52 +179,48 @@ async def process_task_done(callback: CallbackQuery):
         task_res = await db.execute(select(Task).where(Task.id == task_id))
         task = task_res.scalar_one_or_none()
         if task and task.status != "выполнена":
-            task.status = "выполнена"
-            task.completed_at = datetime.now()
-            await db.commit()
-            await callback.message.edit_text(f"✅ ~~{task.title}~~ (Выполнено)")
+            await mark_task_complete(db, task)
+            await callback.message.edit_text(f"✅ ~~{task.title}~~ (выполнено)")
         else:
             await callback.message.answer("Задача уже выполнена или не найдена.")
-    await callback.answer("Отмечено как выполненное!")
+    await callback.answer("Отмечено!")
+
+
+@router.callback_query(F.data.startswith("plan_today_"))
+async def process_plan_today(callback: CallbackQuery):
+    """Перенести из бэклога на сегодня"""
+    task_id = int(callback.data.split("_")[2])
+    async with async_session() as db:
+        task = await plan_task_for_today(db, task_id)
+        if task:
+            await callback.message.edit_text(
+                f"⚡ «{task.title}» → сегодня ({date.today().strftime('%d.%m')})"
+            )
+        else:
+            await callback.message.edit_text("❌ Задача не найдена.")
+    await callback.answer()
+
 
 @router.message(Command("stats"))
 async def cmd_stats(message: Message):
-    """Команда /stats — статистика"""
+    """Прогресс дня — как на дашборде (задачи + подзадачи + регулярные)"""
     async with async_session() as db:
-        today = date.today()
-        result_total = await db.execute(select(Task).where(Task.due_date == today))
-        tasks = result_total.scalars().all()
-        completed = sum(1 for t in tasks if t.status == "выполнена")
-        total = len(tasks)
-        
-        await message.answer(
-            f"📊 Статистика за сегодня:\n\n"
-            f"Выполнено: {completed}/{total}\n"
-        )
+        text = await format_today_stats(db)
+    await message.answer(text)
+
 
 async def _complete_task_by_name(task_name: str, message: Message) -> None:
-    """Найти задачу по fuzzy-имени и пометить выполненной."""
-    today = date.today()
+    """Найти задачу (сегодня или бэклог) и закрыть."""
     async with async_session() as db:
-        result = await db.execute(
-            select(Task).where(
-                Task.due_date == today,
-                Task.is_archived == False,
-                Task.status.in_(["новая", "в_работе"]),
-                Task.title.ilike(f"%{task_name}%"),
-            )
-        )
-        matches = result.scalars().all()
+        matches = await find_tasks_to_complete(db, task_name)
 
     if not matches:
-        # Ничего не нашли — предлагаем добавить как новую задачу
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="➕ Добавить как новую", callback_data=f"add_new:{task_name[:60]}"),
             InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action"),
         ]])
         await message.answer(
-            f"🔍 Задача «{task_name}» не найдена в плане на сегодня.\n"
-            "Добавить как новую задачу?",
+            f"🔍 «{task_name}» не найдена (сегодня / бэклог).\nДобавить как новую?",
             reply_markup=kb,
         )
         return
@@ -240,28 +230,33 @@ async def _complete_task_by_name(task_name: str, message: Message) -> None:
         async with async_session() as db:
             res = await db.execute(select(Task).where(Task.id == task.id))
             t = res.scalar_one()
-            t.status = "выполнена"
-            t.completed_at = datetime.now()
-            t.is_archived = True
-            await db.commit()
-        await message.answer(f"✅ Выполнено: {task.title}")
+            await mark_task_complete(db, t)
+        where = "бэклог" if task.due_date is None else "сегодня"
+        await message.answer(f"✅ Выполнено ({where}): {task.title}")
         return
 
-    # Несколько совпадений — показываем кнопки выбора
     buttons = [
-        [InlineKeyboardButton(text=f"✅ {t.title[:40]}", callback_data=f"complete_task:{t.id}")]
+        [InlineKeyboardButton(
+            text=f"✅ {t.title[:36]}{'…' if len(t.title) > 36 else ''}",
+            callback_data=f"complete_task:{t.id}",
+        )]
         for t in matches
     ]
     buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action")])
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
     await message.answer(
-        f"🔍 Нашла {len(matches)} похожих задачи. Какую отметить выполненной?",
+        f"🔍 Нашла {len(matches)} похожих. Какую отметить?",
         reply_markup=kb,
     )
 
 
-async def _process_bulk_tasks(tasks: list[str], message: Message, source: str = "telegram") -> None:
-    """Создать несколько задач за один раз."""
+async def _process_bulk_tasks(
+    tasks: list[str],
+    message: Message,
+    source: str = "telegram",
+    target: str = "backlog",
+) -> None:
+    """Создать несколько задач (по умолчанию — в бэклог)."""
     created = []
     skipped = []
 
@@ -269,72 +264,39 @@ async def _process_bulk_tasks(tasks: list[str], message: Message, source: str = 
         raw = raw.strip()
         if not raw:
             continue
-        # Используем существующую логику — но без ответа на каждую задачу
         try:
             async with async_session() as db:
-                cat_result = await db.execute(select(Category).where(Category.type == 'task'))
-                categories = cat_result.scalars().all()
-                cat_list = [{"id": c.id, "name": c.name, "is_global": c.is_global} for c in categories]
-
-                clean_title = raw
-                for word in ["завтра", "сегодня", "послезавтра"]:
-                    clean_title = clean_title.replace(word, "").replace(word.capitalize(), "").strip()
-
-                # dedup
-                dup = await db.execute(
-                    select(Task).where(
-                        Task.title == clean_title,
-                        Task.due_date == date.today(),
-                        Task.is_archived == False,
-                    )
+                task, _ = await create_task_from_text(
+                    db, raw, source=source, target=target
                 )
-                if dup.scalar_one_or_none():
-                    skipped.append(clean_title)
-                    continue
-
-                ai_result = await ai_service.categorize(raw, cat_list)
-                category_id = ai_result.get("category_id")
-                due_date_str = ai_result.get("due_date")
-                task_due_date = date.fromisoformat(due_date_str) if due_date_str else date.today()
-
-                task = Task(
-                    title=clean_title,
-                    category_id=category_id,
-                    source=source,
-                    due_date=task_due_date,
-                    tags=", ".join(ai_result.get("tags", [])) or None,
-                )
-                db.add(task)
-                await db.commit()
-                created.append(clean_title)
-
+                created.append(task.title)
+        except ValueError as e:
+            skipped.append(str(e).strip("«»"))
         except Exception as e:
             app_logger.error(f"❌ Bulk task error ({raw}): {e}", exc_info=True)
             skipped.append(raw)
 
-    lines = [f"✅ Добавлено {len(created)} задач:"]
-    for t in created:
-        lines.append(f"  🔸 {t}")
+    label = "в бэклог" if target == "backlog" else "на сегодня"
+    lines = [f"📥 Добавлено {len(created)} {label}:"]
+    for title in created:
+        lines.append(f"  🔸 {title}")
     if skipped:
-        lines.append(f"\nℹ️ Уже были в плане (пропущено): {', '.join(skipped)}")
+        lines.append(f"\nℹ️ Пропущено: {', '.join(skipped[:5])}")
+        if len(skipped) > 5:
+            lines.append(f"   …ещё {len(skipped) - 5}")
 
     await message.answer("\n".join(lines))
 
 
-# ─── Callback handlers ────────────────────────────────────────────────────────
-
 @router.callback_query(F.data.startswith("complete_task:"))
 async def cb_complete_task(callback: CallbackQuery):
-    """Отметить конкретную задачу выполненной (из кнопок fuzzy-поиска)"""
+    """Отметить конкретную задачу выполненной (из fuzzy-поиска)"""
     task_id = int(callback.data.split(":")[1])
     async with async_session() as db:
         res = await db.execute(select(Task).where(Task.id == task_id))
         task = res.scalar_one_or_none()
         if task:
-            task.status = "выполнена"
-            task.completed_at = datetime.now()
-            task.is_archived = True
-            await db.commit()
+            await mark_task_complete(db, task)
             await callback.message.edit_text(f"✅ Выполнено: {task.title}")
         else:
             await callback.message.edit_text("❌ Задача не найдена.")
@@ -356,11 +318,16 @@ async def cb_cancel(callback: CallbackQuery):
     await callback.answer()
 
 
-async def _process_and_create_task(text: str, message: Message, source: str = "telegram"):
-    """Общая логика создания задачи из текста"""
+async def _process_and_create_task(
+    text: str,
+    message: Message,
+    source: str = "telegram",
+    target: str = "today",
+):
+    """Создание одной задачи из текста."""
     try:
         app_logger.info(f"📨 Обработка: \"{text}\" от chat_id={message.chat.id}")
-        
+
         async with async_session() as db:
             message_hash = hashlib.sha256(f"{text}{message.date}".encode()).hexdigest()
             missed = MissedMessage(
@@ -372,64 +339,15 @@ async def _process_and_create_task(text: str, message: Message, source: str = "t
             db.add(missed)
             await db.flush()
 
-            # Получаем все категории для Groq
-            cat_result = await db.execute(select(Category).where(Category.type == 'task'))
-            categories = cat_result.scalars().all()
-            cat_list = [{"id": c.id, "name": c.name, "is_global": c.is_global} for c in categories]
+            _, summary = await create_task_from_text(db, text, source=source, target=target)
+            await message.answer(summary)
 
-            # Предварительный dedup: не создаём если такая задача уже есть на ту же дату
-            due_date_preview = date.today()  # будет уточнена после AI, но для dedup берём сегодня
-            clean_title_preview = text
-            for word in ["завтра", "сегодня", "послезавтра"]:
-                clean_title_preview = clean_title_preview.replace(word, "").replace(word.capitalize(), "").strip()
-
-            dup_check = await db.execute(
-                select(Task).where(
-                    Task.title == clean_title_preview,
-                    Task.due_date == due_date_preview,
-                    Task.is_archived == False,
-                )
-            )
-            if dup_check.scalar_one_or_none():
-                await message.answer(f"ℹ️ «{clean_title_preview}» уже есть в плане на {due_date_preview.strftime('%d.%m.%Y')}")
-                return
-
-            # AI категоризация
-            result = await ai_service.categorize(text, cat_list)
-            category_id = result.get("category_id")
-            tags_list = result.get("tags", [])
-            tags_str = ", ".join(tags_list) if tags_list else None
-            
-            due_date_str = result.get("due_date")
-            task_due_date = date.fromisoformat(due_date_str) if due_date_str else date.today()
-
-            clean_title = text
-            for word in ["завтра", "сегодня", "послезавтра"]:
-                clean_title = clean_title.replace(word, "").replace(word.capitalize(), "").strip()
-
-            task = Task(
-                title=clean_title,
-                category_id=category_id,
-                source=source,
-                due_date=task_due_date,
-                tags=tags_str
-            )
-            db.add(task)
-            await db.commit()
-            
-            cat_name = "Без категории"
-            if category_id:
-                cat_obj = next((c for c in categories if c.id == category_id), None)
-                if cat_obj: cat_name = cat_obj.name
-
-            app_logger.info(f"✅ Задача создана: ID={task.id} \"{clean_title}\" → {cat_name} | Date: {task_due_date}")
-            resp_text = f"✅ Добавлено: {clean_title}\n📂 Категория: {cat_name}\n📅 Дата: {task_due_date.strftime('%d.%m.%Y')}"
-            if tags_str: resp_text += f"\n🏷️ Теги: {tags_str}"
-            await message.answer(resp_text)
-            
+    except ValueError as e:
+        await message.answer(f"ℹ️ {e}")
     except Exception as e:
         app_logger.error(f"❌ Ошибка при создании задачи: {e}", exc_info=True)
         await message.answer(f"❌ Ошибка: {e}")
+
 
 @router.message(F.text)
 async def handle_text(message: Message):
@@ -443,9 +361,21 @@ async def handle_text(message: Message):
     if intent["intent"] == "complete":
         await _complete_task_by_name(intent["task_name"], message)
     elif intent["intent"] == "bulk_add":
-        await _process_bulk_tasks(intent["tasks"], message, source="telegram")
+        await _process_bulk_tasks(
+            intent["tasks"],
+            message,
+            source="telegram",
+            target=intent.get("target", "backlog"),
+        )
+    elif intent["intent"] == "backlog_add":
+        await _process_and_create_task(
+            intent["task_name"], message, source="telegram", target="backlog"
+        )
     else:
-        await _process_and_create_task(text, message, source="telegram")
+        await _process_and_create_task(
+            text, message, source="telegram", target=intent.get("target", "today")
+        )
+
 
 @router.message(F.voice)
 async def handle_voice(message: Message, bot: Bot):
@@ -466,7 +396,13 @@ async def handle_voice(message: Message, bot: Bot):
             if intent["intent"] == "complete":
                 await _complete_task_by_name(intent["task_name"], message)
             elif intent["intent"] == "bulk_add":
-                await _process_bulk_tasks(intent["tasks"], message, source="voice")
+                await _process_bulk_tasks(
+                    intent["tasks"], message, source="voice", target="backlog"
+                )
+            elif intent["intent"] == "backlog_add":
+                await _process_and_create_task(
+                    intent["task_name"], message, source="voice", target="backlog"
+                )
             else:
                 await _process_and_create_task(text, message, source="voice")
 
@@ -476,9 +412,10 @@ async def handle_voice(message: Message, bot: Bot):
         app_logger.error(f"❌ Ошибка обработки голосового: {e}", exc_info=True)
         await msg.edit_text("❌ Ошибка при транскрибации.")
 
+
 @router.message(F.photo)
 async def handle_photo(message: Message, bot: Bot):
-    """Обработка фото через Vision-модель (прямое зрение ИИ)"""
+    """Обработка фото через Vision-модель"""
     msg = await message.answer("👁 Бот внимательно смотрит на картинку...")
     file_path = None
     try:
@@ -486,20 +423,19 @@ async def handle_photo(message: Message, bot: Bot):
         file = await bot.get_file(file_id)
         uploads_dir = settings.uploads_dir / "screenshots"
         uploads_dir.mkdir(parents=True, exist_ok=True)
-        
-        file_ext = file.file_path.split('.')[-1] if '.' in file.file_path else 'jpg'
+
+        file_ext = file.file_path.split(".")[-1] if "." in file.file_path else "jpg"
         filename = f"{file_id}.{file_ext}"
         file_path = uploads_dir / filename
         await bot.download_file(file.file_path, destination=file_path)
-        
-        # Прямой анализ зрения через Vision-модель
+
         vision_result = await ai_service.vision_analyze_screenshot(str(file_path))
         verdict = vision_result.get("type", "other")
         data = vision_result.get("data", {})
-        
+
         app_logger.info(f"👁 Vision Verdict: {verdict}")
 
-        if verdict == 'finance':
+        if verdict == "finance":
             items = data.get("items", [])
             if not items:
                 await msg.edit_text("💰 Похоже на финансы, но я не смог разобрать детали. Сохранил для ручного ввода.")
@@ -510,48 +446,52 @@ async def handle_photo(message: Message, bot: Bot):
                 count = 0
                 for item in items:
                     amount = float(item.get("amount", 0))
-                    if amount == 0: continue
-                    
+                    if amount == 0:
+                        continue
+
                     tx_date_str = item.get("date")
                     try:
                         tx_date = date.fromisoformat(tx_date_str) if tx_date_str else date.today()
-                    except:
+                    except Exception:
                         tx_date = date.today()
-                        
-                    desc = item.get("desc", "Операция из Vision")
-                    cat_id = None
 
-                    # 1. Merchant memory: проверяем историю — тот же мерчант = та же категория
+                    desc = item.get("desc", "Операция из Vision")
                     cat_id = await _get_merchant_category(desc, db)
 
-                    # 2. Если не знаем — пробуем подсказку от Vision AI
                     if cat_id is None:
                         cat_hint = item.get("category_hint")
                         if cat_hint:
                             cat_res = await db.execute(
                                 select(Category).where(
                                     Category.name.ilike(f"%{cat_hint}%"),
-                                    Category.type == 'finance',
+                                    Category.type == "finance",
                                 )
                             )
                             cat_obj = cat_res.scalar_one_or_none()
                             if cat_obj:
                                 cat_id = cat_obj.id
 
-                    db.add(Transaction(date=tx_date, amount=amount, description=desc, category_id=cat_id, source="vision_screenshot"))
+                    db.add(Transaction(
+                        date=tx_date,
+                        amount=amount,
+                        description=desc,
+                        category_id=cat_id,
+                        source="vision_screenshot",
+                    ))
                     count += 1
                 await db.commit()
-            
+
             await msg.edit_text(f"✅ Успешно «увидел» операций: {count}\n💰 Все данные внесены в Финансы. Скриншот удален.")
-            if file_path and file_path.exists(): os.remove(file_path)
-            
-        elif verdict == 'calendar':
+            if file_path and file_path.exists():
+                os.remove(file_path)
+
+        elif verdict == "calendar":
             events = data.get("events", [])
             if not events:
                 await msg.edit_text("📅 Похоже на календарь, но я не разглядел событий. Сохранил в базу.")
                 await _save_screenshot_to_db(file_path, "vision_calendar_empty", message)
                 return
-                
+
             text_resp = f"📅 Вижу событий: {len(events)}\n\n"
             async with async_session() as db:
                 for event in events:
@@ -564,7 +504,6 @@ async def handle_photo(message: Message, bot: Bot):
                     except Exception:
                         pass
 
-                    # Use event's own date; fall back to today only if missing/unparseable
                     event_date = date.today()
                     try:
                         date_str = event.get("date", "")
@@ -583,13 +522,14 @@ async def handle_photo(message: Message, bot: Bot):
                     time_label = event.get("time", "—")
                     text_resp += f"🔸 {date_label} {time_label} — {event['title']}\n"
                 await db.commit()
-            
+
             await msg.edit_text(text_resp + "\n✅ Задачи добавлены. Скриншот удален.")
-            if file_path and file_path.exists(): os.remove(file_path)
+            if file_path and file_path.exists():
+                os.remove(file_path)
         else:
             await _save_screenshot_to_db(file_path, "vision_unknown", message)
             await msg.edit_text("📥 Не совсем понял, что это. Сохранил скриншот в базу для ручного разбора.")
-            
+
     except Exception as e:
         app_logger.error(f"❌ Ошибка Vision: {e}", exc_info=True)
         if file_path and file_path.exists():
@@ -598,11 +538,9 @@ async def handle_photo(message: Message, bot: Bot):
         else:
             await msg.edit_text(f"❌ Критическая ошибка: {e}")
 
+
 async def _get_merchant_category(description: str, db) -> int | None:
-    """Merchant memory: ищем категорию по истории транзакций с таким же описанием.
-    
-    Возвращает category_id который использовался чаще всего для данного мерчанта.
-    """
+    """Merchant memory: категория по истории транзакций с тем же описанием."""
     if not description:
         return None
     result = await db.execute(
@@ -617,7 +555,6 @@ async def _get_merchant_category(description: str, db) -> int | None:
     rows = result.scalars().all()
     if not rows:
         return None
-    # Берём наиболее часто встречающуюся категорию
     from collections import Counter
     most_common = Counter(rows).most_common(1)
     return most_common[0][0] if most_common else None
@@ -631,7 +568,7 @@ async def _save_screenshot_to_db(file_path: Path, status: str, message: Message)
             screenshot = Screenshot(
                 file_path=str(file_path),
                 ocr_status=status,
-                created_at=datetime.now()
+                created_at=datetime.now(),
             )
             db.add(screenshot)
             await db.commit()

@@ -308,6 +308,24 @@ class TestSubtaskHTMX:
 class TestBacklogHTMX:
     """Тесты HTMX эндпоинтов бэклога"""
 
+    async def test_backlog_quick_create(self, client, db):
+        """Быстрое добавление задачи в бэклог без даты"""
+        response = await client.post(
+            "/backlog/create",
+            data={"title": "Идея из головы", "category_id": ""},
+        )
+        assert response.status_code == 200
+        assert "Идея из головы" in response.text
+
+        from app.models.task import Task
+        from sqlalchemy import select
+
+        result = await db.execute(
+            select(Task).where(Task.title == "Идея из головы")
+        )
+        task = result.scalar_one()
+        assert task.due_date is None
+
     async def test_complete_task_from_backlog(self, client):
         """Завершение задачи из бэклога"""
         # Создаём задачу без даты (бэклог)

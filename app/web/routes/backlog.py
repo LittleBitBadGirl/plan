@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date, datetime, time, timedelta
 from typing import List, Optional
+from collections import defaultdict
 import re
 import json
 
@@ -30,44 +31,95 @@ from app.web.deps import (
     _shopping_list_response,
 )
 
+from app.services.ai_service import ai_service
+
 router = APIRouter()
+
+
+async def _load_backlog(db: AsyncSession) -> tuple[list[Task], dict[int, list[Task]]]:
+    """Задачи бэклога и их подзадачи."""
+    result = await db.execute(
+        select(Task)
+        .options(selectinload(Task.category).selectinload(Category.parent))
+        .where(
+            Task.is_archived == False,
+            Task.due_date == None,
+            Task.parent_task_id == None,
+        )
+        .order_by(Task.created_at.desc())
+    )
+    tasks = list(result.scalars().all())
+
+    subtasks_map: dict[int, list[Task]] = defaultdict(list)
+    if tasks:
+        task_ids = [t.id for t in tasks]
+        subtasks_result = await db.execute(
+            select(Task).where(Task.parent_task_id.in_(task_ids))
+        )
+        for st in subtasks_result.scalars().all():
+            subtasks_map[st.parent_task_id].append(st)
+
+    return tasks, subtasks_map
+
+
+async def _render_backlog_list(request: Request, db: AsyncSession) -> str:
+    tasks, subtasks_map = await _load_backlog(db)
+    return templates.get_template("partials/backlog_list.html").render({
+        "request": request,
+        "tasks": tasks,
+        "subtasks_map": subtasks_map,
+    })
 
 
 @router.get("/backlog", response_class=HTMLResponse)
 async def backlog_page(request: Request):
     """Бэклог — задачи без даты"""
     async with async_session() as db:
-        result = await db.execute(
-            select(Task)
-            .options(selectinload(Task.category).selectinload(Category.parent))
-            .where(
-                Task.is_archived == False,
-                Task.due_date == None,
-                Task.parent_task_id == None  # Только корневые
-            )
-            .order_by(Task.created_at.desc())
-        )
-        tasks = list(result.scalars().all())
-
-        # Загружаем подзадачи для бэклога
-        subtasks_map = {}
-        if tasks:
-            task_ids = [t.id for t in tasks]
-            subtasks_result = await db.execute(
-                select(Task).where(Task.parent_task_id.in_(task_ids))
-            )
-            all_subtasks = subtasks_result.scalars().all()
-            
-            from collections import defaultdict
-            subtasks_map = defaultdict(list)
-            for st in all_subtasks:
-                subtasks_map[st.parent_task_id].append(st)
+        tasks, subtasks_map = await _load_backlog(db)
+    categories = await get_categories_list()
 
     return templates.TemplateResponse(request, "backlog.html", {
         "request": request,
         "tasks": tasks,
-        "subtasks_map": subtasks_map,  # Передаем словарь подзадач
+        "subtasks_map": subtasks_map,
+        "categories": categories,
     })
+
+
+@router.post("/backlog/create", response_class=HTMLResponse)
+async def backlog_create_htmx(
+    request: Request,
+    title: str = Form(...),
+    category_id: str = Form(None),
+):
+    """HTMX: быстрое создание задачи в бэклог (без даты)"""
+    title = title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Пустой заголовок")
+
+    async with async_session() as db:
+        final_category_id = None
+        if category_id and category_id.isdigit():
+            final_category_id = int(category_id)
+        else:
+            cat_stmt = select(Category).order_by(Category.is_global.desc(), Category.name)
+            cat_res = await db.execute(cat_stmt)
+            all_cats = [{"id": c.id, "name": c.name, "is_global": c.is_global} for c in cat_res.scalars().all()]
+            ai_result = await ai_service.categorize(title, all_cats)
+            if ai_result and ai_result.get("category_id"):
+                final_category_id = int(ai_result["category_id"])
+
+        task = Task(
+            title=title,
+            category_id=final_category_id,
+            due_date=None,
+            source="web",
+            status="новая",
+        )
+        db.add(task)
+        await db.commit()
+
+        return HTMLResponse(content=await _render_backlog_list(request, db))
 
 
 @router.post("/backlog/{task_id}/make-recurring-form", response_class=HTMLResponse)

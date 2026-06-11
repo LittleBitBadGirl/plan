@@ -231,3 +231,18 @@ select:focus {
     background-color: #3b82f6;
     color: white;
 }
+
+/* Бэклог — удобные тапы на телефоне */
+@media (max-width: 639px) {
+    .backlog-actions .icon-action,
+    .backlog-actions .icon-link {
+        padding: 0.55rem;
+        min-width: 2.75rem;
+        min-height: 2.75rem;
+    }
+    .backlog-actions .icon-action svg,
+    .backlog-actions .icon-link svg {
+        width: 1.125rem;
+        height: 1.125rem;
+    }
+}
