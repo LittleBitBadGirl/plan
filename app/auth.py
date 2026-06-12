@@ -13,6 +13,7 @@ PUBLIC_PREFIXES = (
 )
 PUBLIC_EXACT = {
     "/api/health",
+    "/api/ping",
     "/login",
     "/logout",
     "/openapi.json",
