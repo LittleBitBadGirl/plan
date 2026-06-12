@@ -322,248 +322,179 @@ async def ai_feedback(request: Request, feedback: str = ""):
 
 @router.get("/api/hermes/analyze", response_class=HTMLResponse)
 async def hermes_analyze(request: Request):
-    """Анализ на реальных данных БД: болячки, паттерны, предсказания."""
+    """Показать последний анализ Hermes из ai_reports или запустить прямой."""
     from datetime import date, timedelta
 
     async with async_session() as db:
         today = date.today()
 
-        # ── Блок 1: Болячки ──
-        pain_lines = []
-
-        # Postpones + chronic + size
-        pain_res = await db.execute(
-            select(Task)
-            .options(selectinload(Task.category))
-            .where(
-                Task.status.in_(["новая", "в работе"]),
-                Task.is_archived == False,
-                (Task.postpones >= 2) | (Task.chronic_task == True),
-            )
-            .order_by(Task.postpones.desc())
-            .limit(10)
+        # Сначала проверяем — есть ли готовый анализ от Hermes в ai_reports
+        report_res = await db.execute(
+            select(AIReport)
+            .where(AIReport.source == "hermes", AIReport.status == "done")
+            .order_by(AIReport.report_date.desc())
+            .limit(1)
         )
-        pain_tasks = pain_res.scalars().all()
-        if pain_tasks:
-            pain_lines.append("### Хронические откладывания\n")
-            for t in pain_tasks:
-                size_str = f" [{t.size}]" if t.size else ""
-                chronic_str = " CHRONIC" if t.chronic_task else ""
-                cat = t.category.name if t.category else "?"
-                due = t.due_date or t.created_at.date() if t.created_at else today
-                days_open = (today - due).days if due else 0
-                days_str = f"{days_open}д" if days_open > 0 else "сегодня"
+        report = report_res.scalar_one_or_none()
+        if report:
+            return HTMLResponse(f"""
+<div class="p-5 sm:p-6 bg-dark-800">
+    <p class="text-xs text-purple-400/80 mb-3">Анализ Hermes от {report.report_date.strftime('%d.%m.%Y')}</p>
+    <div class="text-gray-300 leading-relaxed text-sm sm:text-base whitespace-pre-wrap">{report.content}</div>
+</div>
+""")
 
-                flags = []
-                if t.postpones >= 3 and not t.size:
-                    flags.append("needs_decomposition — крупнее чем кажется. Пометь L или XL")
-                elif t.postpones >= 3 and t.size in ("L", "XL"):
-                    flags.append(f"OK: размер {t.size} объясняет переносы")
-                if t.size in ("L", "XL") and days_open > 7:
-                    flags.append("крупная + давно открыта — нужен план")
+        # Если нет готового — запускаем прямой анализ (fallback)
+        return await _direct_analyze(db, today)
 
-                pain_lines.append(
-                    f"- **{t.postpones}x** | {days_str} | {t.title[:70]}{size_str}{chronic_str} | {cat}"
-                )
-                for f in flags:
-                    pain_lines.append(f"  - {f}")
 
-        # Recurring на нуле
-        from app.models.recurring import RecurringTask as RT
-        rec_res = await db.execute(
-            select(RT).where(RT.is_active == True, RT.completed_count == 0)
+async def _direct_analyze(db, today):
+    """Прямой анализ БД (без ai_reports)."""
+    from datetime import timedelta
+
+    # ── Блок 1: Болячки ──
+    pain_lines = []
+
+    pain_res = await db.execute(
+        select(Task)
+        .options(selectinload(Task.category))
+        .where(
+            Task.status.in_(["новая", "в работе"]),
+            Task.is_archived == False,
+            (Task.postpones >= 2) | (Task.chronic_task == True),
         )
-        rec_tasks = rec_res.scalars().all()
-        if rec_tasks:
-            pain_lines.append("\n### Recurring без выполнений\n")
-            for r in rec_tasks:
-                if r.start_date:
-                    days_since = (today - r.start_date).days
-                    if days_since > 14:
-                        pain_lines.append(
-                            f"- [{r.recurrence_type}] {r.title[:55]} | старт: {r.start_date} ({days_since}д)"
-                        )
+        .order_by(Task.postpones.desc())
+        .limit(10)
+    )
+    pain_tasks = pain_res.scalars().all()
+    if pain_tasks:
+        pain_lines.append("### Хронические откладывания\n")
+        for t in pain_tasks:
+            size_str = f" [{t.size}]" if t.size else ""
+            chronic_str = " CHRONIC" if t.chronic_task else ""
+            cat = t.category.name if t.category else "?"
+            due = t.due_date or t.created_at.date() if t.created_at else today
+            days_open = (today - due).days if due else 0
+            days_str = f"{days_open}д" if days_open > 0 else "сегодня"
+            flags = []
+            if t.postpones >= 3 and not t.size:
+                flags.append("needs_decomposition — крупнее чем кажется. Пометь L или XL")
+            elif t.postpones >= 3 and t.size in ("L", "XL"):
+                flags.append(f"OK: размер {t.size} объясняет переносы")
+            if t.size in ("L", "XL") and days_open > 7:
+                flags.append("крупная + давно открыта — нужен план")
+            pain_lines.append(f"- **{t.postpones}x** | {days_str} | {t.title[:70]}{size_str}{chronic_str} | {cat}")
+            for f in flags:
+                pain_lines.append(f"  - {f}")
 
-        # L/XL без postpones
-        lxl_res = await db.execute(
-            select(Task)
-            .options(selectinload(Task.category))
-            .where(
-                Task.status.in_(["новая", "в работе"]),
-                Task.is_archived == False,
-                Task.size.in_(["L", "XL"]),
-                Task.postpones == 0,
-            )
-            .order_by(Task.size.desc(), Task.created_at.desc())
-            .limit(8)
-        )
-        lxl_tasks = lxl_res.scalars().all()
-        if lxl_tasks:
-            pain_lines.append("\n### Крупные задачи без откладываний\n")
-            for t in lxl_tasks:
-                cat = t.category.name if t.category else "?"
-                pain_lines.append(f"- [{t.size}] {t.title[:60]} | {cat}")
-        else:
-            pain_lines.append("\n### Крупные задачи без откладываний\n")
-            pain_lines.append("Пока нет помеченных L/XL задач")
+    from app.models.recurring import RecurringTask as RT
+    rec_res = await db.execute(select(RT).where(RT.is_active == True, RT.completed_count == 0))
+    rec_tasks = rec_res.scalars().all()
+    if rec_tasks:
+        pain_lines.append("\n### Recurring без выполнений\n")
+        for r in rec_tasks:
+            if r.start_date:
+                days_since = (today - r.start_date).days
+                if days_since > 14:
+                    pain_lines.append(f"- [{r.recurrence_type}] {r.title[:55]} | старт: {r.start_date} ({days_since}д)")
 
-        # ── Блок 2: Паттерны ──
-        pattern_lines = ["### Завершения по дням (30 дней)\n"]
-        dow_res = await db.execute(
-            select(func.strftime("%w", Task.completed_at).label("dow"), func.count(Task.id).label("cnt"))
-            .where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=30))
-            .group_by("dow").order_by("dow")
-        )
-        dow_map = {"0": "Вс", "1": "Пн", "2": "Вт", "3": "Ср", "4": "Чт", "5": "Пт", "6": "Сб"}
-        workday_total = 0
-        for row in dow_res.all():
-            d = dow_map.get(row.dow, row.dow)
-            cnt = row.cnt
-            bar = "█" * cnt
-            note = " (выходной)" if d in ("Сб", "Вс") else ""
-            if d not in ("Сб", "Вс"):
-                workday_total += cnt
-            pattern_lines.append(f"- {d}: {cnt:>2} {bar}{note}")
-        pattern_lines.append(f"  Рабочие дни: {workday_total}, ~{round(workday_total/22)}/день")
+    lxl_res = await db.execute(
+        select(Task).options(selectinload(Task.category)).where(
+            Task.status.in_(["новая", "в работе"]), Task.is_archived == False,
+            Task.size.in_(["L", "XL"]), Task.postpones == 0,
+        ).order_by(Task.size.desc(), Task.created_at.desc()).limit(8)
+    )
+    lxl_tasks = lxl_res.scalars().all()
+    if lxl_tasks:
+        pain_lines.append("\n### Крупные задачи без откладываний\n")
+        for t in lxl_tasks:
+            cat = t.category.name if t.category else "?"
+            pain_lines.append(f"- [{t.size}] {t.title[:60]} | {cat}")
+    else:
+        pain_lines.append("\n### Крупные задачи без откладываний\n")
+        pain_lines.append("Пока нет помеченных L/XL задач")
 
-        # Время
-        pattern_lines.append("\n### Время завершения\n")
-        time_res = await db.execute(
-            select(
-                func.count(Task.id).label("cnt"),
-                func.strftime("%H", Task.completed_at).label("hour"),
-            )
-            .where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=30))
-            .group_by("hour").order_by("hour")
-        )
-        blocks = {"Утро (до 10)": 0, "День (10-14)": 0, "После обеда (14-18)": 0, "Вечер (18+)": 0}
-        for row in time_res.all():
-            h = int(row.hour) if row.hour else 0
-            c = row.cnt
-            if h < 10:
-                blocks["Утро (до 10)"] += c
-            elif h < 14:
-                blocks["День (10-14)"] += c
-            elif h < 18:
-                blocks["После обеда (14-18)"] += c
-            else:
-                blocks["Вечер (18+)"] += c
-        for label, cnt in blocks.items():
-            pattern_lines.append(f"- {label}: {cnt}")
+    pattern_lines = ["### Завершения по дням (30 дней)\n"]
+    dow_res = await db.execute(
+        select(func.strftime("%w", Task.completed_at).label("dow"), func.count(Task.id).label("cnt"))
+        .where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=30))
+        .group_by("dow").order_by("dow")
+    )
+    dow_map = {"0": "Вс", "1": "Пн", "2": "Вт", "3": "Ср", "4": "Чт", "5": "Пт", "6": "Сб"}
+    workday_total = 0
+    for row in dow_res.all():
+        d = dow_map.get(row.dow, row.dow)
+        cnt = row.cnt
+        bar = "█" * cnt
+        note = " (выходной)" if d in ("Сб", "Вс") else ""
+        if d not in ("Сб", "Вс"): workday_total += cnt
+        pattern_lines.append(f"- {d}: {cnt:>2} {bar}{note}")
+    pattern_lines.append(f"  Рабочие дни: {workday_total}, ~{round(workday_total/22)}/день")
 
-        # Темп
-        pattern_lines.append("\n### Темп по неделям\n")
-        week_res = await db.execute(
-            select(func.strftime("%Y-W%W", Task.completed_at).label("week"), func.count(Task.id).label("cnt"))
-            .where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=35))
-            .group_by("week").order_by("week")
-        )
-        for row in week_res.all():
-            bar = "█" * (row.cnt // 2)
-            pattern_lines.append(f"- {row.week}: {row.cnt:>2} {bar}")
+    pattern_lines.append("\n### Время завершения\n")
+    time_res = await db.execute(
+        select(func.count(Task.id).label("cnt"), func.strftime("%H", Task.completed_at).label("hour"))
+        .where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=30))
+        .group_by("hour").order_by("hour")
+    )
+    blocks = {"Утро (до 10)": 0, "День (10-14)": 0, "После обеда (14-18)": 0, "Вечер (18+)": 0}
+    for row in time_res.all():
+        h = int(row.hour) if row.hour else 0
+        if h < 10: blocks["Утро (до 10)"] += row.cnt
+        elif h < 14: blocks["День (10-14)"] += row.cnt
+        elif h < 18: blocks["После обеда (14-18)"] += row.cnt
+        else: blocks["Вечер (18+)"] += row.cnt
+    for label, cnt in blocks.items():
+        pattern_lines.append(f"- {label}: {cnt}")
 
-        # ── Блок 4: Предсказания ──
-        pred_lines = ["### Прогноз бэклога\n"]
+    pattern_lines.append("\n### Темп по неделям\n")
+    week_res = await db.execute(
+        select(func.strftime("%Y-W%W", Task.completed_at).label("week"), func.count(Task.id).label("cnt"))
+        .where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=35))
+        .group_by("week").order_by("week")
+    )
+    for row in week_res.all():
+        bar = "█" * (row.cnt // 2)
+        pattern_lines.append(f"- {row.week}: {row.cnt:>2} {bar}")
 
-        avg_res = await db.execute(
-            select(func.count(Task.id))
-            .where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=14))
-        )
-        avg_daily = round((avg_res.scalar() or 0) / 14, 1)
+    pred_lines = ["### Прогноз бэклога\n"]
+    avg_res = await db.execute(
+        select(func.count(Task.id)).where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=14))
+    )
+    avg_daily = round((avg_res.scalar() or 0) / 14, 1)
+    backlog_res = await db.execute(
+        select(func.count(Task.id)).where(Task.status.in_(["новая", "в работе"]), Task.is_archived == False)
+    )
+    backlog = backlog_res.scalar() or 0
+    pred_lines.append(f"- Темп: **{avg_daily}** задач/день")
+    pred_lines.append(f"- Активных: **{backlog}**")
+    if avg_daily > 0:
+        days = round(backlog / avg_daily)
+        eta = today + timedelta(days=days)
+        pred_lines.append(f"- Закрытие: **{days} дней** → {eta.strftime('%d.%m.%Y')}")
 
-        backlog_res = await db.execute(
-            select(func.count(Task.id))
-            .where(Task.status.in_(["новая", "в работе"]), Task.is_archived == False)
-        )
-        backlog = backlog_res.scalar() or 0
+    nd_res = await db.execute(
+        select(Task).options(selectinload(Task.category)).where(
+            Task.status.in_(["новая", "в работе"]), Task.is_archived == False,
+            Task.postpones >= 3, Task.size == None,
+        ).order_by(Task.postpones.desc())
+    )
+    nd_tasks = nd_res.scalars().all()
+    pred_lines.append("\n### needs_decomposition (3+ postpones, без size)\n")
+    if nd_tasks:
+        for t in nd_tasks:
+            cat = t.category.name if t.category else "?"
+            due = t.due_date or (t.created_at.date() if t.created_at else today)
+            days_open = (today - due).days if due else 0
+            pred_lines.append(f"- {t.postpones}x | {days_open}д | {t.title[:60]} | {cat}")
+    else:
+        pred_lines.append("Нет кандидатов")
 
-        pred_lines.append(f"- Темп: **{avg_daily}** задач/день")
-        pred_lines.append(f"- Активных: **{backlog}**")
-        if avg_daily > 0:
-            days = round(backlog / avg_daily)
-            eta = today + timedelta(days=days)
-            pred_lines.append(f"- Закрытие: **{days} дней** → {eta.strftime('%d.%m.%Y')}")
-
-        # Категории с приростом
-        pred_lines.append("\n### Категории с приростом (новых > закрытых)\n")
-        from sqlalchemy import case
-        cat_res = await db.execute(
-            select(
-                Category.name,
-                func.count(case((Task.created_at >= today - timedelta(days=14), 1))).label("new_tasks"),
-                func.count(
-                    case(
-                        (Task.status == "выполнена") & (Task.completed_at >= today - timedelta(days=14), 1)
-                    )
-                ).label("completed"),
-                func.count(case((Task.status.in_(["новая", "в работе"]) & (Task.is_archived == False), 1))).label("active"),
-            )
-            .select_from(Task)
-            .outerjoin(Category, Task.category_id == Category.id)
-            .where(Task.is_archived == False)
-            .group_by(Category.name)
-            .having(
-                (func.count(case((Task.status.in_(["новая", "в работе"]) & (Task.is_archived == False), 1))) >= 2)
-                & (
-                    func.count(case((Task.created_at >= today - timedelta(days=14), 1)))
-                    > func.count(
-                        case(
-                            (Task.status == "выполнена") & (Task.completed_at >= today - timedelta(days=14), 1)
-                        )
-                    )
-                )
-            )
-            .order_by(
-                (
-                    func.count(case((Task.created_at >= today - timedelta(days=14), 1)))
-                    - func.count(
-                        case(
-                            (Task.status == "выполнена") & (Task.completed_at >= today - timedelta(days=14), 1)
-                        )
-                    )
-                ).desc()
-            )
-            .limit(6)
-        )
-        for row in cat_res.all():
-            delta = (row.new_tasks or 0) - (row.completed or 0)
-            pred_lines.append(
-                f"- {row.name}: +{row.new_tasks or 0}, закрыто {row.completed or 0}, активно {row.active or 0} (+{delta})"
-            )
-
-        # needs_decomposition
-        pred_lines.append("\n### needs_decomposition (3+ postpones, без size)\n")
-        nd_res = await db.execute(
-            select(Task)
-            .options(selectinload(Task.category))
-            .where(
-                Task.status.in_(["новая", "в работе"]),
-                Task.is_archived == False,
-                Task.postpones >= 3,
-                Task.size == None,
-            )
-            .order_by(Task.postpones.desc())
-        )
-        nd_tasks = nd_res.scalars().all()
-        if nd_tasks:
-            for t in nd_tasks:
-                cat = t.category.name if t.category else "?"
-                due = t.due_date or (t.created_at.date() if t.created_at else today)
-                days_open = (today - due).days if due else 0
-                pred_lines.append(f"- {t.postpones}x | {days_open}д | {t.title[:60]} | {cat}")
-        else:
-            pred_lines.append("Нет кандидатов")
-
-        # Сборка HTML
-        all_lines = (
-            ["## Блок 1: Болячки\n"]
-            + pain_lines
-            + ["\n## Блок 2: Паттерны\n"]
-            + pattern_lines
-            + ["\n## Блок 4: Предсказания\n"]
-            + pred_lines
-        )
-
+    all_lines = (
+        ["## Блок 1: Болячки\n"] + pain_lines
+        + ["\n## Блок 2: Паттерны\n"] + pattern_lines
+        + ["\n## Блок 4: Предсказания\n"] + pred_lines
+    )
     html_content = "<br>".join(all_lines).replace("\n", "<br>")
     return HTMLResponse(f"""
 <div class="p-5 sm:p-6 bg-dark-800">
