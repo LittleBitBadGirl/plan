@@ -168,14 +168,30 @@ async def ping():
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Глобальный обработчик ошибок"""
+    """Глобальный обработчик ошибок — пишет в файл для отладки."""
+    import traceback, os
+    tb = traceback.format_exc()
+    msg = f"{type(exc).__name__}: {exc}"
     app_logger.error(f"Ошибка: {exc}", exc_info=True)
-    import traceback
+    
+    # Write to debug file
+    try:
+        debug_dir = os.path.join(os.path.dirname(__file__), "..", "uploads")
+        os.makedirs(debug_dir, exist_ok=True)
+        with open(os.path.join(debug_dir, "last_error.txt"), "w") as f:
+            f.write(f"URL: {request.url}\n")
+            f.write(f"Method: {request.method}\n")
+            f.write(f"Error: {msg}\n")
+            f.write(f"Traceback:\n{tb}\n")
+    except Exception:
+        pass
+    
     return JSONResponse(
         status_code=500,
         content={
-            "detail": f"{type(exc).__name__}: {exc}",
-            "traceback": traceback.format_exc(),
+            "detail": msg,
+            "traceback": tb,
+            "debug_file": "/uploads/last_error.txt",
         },
     )
 
