@@ -11,6 +11,11 @@
                 </span>
             {% endif %}
             <h3 class="font-semibold text-white flex-1">{{ task.title }}</h3>
+            {% if task.size == 'XL' %}
+                <span class="bg-red-900/60 text-red-300 px-2 py-0.5 rounded text-xs font-bold border border-red-700/50" title="Очень крупная задача">XL</span>
+            {% elif task.size == 'L' %}
+                <span class="bg-orange-900/60 text-orange-300 px-2 py-0.5 rounded text-xs font-bold border border-orange-700/50" title="Крупная задача">L</span>
+            {% endif %}
         </div>
         
         <div class="flex flex-wrap items-center justify-between mt-auto pt-2 border-t border-dark-700/30 gap-2">

@@ -8,6 +8,11 @@
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2 min-h-[2rem]">
             <div class="flex-1 min-w-0 flex items-center gap-2">
                 <h3 class="text-[15px] sm:text-sm font-semibold text-white leading-snug sm:truncate" title="{{ task.title }}">{{ task.title }}</h3>
+                {% if task.size == 'XL' %}
+                <span class="bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-red-700/50 shrink-0" title="Очень крупная задача">XL</span>
+                {% elif task.size == 'L' %}
+                <span class="bg-orange-900/60 text-orange-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-orange-700/50 shrink-0" title="Крупная задача">L</span>
+                {% endif %}
                 {% if task.category %}
                 <span class="hidden sm:inline text-[10px] text-accent/80 font-medium truncate max-w-[8rem]"
                       title="{% if task.category.parent %}{{ task.category.parent.name }} → {% endif %}{{ task.category.name }}">

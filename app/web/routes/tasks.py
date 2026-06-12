@@ -138,6 +138,7 @@ async def task_web_create(
     status: str = Form("новая"),
     is_milestone: bool = Form(False),
     impact_notes: str = Form(""),
+    size: str = Form(""),
 ):
     """Web: создать задачу из формы (form-data)"""
     async with async_session() as db:
@@ -165,6 +166,7 @@ async def task_web_create(
             status=status,
             is_milestone=is_milestone,
             impact_notes=impact_notes,
+            size=size if size in ("L", "XL") else None,
             source="web",
         )
         db.add(task)
@@ -187,6 +189,7 @@ async def task_web_edit(
     status: str = Form("новая"),
     is_milestone: bool = Form(False),
     impact_notes: str = Form(""),
+    size: str = Form(""),
 ):
     """Web: редактировать задачу из формы (form-data)"""
     async with async_session() as db:
@@ -203,6 +206,7 @@ async def task_web_edit(
         task.status = status
         task.is_milestone = is_milestone
         task.impact_notes = impact_notes
+        task.size = size if size in ("L", "XL") else None
         
         if status == "выполнена" and not task.completed_at:
             task.completed_at = datetime.utcnow()

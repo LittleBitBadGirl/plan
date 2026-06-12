@@ -35,6 +35,7 @@ class TaskResponse(BaseModel):
     chronic_task: Optional[bool]
     chronic_reviewed: Optional[bool]
     tags: Optional[str] = None
+    size: Optional[str] = None  # L / XL / None
 
 
 class TaskCreate(BaseModel):
@@ -51,6 +52,7 @@ class TaskCreate(BaseModel):
     due_date: Optional[date] = None
     source: str = "web"
     tags: Optional[str] = None
+    size: Optional[str] = None  # L / XL
 
 
 class TaskUpdate(BaseModel):
@@ -60,6 +62,7 @@ class TaskUpdate(BaseModel):
     status: Optional[str] = None
     priority: Optional[str] = None
     due_date: Optional[date] = None
+    size: Optional[str] = None  # L / XL / None (пустая строка = сброс)
 
 
 @router.get("", response_model=list[TaskResponse])
@@ -109,7 +112,8 @@ async def create_task(
         due_date=task_data.due_date,
         source=task_data.source,
         parent_task_id=task_data.parent_task_id,
-        tags=task_data.tags
+        tags=task_data.tags,
+        size=task_data.size,
     )
     db.add(task)
     await db.flush()
