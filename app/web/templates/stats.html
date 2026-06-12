@@ -172,7 +172,7 @@
     </div>
 
     <!-- Карьерный капитал — сворачиваемый блок -->
-    <details class="bg-dark-800 rounded-2xl border border-accent/20 mb-8 shadow-xl group">
+    <details class="bg-dark-800 rounded-2xl border border-accent/20 mb-8 shadow-xl group" {% if career_impacts %}open{% endif %}>
         <summary class="cursor-pointer list-none p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 select-none">
             <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-3">
@@ -194,8 +194,13 @@
                 </a>
                 <button hx-get="/api/ai/generate-milestones"
                         hx-target="#impact-results"
-                        class="px-4 py-2 bg-accent hover:bg-blue-600 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95">
+                        onclick="this.closest('details').open = true"
+                        class="px-4 py-2 bg-accent hover:bg-blue-600 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95 inline-flex items-center gap-2">
                     Анализировать
+                    <svg class="animate-spin h-3.5 w-3.5 htmx-indicator" viewBox="0 0 24 24" style="display:none">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
                 </button>
             </div>
         </summary>
