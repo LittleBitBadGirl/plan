@@ -60,10 +60,12 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body class="bg-dark-900 text-gray-200 min-h-screen" x-data="{ sidebarOpen: false }">
+{% from 'partials/icons_macros.html' import icon_logo, icon_nav_dashboard, icon_calendar, icon_folder, icon_repeat, icon_nav_stats, icon_nav_inbox, icon_nav_archive, icon_nav_finance, icon_nav_logout %}
     <!-- Mobile Top Bar -->
     <header class="lg:hidden bg-dark-800 border-b border-dark-600 p-4 flex justify-between items-center sticky top-0 z-50">
-        <h1 class="text-lg font-bold text-white flex items-center">
-            <span class="mr-2 text-xl">📅</span> Planner
+        <h1 class="text-lg font-bold text-white flex items-center gap-2.5">
+            {{ icon_logo('w-7 h-7') }}
+            <span>Planner</span>
         </h1>
         <button @click="sidebarOpen = !sidebarOpen" class="p-2 text-gray-400 hover:text-white focus:outline-none">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -81,8 +83,9 @@
             
             <!-- Mobile Sidebar Header (inside aside) -->
             <div class="lg:hidden p-4 border-b border-dark-600 flex justify-between items-center">
-                <h1 class="text-lg font-bold text-white flex items-center">
-                    <span class="mr-2 text-xl">📅</span> Planner
+                <h1 class="text-lg font-bold text-white flex items-center gap-2.5">
+                    {{ icon_logo('w-7 h-7') }}
+                    <span>Planner</span>
                 </h1>
                 <button @click="sidebarOpen = false" class="p-2 text-gray-400">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -92,64 +95,64 @@
             <!-- Nav Links -->
             <nav class="flex-1 p-4 space-y-2 overflow-y-auto pt-8 lg:pt-4">
                 <a href="/" @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-4 lg:py-3 rounded-lg transition-colors
+                   class="flex items-center gap-3 px-4 py-4 lg:py-3 rounded-lg transition-colors
                           {% if request.url.path == '/' %}bg-accent text-white{% else %}text-gray-400 hover:bg-dark-700 hover:text-white{% endif %}">
-                    <span class="mr-3 text-xl lg:text-base">📊</span>
+                    {{ icon_nav_dashboard('w-5 h-5 shrink-0') }}
                     <span class="font-medium lg:font-normal">Дашборд</span>
                 </a>
 
                 <a href="/calendar" @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-4 lg:py-3 rounded-lg transition-colors
+                   class="flex items-center gap-3 px-4 py-4 lg:py-3 rounded-lg transition-colors
                           {% if request.url.path == '/calendar' %}bg-accent text-white{% else %}text-gray-400 hover:bg-dark-700 hover:text-white{% endif %}">
-                    <span class="mr-3 text-xl lg:text-base">📅</span>
+                    {{ icon_calendar('w-5 h-5 shrink-0') }}
                     <span class="font-medium lg:font-normal">Календарь</span>
                 </a>
 
                 <a href="/categories" @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-4 lg:py-3 rounded-lg transition-colors
+                   class="flex items-center gap-3 px-4 py-4 lg:py-3 rounded-lg transition-colors
                           {% if request.url.path == '/categories' %}bg-accent text-white{% else %}text-gray-400 hover:bg-dark-700 hover:text-white{% endif %}">
-                    <span class="mr-3 text-xl lg:text-base">📂</span>
+                    {{ icon_folder('w-5 h-5 shrink-0') }}
                     <span class="font-medium lg:font-normal">Категории</span>
                 </a>
 
                 <a href="/recurring" @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-4 lg:py-3 rounded-lg transition-colors
+                   class="flex items-center gap-3 px-4 py-4 lg:py-3 rounded-lg transition-colors
                           {% if request.url.path == '/recurring' %}bg-accent text-white{% else %}text-gray-400 hover:bg-dark-700 hover:text-white{% endif %}">
-                    <span class="mr-3 text-xl lg:text-base">🔄</span>
+                    {{ icon_repeat('w-5 h-5 shrink-0') }}
                     <span class="font-medium lg:font-normal">Периодические</span>
                 </a>
 
                 <a href="/stats" @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-4 lg:py-3 rounded-lg transition-colors
+                   class="flex items-center gap-3 px-4 py-4 lg:py-3 rounded-lg transition-colors
                           {% if request.url.path == '/stats' %}bg-accent text-white{% else %}text-gray-400 hover:bg-dark-700 hover:text-white{% endif %}">
-                    <span class="mr-3 text-xl lg:text-base">📈</span>
+                    {{ icon_nav_stats('w-5 h-5 shrink-0') }}
                     <span class="font-medium lg:font-normal">Статистика</span>
                 </a>
 
                 <a href="/backlog" @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-4 lg:py-3 rounded-lg transition-colors
+                   class="flex items-center gap-3 px-4 py-4 lg:py-3 rounded-lg transition-colors
                           {% if request.url.path == '/backlog' %}bg-accent text-white{% else %}text-gray-400 hover:bg-dark-700 hover:text-white{% endif %}">
-                    <span class="mr-3 text-xl lg:text-base">📥</span>
+                    {{ icon_nav_inbox('w-5 h-5 shrink-0') }}
                     <span class="font-medium lg:font-normal">Бэклог</span>
                 </a>
 
                 <a href="/archive" @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-4 lg:py-3 rounded-lg transition-colors
+                   class="flex items-center gap-3 px-4 py-4 lg:py-3 rounded-lg transition-colors
                           {% if request.url.path == '/archive' %}bg-accent text-white{% else %}text-gray-400 hover:bg-dark-700 hover:text-white{% endif %}">
-                    <span class="mr-3 text-xl lg:text-base">🗄️</span>
+                    {{ icon_nav_archive('w-5 h-5 shrink-0') }}
                     <span class="font-medium lg:font-normal">Архив</span>
                 </a>
 
                 <a href="/finance" @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-4 lg:py-3 rounded-lg transition-colors
+                   class="flex items-center gap-3 px-4 py-4 lg:py-3 rounded-lg transition-colors
                           {% if request.url.path == '/finance' %}bg-accent text-white{% else %}text-gray-400 hover:bg-dark-700 hover:text-white{% endif %}">
-                    <span class="mr-3 text-xl lg:text-base">💰</span>
+                    {{ icon_nav_finance('w-5 h-5 shrink-0') }}
                     <span class="font-medium lg:font-normal">Финансы</span>
                 </a>
 
                 <a href="/logout" @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-4 lg:py-3 rounded-lg transition-colors text-gray-500 hover:bg-dark-700 hover:text-white mt-4 border-t border-dark-600 pt-4">
-                    <span class="mr-3 text-xl lg:text-base">🚪</span>
+                   class="flex items-center gap-3 px-4 py-4 lg:py-3 rounded-lg transition-colors text-gray-500 hover:bg-dark-700 hover:text-white mt-4 border-t border-dark-600 pt-4">
+                    {{ icon_nav_logout('w-5 h-5 shrink-0') }}
                     <span class="font-medium lg:font-normal">Выйти</span>
                 </a>
             </nav>

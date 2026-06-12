@@ -9,19 +9,42 @@
         <p class="text-gray-400 mt-1">Анализ вашей продуктивности</p>
     </div>
 
-    <!-- Сводка: KPI + темп/неделя — всё наверху -->
+    <!-- Сводка: KPI + топ категорий + темп/неделя -->
     <section class="bg-dark-800 rounded-2xl border border-dark-600 shadow-xl mb-6 overflow-hidden">
-        <div class="grid grid-cols-2 divide-x divide-dark-600 border-b border-dark-600">
-            <a href="/archive"
-               class="px-5 py-5 sm:px-8 sm:py-6 flex flex-col gap-1 group hover:bg-dark-700/40 transition-colors">
-                <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-green-400/80">Выполнено</p>
-                <p class="text-4xl sm:text-5xl font-black text-green-400 tabular-nums leading-none">{{ total_completed }}</p>
-            </a>
-            <a href="/"
-               class="px-5 py-5 sm:px-8 sm:py-6 flex flex-col gap-1 group hover:bg-dark-700/40 transition-colors">
-                <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-blue-400/80">В работе</p>
-                <p class="text-4xl sm:text-5xl font-black text-blue-400 tabular-nums leading-none">{{ total_active }}</p>
-            </a>
+        <div class="grid grid-cols-1 lg:grid-cols-3 border-b border-dark-600">
+            <div class="grid grid-cols-2 lg:col-span-2 divide-x divide-dark-600">
+                <a href="/"
+                   class="px-5 py-5 sm:px-8 sm:py-6 flex flex-col gap-1 group hover:bg-dark-700/40 transition-colors">
+                    <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-blue-400/80">В работе</p>
+                    <p class="text-4xl sm:text-5xl font-black text-blue-400 tabular-nums leading-none">{{ total_active }}</p>
+                </a>
+                <a href="/archive"
+                   class="px-5 py-5 sm:px-8 sm:py-6 flex flex-col gap-1 group hover:bg-dark-700/40 transition-colors">
+                    <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-green-400/80">Выполнено</p>
+                    <p class="text-4xl sm:text-5xl font-black text-green-400 tabular-nums leading-none">{{ total_completed }}</p>
+                </a>
+            </div>
+
+            {% if category_distribution %}
+            {% set max_val = category_distribution[0][1] %}
+            <div class="border-t lg:border-t-0 lg:border-l border-dark-600 px-4 py-4 sm:px-5 sm:py-5 flex flex-col justify-center min-h-0">
+                <div class="flex items-baseline justify-between gap-2 mb-3">
+                    <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Топ категорий</p>
+                    <p class="text-[10px] text-gray-600 shrink-0">закрытые</p>
+                </div>
+                <div class="space-y-2">
+                    {% for name, count in category_distribution %}
+                    <div class="flex items-center gap-2 min-w-0 rounded-lg bg-dark-900/60 px-2.5 py-1.5">
+                        <span class="text-[11px] sm:text-xs text-gray-400 truncate flex-1 min-w-0" title="{{ name | noemoji }}">{{ name | noemoji }}</span>
+                        <span class="text-xs font-black text-white tabular-nums shrink-0">{{ count }}</span>
+                        <div class="w-10 sm:w-14 bg-dark-700 rounded-full h-1 shrink-0">
+                            <div class="bg-accent/80 h-full rounded-full" style="width: {{ (count / max_val * 100)|int }}%"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
         </div>
 
         <div class="px-4 py-4 sm:px-6 sm:py-5">
@@ -83,48 +106,27 @@
         </div>
     </section>
 
-    <!-- Динамика + компактный топ категорий -->
-    <div class="mb-8 space-y-3">
-        {% if category_distribution %}
-        {% set max_val = category_distribution[0][1] %}
-        <div class="rounded-xl border border-dark-600 bg-dark-800/90 px-3 py-2.5 sm:px-4">
-            <div class="flex items-baseline justify-between gap-2 mb-2">
-                <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Топ категорий</p>
-                <p class="text-[10px] text-gray-600 shrink-0">закрытые · всё время</p>
-            </div>
-            <div class="grid grid-cols-3 gap-2 sm:gap-3">
-                {% for name, count in category_distribution %}
-                <div class="flex items-center gap-2 min-w-0 rounded-lg bg-dark-900/60 px-2.5 py-1.5 sm:px-3 sm:py-2">
-                    <span class="text-[11px] sm:text-xs text-gray-400 truncate flex-1 min-w-0" title="{{ name | noemoji }}">{{ name | noemoji }}</span>
-                    <span class="text-xs font-black text-white tabular-nums shrink-0">{{ count }}</span>
-                    <div class="w-10 sm:w-12 bg-dark-700 rounded-full h-1 shrink-0 hidden sm:block">
-                        <div class="bg-accent/80 h-full rounded-full" style="width: {{ (count / max_val * 100)|int }}%"></div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
+    <!-- Динамика -->
+    <div class="mb-8">
         {% include "partials/stats_chart.html" %}
     </div>
 
-    <!-- Анализ продуктивности (AI) -->
+    <!-- Анализ Гермеса -->
     <div id="ai-analysis-container" class="mb-8 bg-dark-800 rounded-2xl border {{ 'border-blue-500/30 shadow-2xl' if last_report else 'border-dark-600 border-dashed' }} overflow-hidden">
         <div class="p-5 sm:p-6 {{ 'bg-blue-600/10 border-b border-blue-500/20' if last_report else 'border-b border-dark-700' }} flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div class="min-w-0">
-                <h2 class="text-xl font-bold text-white">AI-анализ продуктивности</h2>
+                <h2 class="text-xl font-bold text-white">Анализ Гермеса</h2>
                 {% if last_report %}
                 <p class="text-xs text-blue-400/90 font-mono mt-0.5">последний · {{ last_report.report_date.strftime('%d.%m.%Y') }}</p>
                 {% else %}
-                <p class="text-gray-500 text-sm mt-1">DeepSeek разберёт задачи с даты последнего анализа</p>
+                <p class="text-gray-500 text-sm mt-1">Разбор задач с даты последнего отчёта</p>
                 {% endif %}
             </div>
             <button hx-get="/api/ai/prepare-analysis"
                     hx-target="#ai-analysis-inner"
                     hx-swap="innerHTML"
                     class="shrink-0 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95">
-                {% if last_report %}Новый анализ (AI){% else %}Анализ (AI){% endif %}
+                {% if last_report %}Обновить анализ{% else %}Анализ Гермеса{% endif %}
             </button>
         </div>
 
@@ -152,7 +154,7 @@
                 </div>
             </div>
             {% else %}
-            <p class="px-5 sm:px-6 py-8 text-sm text-gray-600 text-center">Отчёт появится здесь после запуска анализа</p>
+            <p class="px-5 sm:px-6 py-8 text-sm text-gray-600 text-center">Отчёт появится здесь после анализа Гермеса</p>
             {% endif %}
         </div>
     </div>
