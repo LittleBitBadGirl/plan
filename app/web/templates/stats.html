@@ -129,11 +129,11 @@
                         class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95">
                     {% if last_report %}AI-анализ{% else %}AI-анализ{% endif %}
                 </button>
-                <button hx-get="/api/hermes/analyze"
+                <button hx-post="/api/hermes/request-analysis"
                         hx-target="#ai-analysis-inner"
                         hx-swap="innerHTML"
                         class="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95">
-                    Анализ по данным
+                    Анализ Hermes
                 </button>
             </div>
         </div>

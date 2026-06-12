@@ -570,3 +570,50 @@ async def hermes_analyze(request: Request):
     <div class="text-gray-300 leading-relaxed text-sm sm:text-base">{html_content}</div>
 </div>
 """)
+
+
+@router.post("/api/hermes/request-analysis", response_class=HTMLResponse)
+async def request_hermes_analysis(request: Request):
+    """Запросить анализ у Hermes — пишет pending в ai_reports, cron подхватит."""
+    from datetime import date
+
+    async with async_session() as db:
+        today = date.today()
+
+        # Проверяем, нет ли уже pending
+        existing = await db.execute(
+            select(AIReport).where(
+                AIReport.report_date == today,
+                AIReport.source == "hermes",
+                AIReport.status == "pending",
+            )
+        )
+        if existing.scalar_one_or_none():
+            return HTMLResponse("""
+<div class="p-5 sm:p-6 bg-dark-800">
+    <p class="text-yellow-400 text-sm">Hermes уже работает над анализом. Обнови страницу через минуту.</p>
+</div>
+""")
+
+        # Создаём pending-запрос
+        report = AIReport(
+            report_date=today,
+            content="Запрос отправлен Hermes...",
+            source="hermes",
+            status="pending",
+        )
+        db.add(report)
+        await db.commit()
+
+    return HTMLResponse("""
+<div class="p-5 sm:p-6 bg-dark-800">
+    <p class="text-purple-400 text-sm font-bold">Запрос отправлен Hermes.</p>
+    <p class="text-gray-500 text-xs mt-1">Анализ появится здесь через 30-60 секунд. Нажми «Обновить».</p>
+    <button hx-get="/api/hermes/analyze"
+            hx-target="#ai-analysis-inner"
+            hx-swap="innerHTML"
+            class="mt-3 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-xl transition-all">
+        Обновить
+    </button>
+</div>
+""")
