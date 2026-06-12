@@ -52,27 +52,6 @@ async def dashboard(request: Request):
         from app.utils.logger import app_logger
         app_logger.info(f"🔄 Auto-rollover: перенесено {rollover_result['moved']} задач на сегодня")
 
-    try:
-        from app.config import settings as app_settings
-        from app.services.calendar_sync_service import sync_calendar_events
-
-        calendar_active = app_settings.calendar_sync_enabled or (
-            app_settings.google_calendar_sync_enabled
-            and app_settings.google_calendar_ical_url
-        )
-        if calendar_active:
-            import asyncio
-            try:
-                await asyncio.wait_for(sync_calendar_events(), timeout=45.0)
-            except Exception as sync_exc:
-                from app.utils.logger import app_logger
-                app_logger.warning(f"Calendar sync on dashboard skipped: {sync_exc}")
-    except ImportError:
-        pass
-    except Exception as exc:
-        from app.utils.logger import app_logger
-        app_logger.warning(f"Calendar sync skipped: {exc}")
-
     async with async_session() as db:
         # Привычки (Habit Tracker)
         from app.models.habit import Habit
