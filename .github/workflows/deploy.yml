@@ -19,7 +19,7 @@ jobs:
           export GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519_deploy -o StrictHostKeyChecking=no"
           git fetch origin main
           git reset --hard origin/main
-          docker compose down
+          docker rm -f task_planner telegram_bot 2>/dev/null || true
           docker compose build --no-cache
           docker compose up -d
           docker system prune -f
