@@ -318,3 +318,244 @@ async def ai_feedback(request: Request, feedback: str = ""):
     return HTMLResponse(
         '<p class="px-6 py-8 text-center text-sm text-red-400/90">Неизвестная ошибка</p>'
     )
+
+
+@router.get("/api/hermes/analyze", response_class=HTMLResponse)
+async def hermes_analyze(request: Request):
+    """Показать последний анализ Hermes из ai_reports или запустить прямой."""
+    from datetime import date, timedelta
+
+    async with async_session() as db:
+        today = date.today()
+
+        # Сначала проверяем — есть ли готовый анализ от Hermes в ai_reports
+        report_res = await db.execute(
+            select(AIReport)
+            .where(AIReport.source == "hermes", AIReport.status == "done")
+            .order_by(AIReport.report_date.desc())
+            .limit(1)
+        )
+        report = report_res.scalar_one_or_none()
+        if report:
+            return HTMLResponse(f"""
+<div class="p-5 sm:p-6 bg-dark-800">
+    <p class="text-xs text-purple-400/80 mb-3">Анализ Hermes от {report.report_date.strftime('%d.%m.%Y')}</p>
+    <div class="text-gray-300 leading-relaxed text-sm sm:text-base whitespace-pre-wrap">{report.content}</div>
+</div>
+""")
+
+        # Если нет готового — запускаем прямой анализ (fallback)
+        return await _direct_analyze(db, today)
+
+
+async def _direct_analyze(db, today):
+    """Прямой анализ БД (без ai_reports)."""
+    from datetime import timedelta
+
+    # ── Блок 1: Болячки ──
+    pain_lines = []
+
+    pain_res = await db.execute(
+        select(Task)
+        .options(selectinload(Task.category))
+        .where(
+            Task.status.in_(["новая", "в работе"]),
+            Task.is_archived == False,
+            (Task.postpones >= 2) | (Task.chronic_task == True),
+        )
+        .order_by(Task.postpones.desc())
+        .limit(10)
+    )
+    pain_tasks = pain_res.scalars().all()
+    if pain_tasks:
+        pain_lines.append("### Хронические откладывания\n")
+        for t in pain_tasks:
+            size_str = f" [{t.size}]" if t.size else ""
+            chronic_str = " CHRONIC" if t.chronic_task else ""
+            cat = t.category.name if t.category else "?"
+            due = t.due_date or t.created_at.date() if t.created_at else today
+            days_open = (today - due).days if due else 0
+            days_str = f"{days_open}д" if days_open > 0 else "сегодня"
+            flags = []
+            if t.postpones >= 3 and not t.size:
+                flags.append("needs_decomposition — крупнее чем кажется. Пометь L или XL")
+            elif t.postpones >= 3 and t.size in ("L", "XL"):
+                flags.append(f"OK: размер {t.size} объясняет переносы")
+            if t.size in ("L", "XL") and days_open > 7:
+                flags.append("крупная + давно открыта — нужен план")
+            pain_lines.append(f"- **{t.postpones}x** | {days_str} | {t.title[:70]}{size_str}{chronic_str} | {cat}")
+            for f in flags:
+                pain_lines.append(f"  - {f}")
+
+    from app.models.recurring import RecurringTask as RT
+    rec_res = await db.execute(select(RT).where(RT.is_active == True, RT.completed_count == 0))
+    rec_tasks = rec_res.scalars().all()
+    if rec_tasks:
+        pain_lines.append("\n### Recurring без выполнений\n")
+        for r in rec_tasks:
+            if r.start_date:
+                days_since = (today - r.start_date).days
+                if days_since > 14:
+                    pain_lines.append(f"- [{r.recurrence_type}] {r.title[:55]} | старт: {r.start_date} ({days_since}д)")
+
+    lxl_res = await db.execute(
+        select(Task).options(selectinload(Task.category)).where(
+            Task.status.in_(["новая", "в работе"]), Task.is_archived == False,
+            Task.size.in_(["L", "XL"]), Task.postpones == 0,
+        ).order_by(Task.size.desc(), Task.created_at.desc()).limit(8)
+    )
+    lxl_tasks = lxl_res.scalars().all()
+    if lxl_tasks:
+        pain_lines.append("\n### Крупные задачи без откладываний\n")
+        for t in lxl_tasks:
+            cat = t.category.name if t.category else "?"
+            pain_lines.append(f"- [{t.size}] {t.title[:60]} | {cat}")
+    else:
+        pain_lines.append("\n### Крупные задачи без откладываний\n")
+        pain_lines.append("Пока нет помеченных L/XL задач")
+
+    pattern_lines = ["### Завершения по дням (30 дней)\n"]
+    dow_res = await db.execute(
+        select(func.strftime("%w", Task.completed_at).label("dow"), func.count(Task.id).label("cnt"))
+        .where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=30))
+        .group_by("dow").order_by("dow")
+    )
+    dow_map = {"0": "Вс", "1": "Пн", "2": "Вт", "3": "Ср", "4": "Чт", "5": "Пт", "6": "Сб"}
+    workday_total = 0
+    for row in dow_res.all():
+        d = dow_map.get(row.dow, row.dow)
+        cnt = row.cnt
+        bar = "█" * cnt
+        note = " (выходной)" if d in ("Сб", "Вс") else ""
+        if d not in ("Сб", "Вс"): workday_total += cnt
+        pattern_lines.append(f"- {d}: {cnt:>2} {bar}{note}")
+    pattern_lines.append(f"  Рабочие дни: {workday_total}, ~{round(workday_total/22)}/день")
+
+    pattern_lines.append("\n### Время завершения\n")
+    time_res = await db.execute(
+        select(func.count(Task.id).label("cnt"), func.strftime("%H", Task.completed_at).label("hour"))
+        .where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=30))
+        .group_by("hour").order_by("hour")
+    )
+    blocks = {"Утро (до 10)": 0, "День (10-14)": 0, "После обеда (14-18)": 0, "Вечер (18+)": 0}
+    for row in time_res.all():
+        h = int(row.hour) if row.hour else 0
+        if h < 10: blocks["Утро (до 10)"] += row.cnt
+        elif h < 14: blocks["День (10-14)"] += row.cnt
+        elif h < 18: blocks["После обеда (14-18)"] += row.cnt
+        else: blocks["Вечер (18+)"] += row.cnt
+    for label, cnt in blocks.items():
+        pattern_lines.append(f"- {label}: {cnt}")
+
+    pattern_lines.append("\n### Темп по неделям\n")
+    week_res = await db.execute(
+        select(func.strftime("%Y-W%W", Task.completed_at).label("week"), func.count(Task.id).label("cnt"))
+        .where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=35))
+        .group_by("week").order_by("week")
+    )
+    for row in week_res.all():
+        bar = "█" * (row.cnt // 2)
+        pattern_lines.append(f"- {row.week}: {row.cnt:>2} {bar}")
+
+    pred_lines = ["### Прогноз бэклога\n"]
+    avg_res = await db.execute(
+        select(func.count(Task.id)).where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=14))
+    )
+    avg_daily = round((avg_res.scalar() or 0) / 14, 1)
+    backlog_res = await db.execute(
+        select(func.count(Task.id)).where(Task.status.in_(["новая", "в работе"]), Task.is_archived == False)
+    )
+    backlog = backlog_res.scalar() or 0
+    pred_lines.append(f"- Темп: **{avg_daily}** задач/день")
+    pred_lines.append(f"- Активных: **{backlog}**")
+    if avg_daily > 0:
+        days = round(backlog / avg_daily)
+        eta = today + timedelta(days=days)
+        pred_lines.append(f"- Закрытие: **{days} дней** → {eta.strftime('%d.%m.%Y')}")
+
+    nd_res = await db.execute(
+        select(Task).options(selectinload(Task.category)).where(
+            Task.status.in_(["новая", "в работе"]), Task.is_archived == False,
+            Task.postpones >= 3, Task.size == None,
+        ).order_by(Task.postpones.desc())
+    )
+    nd_tasks = nd_res.scalars().all()
+    pred_lines.append("\n### needs_decomposition (3+ postpones, без size)\n")
+    if nd_tasks:
+        for t in nd_tasks:
+            cat = t.category.name if t.category else "?"
+            due = t.due_date or (t.created_at.date() if t.created_at else today)
+            days_open = (today - due).days if due else 0
+            pred_lines.append(f"- {t.postpones}x | {days_open}д | {t.title[:60]} | {cat}")
+    else:
+        pred_lines.append("Нет кандидатов")
+
+    all_lines = (
+        ["## Блок 1: Болячки\n"] + pain_lines
+        + ["\n## Блок 2: Паттерны\n"] + pattern_lines
+        + ["\n## Блок 4: Предсказания\n"] + pred_lines
+    )
+    html_content = "<br>".join(all_lines).replace("\n", "<br>")
+    return HTMLResponse(f"""
+<div class="p-5 sm:p-6 bg-dark-800">
+    <div class="text-gray-300 leading-relaxed text-sm sm:text-base">{html_content}</div>
+</div>
+""")
+
+
+@router.post("/api/hermes/request-analysis", response_class=HTMLResponse)
+async def request_hermes_analysis(request: Request):
+    """Запросить анализ у Hermes — пишет pending в ai_reports, cron подхватит."""
+    from datetime import date
+
+    async with async_session() as db:
+        today = date.today()
+
+        # Проверяем: нет ли уже pending от Hermes
+        existing = await db.execute(
+            select(AIReport).where(
+                AIReport.report_date == today,
+                AIReport.source == "hermes",
+                AIReport.status == "pending",
+            )
+        )
+        if existing.scalar_one_or_none():
+            return HTMLResponse("""
+<div class="p-5 sm:p-6 bg-dark-800">
+    <p class="text-yellow-400 text-sm">Hermes уже работает. Обнови через минуту.</p>
+    <button hx-get="/api/hermes/analyze"
+            hx-target="#ai-analysis-inner" hx-swap="innerHTML"
+            class="mt-3 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-xl transition-all">
+        Обновить
+    </button>
+</div>
+""")
+
+        # Удаляем старый DeepSeek-отчёт за сегодня (unique constraint на report_date)
+        old = await db.execute(
+            select(AIReport).where(AIReport.report_date == today)
+        )
+        for r in old.scalars().all():
+            await db.delete(r)
+
+        # Создаём pending-запрос
+        report = AIReport(
+            report_date=today,
+            content="Запрос отправлен Hermes...",
+            source="hermes",
+            status="pending",
+        )
+        db.add(report)
+        await db.commit()
+
+    return HTMLResponse("""
+<div class="p-5 sm:p-6 bg-dark-800">
+    <p class="text-purple-400 text-sm font-bold">Запрос отправлен Hermes.</p>
+    <p class="text-gray-500 text-xs mt-1">Анализ появится здесь через минуту.</p>
+    <button hx-get="/api/hermes/analyze"
+            hx-target="#ai-analysis-inner" hx-swap="innerHTML"
+            class="mt-3 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-xl transition-all">
+        Обновить
+    </button>
+</div>
+""")

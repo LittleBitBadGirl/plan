@@ -148,10 +148,22 @@
                     <select id="status" name="status"
                             class="w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white text-base
                                    focus:outline-none focus:border-accent appearance-none min-h-[48px]">
-                        <option value="новая" {% if task and task.status == 'новая' %}selected{% endif %}>🆕 Новая</option>
-                        <option value="в_работе" {% if task and task.status == 'в_работе' %}selected{% endif %}>🔄 В работе</option>
-                        <option value="выполнена" {% if task and task.status == 'выполнена' %}selected{% endif %}>✅ Выполнена</option>
-                        <option value="отложена" {% if task and task.status == 'отложена' %}selected{% endif %}>⏸️ Отложена</option>
+                        <option value="новая" {% if task and task.status == 'новая' %}selected{% endif %}>Новая</option>
+                        <option value="в_работе" {% if task and task.status == 'в_работе' %}selected{% endif %}>В работе</option>
+                        <option value="выполнена" {% if task and task.status == 'выполнена' %}selected{% endif %}>Выполнена</option>
+                        <option value="отложена" {% if task and task.status == 'отложена' %}selected{% endif %}>Отложена</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="size" class="block text-sm font-medium text-gray-300 mb-2">
+                        Размер задачи
+                    </label>
+                    <select id="size" name="size"
+                            class="w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white text-base
+                                   focus:outline-none focus:border-accent appearance-none min-h-[48px]">
+                        <option value="" {% if not task or not task.size %}selected{% endif %}>Обычная</option>
+                        <option value="L" {% if task and task.size == 'L' %}selected{% endif %}>L — Крупная</option>
+                        <option value="XL" {% if task and task.size == 'XL' %}selected{% endif %}>XL — Очень крупная</option>
                     </select>
                 </div>
             </div>

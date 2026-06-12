@@ -122,12 +122,24 @@
                 <p class="text-gray-500 text-sm mt-1">Разбор задач с даты последнего отчёта</p>
                 {% endif %}
             </div>
-            <button hx-get="/api/ai/prepare-analysis"
-                    hx-target="#ai-analysis-inner"
-                    hx-swap="innerHTML"
-                    class="shrink-0 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95">
-                {% if last_report %}Обновить анализ{% else %}Анализ Гермеса{% endif %}
-            </button>
+            <div class="flex gap-2 shrink-0">
+                <button hx-get="/api/ai/prepare-analysis"
+                        hx-target="#ai-analysis-inner"
+                        hx-swap="innerHTML"
+                        class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95">
+                    {% if last_report %}AI-анализ{% else %}AI-анализ{% endif %}
+                </button>
+                <button hx-post="/api/hermes/request-analysis"
+                        hx-target="#ai-analysis-inner"
+                        hx-swap="innerHTML"
+                        class="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 inline-flex items-center gap-2">
+                    Анализ Hermes
+                    <svg class="animate-spin h-4 w-4 htmx-indicator" viewBox="0 0 24 24" style="display:none">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                </button>
+            </div>
         </div>
 
         <div id="ai-analysis-inner">

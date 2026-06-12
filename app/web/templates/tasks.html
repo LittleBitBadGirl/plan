@@ -84,6 +84,11 @@
                 <tr class="table-row priority-{{ task.priority }} hover:bg-dark-700/50">
                     <td class="px-6 py-4">
                         <span class="text-white font-medium">{{ task.title }}</span>
+                        {% if task.size == 'XL' %}
+                        <span class="bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-red-700/50">XL</span>
+                        {% elif task.size == 'L' %}
+                        <span class="bg-orange-900/60 text-orange-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-orange-700/50">L</span>
+                        {% endif %}
                         {% if task.description %}
                         <p class="text-sm text-gray-500 mt-1 truncate max-w-xs">{{ task.description }}</p>
                         {% endif %}
