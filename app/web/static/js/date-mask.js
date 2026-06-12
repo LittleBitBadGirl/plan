@@ -6,8 +6,13 @@
             ? digits.slice(0, 2) + '.' + digits.slice(2)
             : digits;
 
-        // Бэклог/дашборд: нет кнопки submit — отправляем форму после 4 цифр
-        if (digits.length === 4 && input.form && !input.dataset.submitting) {
+        // Авто-submit только для inline-форм (бэклог/дашборд), не для полной формы задачи
+        if (
+            digits.length === 4
+            && input.form
+            && !input.dataset.submitting
+            && !input.form.hasAttribute('data-no-date-auto-submit')
+        ) {
             input.dataset.submitting = '1';
             input.form.requestSubmit();
         }

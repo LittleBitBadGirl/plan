@@ -63,27 +63,35 @@
 {% from 'partials/icons_macros.html' import icon_folder, icon_check %}
 <div class="max-w-6xl mx-auto">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-8 gap-4">
-        <div>
-            <h1 class="text-3xl font-bold text-white">Дашборд</h1>
-            <p class="text-gray-400 mt-1">Задачи на сегодня — {{ today.strftime('%d.%m.%Y') }}</p>
+    <div class="mb-6 lg:mb-8 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div class="flex items-center justify-between gap-3 min-w-0">
+            <div class="min-w-0">
+                <h1 class="text-2xl sm:text-3xl font-bold text-white">Дашборд</h1>
+                <p class="text-gray-400 mt-0.5 text-sm sm:text-base">
+                    <span class="hidden sm:inline">Задачи на сегодня — </span>{{ today.strftime('%d.%m.%Y') }}
+                </p>
+            </div>
+            <a href="/tasks/new"
+               aria-label="Новая задача"
+               class="lg:hidden shrink-0 w-11 h-11 min-w-[44px] bg-accent hover:bg-blue-600 text-white rounded-xl transition-all flex items-center justify-center text-2xl font-bold leading-none shadow-lg active:scale-95">
+                +
+            </a>
         </div>
 
-        <!-- Progress in Header -->
-        <div class="flex-1 max-w-sm hidden md:block">
+        <div class="w-full lg:flex-1 lg:max-w-sm lg:order-none">
             <div class="flex justify-between items-center mb-1 px-1">
                 <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Прогресс сегодня</span>
                 <span id="today-stats-counter" class="font-bold text-sm text-green-400">{{ completed }}/{{ total }}</span>
             </div>
-            <div class="w-full bg-dark-800 rounded-full h-1 border border-dark-600 overflow-hidden">
+            <div class="w-full bg-dark-800 rounded-full h-1.5 lg:h-1 border border-dark-600 overflow-hidden">
                 {% set progress = ([completed / total * 100, 100] | min) if total > 0 else 0 %}
                 <div id="today-progress-bar" class="bg-green-500 h-full transition-all duration-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" style="width: {{ progress }}%"></div>
             </div>
         </div>
 
         <a href="/tasks/new"
-           class="px-4 py-2 lg:px-6 lg:py-3 bg-accent hover:bg-blue-600 text-white text-sm lg:text-base font-bold rounded-xl transition-all flex items-center shadow-lg active:scale-95 whitespace-nowrap">
-            <span class="mr-2 text-xl">+</span> <span class="hidden sm:inline">Новая задача</span><span class="sm:hidden">Задача</span>
+           class="hidden lg:inline-flex shrink-0 items-center px-5 py-2.5 bg-accent hover:bg-blue-600 text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 whitespace-nowrap">
+            <span class="mr-1.5 text-lg leading-none">+</span> Новая задача
         </a>
     </div>
 
@@ -101,52 +109,8 @@
             <h2 class="text-xl font-bold text-white px-1">Задачи на сегодня</h2>
 
             <!-- Quick Add -->
-            <div class="bg-dark-800 rounded-xl border border-dark-600 p-3 shadow-lg">
-                <form hx-post="/tasks/create"
-                      hx-target="#tasks-list"
-                      hx-swap="innerHTML"
-                      hx-on::after-request="this.reset(); this.querySelector('textarea').style.height = 'auto';"
-                      class="flex flex-col gap-2"
-                      x-data="{ 
-                          resize() { 
-                              const el = $el.querySelector('textarea');
-                              el.style.height = 'auto'; 
-                              el.style.height = el.scrollHeight + 'px'; 
-                          } 
-                      }">
-                    <div class="flex gap-2">
-                        <textarea name="title" required
-                                  rows="1"
-                                  @input="resize()"
-                                  placeholder="Что нужно сделать?"
-                                  class="flex-1 bg-dark-700 border border-dark-500 rounded-lg px-3 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-all resize-none min-h-[44px] text-sm"></textarea>
-                        
-                        <div class="relative">
-                            <select name="category_id" 
-                                    class="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer">
-                                <option value="">Категория</option>
-                                {% for cat in categories %}
-                                    {% if cat.is_global %}
-                                        <optgroup label="{{ cat.name }}">
-                                            {% for subcat in categories %}
-                                                {% if subcat.parent_id == cat.id %}
-                                                <option value="{{ subcat.id }}">{{ subcat.name }}</option>
-                                                {% endif %}
-                                            {% endfor %}
-                                        </optgroup>
-                                    {% endif %}
-                                {% endfor %}
-                            </select>
-                            <div class="bg-dark-700 border border-dark-500 rounded-lg w-10 h-full flex items-center justify-center text-gray-400" title="Категория">
-                                {{ icon_folder('w-4 h-4') }}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <button type="submit" class="bg-accent hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2 text-sm">
-                        <span>Добавить</span>
-                    </button>
-                </form>
+            <div class="bg-dark-800 rounded-xl border border-dark-600 p-2.5 lg:p-3 shadow-lg">
+                {% include "partials/dashboard_quick_add_form.html" %}
             </div>
 
             <div id="tasks-list">
@@ -188,6 +152,12 @@
                                 </div>
                             </div>
                             <div class="flex items-center gap-2">
+                                <button type="button"
+                                        onclick="openHabitHistory({{ h_item.habit.id }})"
+                                        class="text-[10px] bg-dark-700 text-gray-400 px-2 py-0.5 rounded border border-dark-500 hover:border-accent hover:text-accent transition-all font-bold uppercase"
+                                        title="История отметок">
+                                    История
+                                </button>
                                 <form action="/api/habits/{{ h_item.habit.id }}/next-cycle" method="POST" onsubmit="return confirm('Начать следующие 30 дней?')">
                                     <button type="submit" class="text-[10px] bg-blue-600/20 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30 hover:bg-blue-600 hover:text-white transition-all font-bold uppercase opacity-0 group-hover:opacity-100">
                                         След. 30 дней
@@ -219,6 +189,8 @@
                                 {% set is_checked = date_str in h_item.logs %}
                                 {% set is_today = dt == today %}
                                 <button 
+                                    type="button"
+                                    title="{{ dt.strftime('%d.%m.%Y') }}"
                                     onclick="toggleHabit({{ h_item.habit.id }}, '{{ date_str }}', this)"
                                     class="w-6 h-6 rounded-sm flex items-center justify-center transition-all border text-[9px] font-bold
                                     {{ 'bg-accent border-accent text-white' if is_checked else 'bg-dark-700 border-dark-500 text-gray-600 hover:border-gray-400' }}
@@ -238,6 +210,12 @@
                     </div>
                     {% endfor %}
                 </div>
+            </div>
+
+            <div id="habit-history-modal"
+                 class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop p-4"
+                 onclick="closeHabitHistory()">
+                <div id="habit-history-content" class="w-full max-w-md" onclick="event.stopPropagation()"></div>
             </div>
 
             <!-- Period Tracker Card — always last in column 2 -->
@@ -468,5 +446,30 @@ async function toggleHabit(habitId, dateStr, btn) {
         console.error('Error toggling habit:', error);
     }
 }
+
+async function openHabitHistory(habitId) {
+    const modal = document.getElementById('habit-history-modal');
+    const content = document.getElementById('habit-history-content');
+    modal.classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+    content.innerHTML = '<div class="bg-dark-800 border border-dark-600 rounded-2xl p-8 text-center text-gray-400 text-sm">Загрузка...</div>';
+    try {
+        const resp = await fetch(`/api/habits/${habitId}/history`);
+        if (!resp.ok) throw new Error('load failed');
+        content.innerHTML = await resp.text();
+    } catch (e) {
+        content.innerHTML = '<div class="bg-dark-800 border border-dark-600 rounded-2xl p-8 text-center text-red-400 text-sm">Не удалось загрузить историю</div>';
+    }
+}
+
+function closeHabitHistory() {
+    document.getElementById('habit-history-modal').classList.add('hidden');
+    document.getElementById('habit-history-content').innerHTML = '';
+    document.body.classList.remove('overflow-hidden');
+}
+
+document.addEventListener('keydown', function (evt) {
+    if (evt.key === 'Escape') closeHabitHistory();
+});
 </script>
 {% endblock %}

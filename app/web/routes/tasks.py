@@ -48,6 +48,21 @@ def _parse_ddmm(value: str) -> tuple[int, int]:
         raise ValueError("invalid date values")
     return day, month
 
+
+def _parse_due_date_form(value: str) -> Optional[date]:
+    """Парсит дату из формы: пусто, ISO (YYYY-MM-DD) или ДД.ММ / DDMM."""
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        if len(raw) == 10 and raw[4] == "-" and raw[7] == "-":
+            return date.fromisoformat(raw)
+        day, month = _parse_ddmm(raw)
+        today = date.today()
+        return date(today.year, month, day)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail="Неверный формат даты (ДД.ММ)") from exc
+
 from app.services.ai_service import ai_service
 from app.services.postpones_service import apply_manual_plan
 
@@ -146,7 +161,7 @@ async def task_web_create(
             description=description,
             category_id=final_cat_id,
             priority=priority,
-            due_date=date.fromisoformat(due_date) if due_date else None,
+            due_date=_parse_due_date_form(due_date),
             status=status,
             is_milestone=is_milestone,
             impact_notes=impact_notes,
@@ -184,7 +199,7 @@ async def task_web_edit(
         task.description = description
         task.category_id = int(category_id) if category_id else None
         task.priority = priority
-        task.due_date = date.fromisoformat(due_date) if due_date else None
+        task.due_date = _parse_due_date_form(due_date)
         task.status = status
         task.is_milestone = is_milestone
         task.impact_notes = impact_notes
@@ -258,6 +273,7 @@ async def task_form_page(request: Request):
         "request": request,
         "categories": categories,
         "task": None,
+        "today": date.today(),
     })
 
 
@@ -276,6 +292,7 @@ async def task_edit_page(request: Request, task_id: int):
         "request": request,
         "categories": categories,
         "task": task,
+        "today": date.today(),
     })
 
 

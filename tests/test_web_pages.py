@@ -226,6 +226,29 @@ class TestWebTaskCRUD:
         # Должен быть редирект 303
         assert response.status_code == 303
 
+    async def test_web_create_task_ddmm_date(self, client, db):
+        """Создание задачи с датой в формате ДД.ММ"""
+        from app.models.task import Task
+        from sqlalchemy import select
+
+        today = date.today()
+        ddmm = today.strftime("%d.%m")
+
+        response = await client.post("/tasks/web/create", data={
+            "title": "Задача с датой",
+            "description": "",
+            "category_id": "",
+            "priority": "средний",
+            "due_date": ddmm,
+            "status": "новая",
+        }, follow_redirects=False)
+        assert response.status_code == 303
+
+        async with db.begin():
+            result = await db.execute(select(Task).where(Task.title == "Задача с датой"))
+            task = result.scalar_one()
+            assert task.due_date == today
+
     async def test_web_create_task_empty_title(self, client):
         """Создание без title — 422"""
         response = await client.post("/tasks/web/create", data={
@@ -434,3 +457,34 @@ class TestCategoriesAPI:
 
         response = await client.delete(f"/api/categories/{cat_id}")
         assert response.status_code == 200
+
+
+class TestHabitHistory:
+    """История отметок трекера привычек"""
+
+    async def test_habit_history_partial(self, client, db):
+        from app.models.habit import Habit
+        from app.models.habit_log import HabitLog
+
+        today = date.today()
+        habit = Habit(title="Утренний уход", start_date=today, current_cycle=2, target_days=30)
+        db.add(habit)
+        await db.flush()
+
+        db.add(HabitLog(habit_id=habit.id, cycle_number=1, date=today - timedelta(days=10)))
+        db.add(HabitLog(habit_id=habit.id, cycle_number=1, date=today - timedelta(days=9)))
+        db.add(HabitLog(habit_id=habit.id, cycle_number=2, date=today))
+        await db.commit()
+
+        response = await client.get(f"/api/habits/{habit.id}/history")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "Утренний уход" in response.text
+        assert "Цикл 2" in response.text
+        assert "Цикл 1" in response.text
+        assert "3 отметок всего" in response.text
+        assert "Текущий" in response.text
+
+    async def test_habit_history_not_found(self, client):
+        response = await client.get("/api/habits/99999/history")
+        assert response.status_code == 404
