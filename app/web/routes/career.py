@@ -54,6 +54,14 @@ CAREER_CATEGORIES = [
 ]
 
 
+# Русские названия месяцев (сервер в английской локали)
+RU_MONTHS = {
+    1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+    5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+    9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
+}
+
+
 @router.get("/api/ai/generate-milestones", response_class=HTMLResponse)
 async def generate_milestones(request: Request, month: str = None, stage: str = "preview"):
     """Генератор Карьерного капитала: preview (быстрый поиск) -> analyze (AI).
@@ -79,7 +87,7 @@ async def generate_milestones(request: Request, month: str = None, stage: str = 
         last_day = target_month.replace(month=target_month.month + 1, day=1) - timedelta(days=1)
 
     period_str = target_month.strftime("%Y-%m")
-    month_label = target_month.strftime("%B %Y")
+    month_label = f"{RU_MONTHS[target_month.month]} {target_month.year}"
 
     async with async_session() as db:
         # Находим ID карьерных категорий
@@ -257,7 +265,7 @@ async def generate_milestones(request: Request, month: str = None, stage: str = 
 
     month_options = "".join(
         f'<option value="{m.strftime("%Y-%m")}" {"selected" if m == target_month else ""}>'
-        f'{m.strftime("%B %Y")}</option>'
+        f'{RU_MONTHS[m.month]} {m.year}</option>'
         for m in months
     )
 
