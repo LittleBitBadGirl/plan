@@ -511,7 +511,7 @@ async def request_hermes_analysis(request: Request):
     async with async_session() as db:
         today = date.today()
 
-        # Проверяем, нет ли уже pending
+        # Проверяем: нет ли уже pending от Hermes
         existing = await db.execute(
             select(AIReport).where(
                 AIReport.report_date == today,
@@ -522,9 +522,21 @@ async def request_hermes_analysis(request: Request):
         if existing.scalar_one_or_none():
             return HTMLResponse("""
 <div class="p-5 sm:p-6 bg-dark-800">
-    <p class="text-yellow-400 text-sm">Hermes уже работает над анализом. Обнови страницу через минуту.</p>
+    <p class="text-yellow-400 text-sm">Hermes уже работает. Обнови через минуту.</p>
+    <button hx-get="/api/hermes/analyze"
+            hx-target="#ai-analysis-inner" hx-swap="innerHTML"
+            class="mt-3 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-xl transition-all">
+        Обновить
+    </button>
 </div>
 """)
+
+        # Удаляем старый DeepSeek-отчёт за сегодня (unique constraint на report_date)
+        old = await db.execute(
+            select(AIReport).where(AIReport.report_date == today)
+        )
+        for r in old.scalars().all():
+            await db.delete(r)
 
         # Создаём pending-запрос
         report = AIReport(
@@ -539,10 +551,9 @@ async def request_hermes_analysis(request: Request):
     return HTMLResponse("""
 <div class="p-5 sm:p-6 bg-dark-800">
     <p class="text-purple-400 text-sm font-bold">Запрос отправлен Hermes.</p>
-    <p class="text-gray-500 text-xs mt-1">Анализ появится здесь через 30-60 секунд. Нажми «Обновить».</p>
+    <p class="text-gray-500 text-xs mt-1">Анализ появится здесь через минуту.</p>
     <button hx-get="/api/hermes/analyze"
-            hx-target="#ai-analysis-inner"
-            hx-swap="innerHTML"
+            hx-target="#ai-analysis-inner" hx-swap="innerHTML"
             class="mt-3 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-xl transition-all">
         Обновить
     </button>
