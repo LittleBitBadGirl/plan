@@ -17,6 +17,8 @@ jobs:
         script: |
           cd /opt/projects/planner
           export GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519_deploy -o StrictHostKeyChecking=no"
-          git pull origin main
-          docker compose up -d --build
+          git fetch origin main
+          git reset --hard origin/main
+          docker compose build --no-cache
+          docker compose up -d
           docker system prune -f
