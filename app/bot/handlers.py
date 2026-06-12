@@ -574,3 +574,31 @@ async def _save_screenshot_to_db(file_path: Path, status: str, message: Message)
             await db.commit()
     except Exception as e:
         app_logger.error(f"❌ Не удалось сохранить скриншот в БД: {e}")
+
+
+@router.message(F.document)
+async def handle_document(message: Message, bot: Bot):
+    """Обработка документов — скачивание и сохранение в uploads."""
+    doc = message.document
+    file_id = doc.file_id
+    file_name = doc.file_name or f"{file_id}.bin"
+    file_size_kb = (doc.file_size or 0) / 1024
+
+    msg = await message.answer(f"📄 Получаю файл «{file_name}» ({file_size_kb:.0f} КБ)...")
+
+    try:
+        file = await bot.get_file(file_id)
+        uploads_dir = settings.uploads_dir / "documents"
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+
+        dest_path = uploads_dir / file_name
+        await bot.download_file(file.file_path, destination=dest_path)
+
+        await msg.edit_text(
+            f"📄 Файл «{file_name}» ({file_size_kb:.0f} КБ) сохранён в uploads/documents/"
+        )
+        app_logger.info(f"📄 Документ сохранён: {dest_path}")
+
+    except Exception as e:
+        app_logger.error(f"❌ Ошибка при скачивании документа: {e}", exc_info=True)
+        await msg.edit_text(f"❌ Не удалось сохранить файл: {e}")
