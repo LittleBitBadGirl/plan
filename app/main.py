@@ -152,6 +152,20 @@ async def health():
     return {"status": "ok", "version": "0.1.0"}
 
 
+@app.get("/api/ping")
+async def ping():
+    """Проверка: какая версия кода задеплоена."""
+    import subprocess, os
+    try:
+        sha = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, cwd=os.path.dirname(__file__) + "/.."
+        ).stdout.strip()
+    except Exception:
+        sha = "unknown"
+    return {"status": "ok", "commit": sha, "note": "debug handler active"}
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Глобальный обработчик ошибок"""
