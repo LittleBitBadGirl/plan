@@ -559,3 +559,32 @@ async def request_hermes_analysis(request: Request):
     </button>
 </div>
 """)
+
+
+@router.post("/api/hermes/save-analysis")
+async def save_hermes_analysis(request: Request):
+    """Принять результат анализа от Hermes cron."""
+    import json as _json
+    from datetime import date as _date
+
+    body = await request.json()
+    report_date = _date.fromisoformat(body["report_date"])
+    content = body["content"]
+
+    async with async_session() as db:
+        old = await db.execute(
+            select(AIReport).where(AIReport.report_date == report_date)
+        )
+        for r in old.scalars().all():
+            await db.delete(r)
+
+        report = AIReport(
+            report_date=report_date,
+            content=content,
+            source="hermes",
+            status="done",
+        )
+        db.add(report)
+        await db.commit()
+
+    return {"status": "ok"}
