@@ -1,4 +1,19 @@
 <div id="calendar-column-blocks" class="space-y-6">
+    {% if calendar_sync_active %}
+    <div class="flex items-center justify-between gap-2 px-1">
+        <p class="text-[10px] text-gray-500 leading-snug">
+            События из Google/Яндекс. Google Tasks сюда не попадают — только события календаря.
+        </p>
+        <button type="button"
+                hx-post="/api/calendar/sync"
+                hx-target="#calendar-column-blocks"
+                hx-swap="outerHTML"
+                class="shrink-0 text-[10px] text-gray-400 hover:text-sky-300 border border-gray-600 hover:border-sky-500/50 rounded px-2 py-1 whitespace-nowrap"
+                title="Обновить календари">
+            ↻
+        </button>
+    </div>
+    {% endif %}
     {% include "partials/calendar_events_block.html" %}
     {% include "partials/calendar_personal_block.html" %}
 </div>

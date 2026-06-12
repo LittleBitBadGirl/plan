@@ -6,20 +6,16 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.models.task import Task
 from app.services.calendar_sync_service import (
     get_visible_events_grouped,
-    sync_calendar_events,
+    refresh_calendar_events,
 )
 from app.services.recurring_schedule import get_recurring_templates_for_date
 
 
 async def refresh_calendar_for_plan() -> None:
-    if settings.calendar_sync_enabled or (
-        settings.google_calendar_sync_enabled and settings.google_calendar_ical_url
-    ):
-        await sync_calendar_events()
+    await refresh_calendar_events()
 
 
 def _format_event_line(ev) -> str:

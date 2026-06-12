@@ -136,14 +136,17 @@ async def dashboard(request: Request):
 
         calendar_events = []
         calendar_personal_events = []
-        try:
-            from app.services.calendar_sync_service import get_visible_events_grouped
+        from app.services.calendar_sync_service import (
+            calendar_sync_active,
+            get_visible_events_grouped,
+        )
 
+        calendar_events = []
+        calendar_personal_events = []
+        try:
             calendar_events, calendar_personal_events = await get_visible_events_grouped(
                 db, today
             )
-        except ImportError:
-            pass
         except Exception as exc:
             from app.utils.logger import app_logger
             app_logger.warning(f"Calendar events skipped: {exc}")
@@ -169,6 +172,7 @@ async def dashboard(request: Request):
         },
         "calendar_events": calendar_events,
         "calendar_personal_events": calendar_personal_events,
+        "calendar_sync_active": calendar_sync_active(),
     })
 
 

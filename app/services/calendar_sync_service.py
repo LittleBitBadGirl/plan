@@ -14,6 +14,8 @@ from app.services.calendar_filter_service import event_planner_visible, load_cal
 from app.services.calendar_ignore_service import event_matches_any_rule, load_ignore_rules
 from app.utils.logger import app_logger
 
+_sync_lock = asyncio.Lock()
+
 
 def _start_of_day(d: date) -> datetime:
     return datetime.combine(d, time.min)
@@ -59,7 +61,7 @@ async def _fetch_all_provider_rows() -> list[dict]:
     return rows
 
 
-def _calendar_sync_active() -> bool:
+def calendar_sync_active() -> bool:
     yandex = (
         settings.calendar_sync_enabled
         and settings.yandex_caldav_user
@@ -69,6 +71,22 @@ def _calendar_sync_active() -> bool:
         settings.google_calendar_ical_url
     )
     return yandex or google
+
+
+def _calendar_sync_active() -> bool:
+    return calendar_sync_active()
+
+
+async def refresh_calendar_events(timeout: float = 45.0) -> dict[str, int]:
+    """Синхронизация календарей с mutex — параллельные вызовы не дублируют fetch."""
+    if not calendar_sync_active():
+        return {"skipped": 1}
+
+    if _sync_lock.locked():
+        return {"skipped": 1, "in_progress": 1}
+
+    async with _sync_lock:
+        return await asyncio.wait_for(sync_calendar_events(), timeout=timeout)
 
 
 async def sync_calendar_events() -> dict[str, int]:

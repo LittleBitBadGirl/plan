@@ -128,3 +128,27 @@ async def test_past_meetings_hidden_from_dashboard():
     )
     assert event_is_upcoming(ev, datetime(2026, 6, 3, 10, 30)) is True
     assert event_is_upcoming(ev, datetime(2026, 6, 3, 11, 1)) is False
+
+
+@pytest.mark.asyncio
+async def test_refresh_calendar_events_skips_when_inactive():
+    from app.services.calendar_sync_service import refresh_calendar_events
+
+    with patch("app.services.calendar_sync_service.calendar_sync_active", return_value=False):
+        result = await refresh_calendar_events()
+    assert result == {"skipped": 1}
+
+
+@pytest.mark.asyncio
+async def test_calendar_sync_endpoint(client):
+    from unittest.mock import AsyncMock
+
+    with patch(
+        "app.web.routes.calendar.refresh_calendar_events",
+        new_callable=AsyncMock,
+        return_value={"fetched": 2, "upserted": 2},
+    ):
+        response = await client.post("/api/calendar/sync")
+
+    assert response.status_code == 200
+    assert 'id="calendar-column-blocks"' in response.text

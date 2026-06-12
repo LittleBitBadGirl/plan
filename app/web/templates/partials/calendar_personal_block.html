@@ -38,5 +38,10 @@
     </div>
 </div>
 {% else %}
-<div id="calendar-personal-block"></div>
+<div id="calendar-personal-block" class="space-y-2">
+    {% if calendar_sync_active %}
+    <h2 class="text-xl font-bold text-emerald-400 px-1">Личное</h2>
+    <p class="text-[10px] text-gray-500 px-1 leading-snug">На сегодня нет событий в календаре «Личный».</p>
+    {% endif %}
+</div>
 {% endif %}

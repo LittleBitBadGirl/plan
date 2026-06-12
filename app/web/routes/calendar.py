@@ -33,7 +33,31 @@ from app.web.deps import (
 router = APIRouter()
 
 from app.services.calendar_ignore_service import decline_calendar_event
-from app.services.calendar_sync_service import get_visible_events_grouped
+from app.services.calendar_sync_service import (
+    calendar_sync_active,
+    get_visible_events_grouped,
+    refresh_calendar_events,
+)
+
+
+async def _calendar_blocks_response(request: Request, *, sync: bool = False):
+    if sync:
+        await refresh_calendar_events()
+
+    today = date.today()
+    async with async_session() as db:
+        work_events, personal_events = await get_visible_events_grouped(db, today)
+
+    return templates.TemplateResponse(
+        request,
+        "partials/calendar_column_blocks.html",
+        {
+            "request": request,
+            "calendar_events": work_events,
+            "calendar_personal_events": personal_events,
+            "calendar_sync_active": calendar_sync_active(),
+        },
+    )
 
 @router.get("/calendar", response_class=HTMLResponse)
 async def calendar_page(request: Request):
@@ -44,12 +68,15 @@ async def calendar_page(request: Request):
     })
 
 
+@router.post("/api/calendar/sync", response_class=HTMLResponse)
+async def sync_calendar_blocks(request: Request):
+    """HTMX: подтянуть CalDAV/Google и обновить блоки встреч/личного на дашборде."""
+    return await _calendar_blocks_response(request, sync=True)
+
+
 @router.post("/api/calendar/{event_id}/decline", response_class=HTMLResponse)
 async def decline_calendar_meeting(request: Request, event_id: int):
     """«Не пойду» / «Скрыть» — скрыть встречу или всю повторяющуюся серию."""
-    from app.services.calendar_ignore_service import decline_calendar_event
-    from app.services.calendar_sync_service import get_visible_events_grouped
-
     today = date.today()
     async with async_session() as db:
         declined = await decline_calendar_event(db, event_id)
@@ -58,14 +85,5 @@ async def decline_calendar_meeting(request: Request, event_id: int):
                 content='<div id="calendar-column-blocks"></div>',
                 status_code=404,
             )
-        work_events, personal_events = await get_visible_events_grouped(db, today)
 
-    return templates.TemplateResponse(
-        request,
-        "partials/calendar_column_blocks.html",
-        {
-            "request": request,
-            "calendar_events": work_events,
-            "calendar_personal_events": personal_events,
-        },
-    )
+    return await _calendar_blocks_response(request)

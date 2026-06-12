@@ -285,6 +285,13 @@
 
         <!-- COLUMN 3: CALENDAR, RECURRING & SHOPPING -->
         <div class="space-y-6">
+            {% if calendar_sync_active %}
+            <div class="hidden"
+                 hx-post="/api/calendar/sync"
+                 hx-trigger="load once"
+                 hx-target="#calendar-column-blocks"
+                 hx-swap="outerHTML"></div>
+            {% endif %}
             {% include "partials/calendar_column_blocks.html" %}
 
             <!-- Recurring Tasks -->
