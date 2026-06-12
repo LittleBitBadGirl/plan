@@ -55,8 +55,12 @@ CAREER_CATEGORIES = [
 
 
 @router.get("/api/ai/generate-milestones", response_class=HTMLResponse)
-async def generate_milestones(request: Request, month: str = None):
-    """Генератор Карьерного капитала: находит достижения в рабочих и pet-проектных задачах."""
+async def generate_milestones(request: Request, month: str = None, stage: str = "preview"):
+    """Генератор Карьерного капитала: preview (быстрый поиск) -> analyze (AI).
+    
+    stage=preview: быстрый SQL-поиск, возвращает прогресс с автотриггером на analyze.
+    stage=analyze: AI-анализ + сохранение + финальный результат.
+    """
     today = date.today()
 
     if month:
@@ -75,6 +79,7 @@ async def generate_milestones(request: Request, month: str = None):
         last_day = target_month.replace(month=target_month.month + 1, day=1) - timedelta(days=1)
 
     period_str = target_month.strftime("%Y-%m")
+    month_label = target_month.strftime("%B %Y")
 
     async with async_session() as db:
         # Находим ID карьерных категорий
@@ -105,7 +110,7 @@ async def generate_milestones(request: Request, month: str = None):
         if not tasks:
             return HTMLResponse(
                 f'<div class="p-4 bg-yellow-900/20 text-yellow-500 rounded-lg">'
-                f'За {target_month.strftime("%B %Y")} нет выполненных задач в карьерных категориях.'
+                f'За {month_label} нет выполненных задач в карьерных категориях.'
                 f'</div>'
             )
 
@@ -121,10 +126,72 @@ async def generate_milestones(request: Request, month: str = None):
 
         new_tasks = [t for t in tasks if t.title not in existing_titles]
 
+        # === STAGE: PREVIEW ===
+        if stage == "preview":
+            if not new_tasks:
+                return HTMLResponse(
+                    f'<div class="p-4 bg-blue-900/20 text-blue-400 rounded-lg">'
+                    f'Все {len(tasks)} задач за {month_label} уже проанализированы.'
+                    f'</div>'
+                )
+
+            # Собираем сводку по категориям
+            cat_counts = {}
+            for t in new_tasks:
+                cname = t.category.name if t.category else "Без категории"
+                cat_counts[cname] = cat_counts.get(cname, 0) + 1
+
+            cat_summary = ", ".join(
+                f"{name}: {count}" for name, count in sorted(cat_counts.items(), key=lambda x: -x[1])
+            )
+
+            return HTMLResponse(f"""
+                <div class="bg-dark-900/50 border border-dark-700 rounded-xl p-5">
+                    <div class="flex items-center gap-3 mb-4">
+                        <svg class="animate-spin h-5 w-5 text-accent" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                        <p class="text-gray-200 font-bold">Анализирую {month_label}</p>
+                    </div>
+
+                    <div class="space-y-2 mb-3">
+                        <p class="text-sm text-gray-400">
+                            <span class="text-green-400 font-bold">&checkmark;</span>
+                            Найдено <span class="text-white font-bold">{len(tasks)}</span> выполненных задач
+                            в карьерных категориях
+                        </p>
+                        <p class="text-sm text-gray-400">
+                            <span class="text-green-400 font-bold">&checkmark;</span>
+                            Новых (ещё не проанализированных): <span class="text-white font-bold">{len(new_tasks)}</span>
+                        </p>
+                        <p class="text-sm text-gray-500">
+                            Уже проанализировано ранее: {len(tasks) - len(new_tasks)}
+                        </p>
+                    </div>
+
+                    <p class="text-xs text-gray-600 mb-3">По категориям: {cat_summary}</p>
+
+                    <div class="flex items-center gap-2 text-sm text-gray-400">
+                        <svg class="animate-spin h-4 w-4 text-accent" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                        <span>AI анализирует {len(new_tasks)} задач и формулирует достижения...</span>
+                    </div>
+
+                    <div hx-get="/api/ai/generate-milestones?stage=analyze&month={period_str}"
+                         hx-trigger="load delay:300ms"
+                         hx-target="#impact-results"
+                         hx-swap="innerHTML"></div>
+                </div>
+            """)
+
+        # === STAGE: ANALYZE ===
         if not new_tasks:
             return HTMLResponse(
                 f'<div class="p-4 bg-blue-900/20 text-blue-400 rounded-lg">'
-                f'Все {len(tasks)} задач за этот месяц уже проанализированы.'
+                f'Все {len(tasks)} задач за {month_label} уже проанализированы.'
                 f'</div>'
             )
 
@@ -199,7 +266,7 @@ async def generate_milestones(request: Request, month: str = None):
             <p class="text-green-400 font-bold mb-3 text-lg">Карьерный капитал пополнен</p>
             <p class="text-gray-300 text-sm mb-2">
                 Проанализировано <span class="text-white font-bold">{len(new_tasks)}</span> новых задач
-                из карьерных категорий за {target_month.strftime('%B %Y')}.
+                из карьерных категорий за {month_label}.
             </p>
             <p class="text-gray-300 text-sm mb-4">
                 Найдено достижений: <span class="text-accent font-bold">{saved_count}</span>.
