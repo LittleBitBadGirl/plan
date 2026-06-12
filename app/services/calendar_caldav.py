@@ -17,6 +17,11 @@ def _parse_dt(value: date | datetime) -> datetime:
     return value
 
 
+def _yandex_occurrence_uid(base_uid: str, start: datetime) -> str:
+    """Уникальный ключ вхождения — иначе weekly RRULE перезаписывает одну строку в БД."""
+    return f"yandex:{base_uid}@{start.strftime('%Y%m%dT%H%M%S')}"
+
+
 def _extract_event_row(ev: Any, calendar_name: str, calendar_url: str) -> dict[str, Any] | None:
     try:
         vevent = ev.vobject_instance.vevent
@@ -47,7 +52,7 @@ def _extract_event_row(ev: Any, calendar_name: str, calendar_url: str) -> dict[s
         location = str(vevent.location.value)[:500]
 
     return {
-        "external_uid": f"yandex:{uid}",
+        "external_uid": _yandex_occurrence_uid(uid, start),
         "recurrence_id": recurrence_id,
         "calendar_name": calendar_name,
         "calendar_url": calendar_url,

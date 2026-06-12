@@ -152,3 +152,77 @@ async def test_calendar_sync_endpoint(client):
 
     assert response.status_code == 200
     assert 'id="calendar-column-blocks"' in response.text
+
+
+@pytest.mark.asyncio
+async def test_yandex_recurring_occurrences_all_persist():
+    """Каждое вхождение weekly-серии — отдельная строка; на дашборде видно сегодняшнее."""
+    master_uid = "weekly-standup-master"
+    fake_rows = [
+        {
+            "external_uid": f"yandex:{master_uid}@20260605T140000",
+            "recurrence_id": master_uid,
+            "calendar_name": "встречи внутри группы",
+            "calendar_url": "https://caldav.yandex.ru/events-1/",
+            "title": "Weekly sync",
+            "start_at": datetime(2026, 6, 5, 14, 0),
+            "end_at": datetime(2026, 6, 5, 14, 30),
+            "location": None,
+            "is_recurring": True,
+            "is_all_day": False,
+            "calendar_source": "yandex",
+            "calendar_kind": "work",
+        },
+        {
+            "external_uid": f"yandex:{master_uid}@20260612T140000",
+            "recurrence_id": master_uid,
+            "calendar_name": "встречи внутри группы",
+            "calendar_url": "https://caldav.yandex.ru/events-1/",
+            "title": "Weekly sync",
+            "start_at": datetime(2026, 6, 12, 14, 0),
+            "end_at": datetime(2026, 6, 12, 14, 30),
+            "location": None,
+            "is_recurring": True,
+            "is_all_day": False,
+            "calendar_source": "yandex",
+            "calendar_kind": "work",
+        },
+    ]
+
+    with patch("app.services.calendar_sync_service.settings") as mock_settings:
+        mock_settings.calendar_sync_enabled = True
+        mock_settings.yandex_caldav_user = "test@dalee.ru"
+        mock_settings.yandex_caldav_app_password = "secret"
+        mock_settings.google_calendar_sync_enabled = False
+        mock_settings.google_calendar_ical_url = ""
+        with patch(
+            "app.services.calendar_sync_service._fetch_all_provider_rows",
+            return_value=fake_rows,
+        ):
+            result = await sync_calendar_events()
+
+    assert result.get("upserted") == 2
+
+    day = datetime(2026, 6, 12).date()
+    async with async_session() as db:
+        all_rows = await db.execute(
+            select(CalendarEvent).where(CalendarEvent.recurrence_id == master_uid)
+        )
+        assert len(all_rows.scalars().all()) == 2
+
+        visible = await get_visible_events_for_day(
+            db, day, now=datetime(2026, 6, 12, 10, 0), calendar_kind="work"
+        )
+        assert len(visible) == 1
+        assert visible[0].title == "Weekly sync"
+        assert visible[0].start_at.date() == day
+
+
+def test_yandex_occurrence_uid_unique_per_start():
+    from app.services.calendar_caldav import _yandex_occurrence_uid
+
+    uid = "series-abc"
+    a = _yandex_occurrence_uid(uid, datetime(2026, 6, 5, 14, 0))
+    b = _yandex_occurrence_uid(uid, datetime(2026, 6, 12, 14, 0))
+    assert a != b
+    assert a.startswith("yandex:series-abc@")

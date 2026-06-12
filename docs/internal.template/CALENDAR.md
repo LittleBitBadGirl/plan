@@ -39,7 +39,7 @@ GOOGLE_CALENDAR_SYNC_ENABLED=true
 | `app/services/calendar_sync_service.py` | merge провайдеров, видимость по `calendar_kind` |
 | `app/models/calendar_event.py` | `calendar_source`, `calendar_kind`, `is_all_day` |
 
-`external_uid`: `google:{uid}@{start}` / `yandex:{uid}`
+`external_uid`: `google:{uid}@{start}` / `yandex:{uid}@{start}`
 
 ---
 
