@@ -156,9 +156,13 @@ async def health():
 async def global_exception_handler(request: Request, exc: Exception):
     """Глобальный обработчик ошибок"""
     app_logger.error(f"Ошибка: {exc}", exc_info=True)
+    import traceback
     return JSONResponse(
         status_code=500,
-        content={"detail": "Внутренняя ошибка сервера"},
+        content={
+            "detail": f"{type(exc).__name__}: {exc}",
+            "traceback": traceback.format_exc(),
+        },
     )
 
 
