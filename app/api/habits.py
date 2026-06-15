@@ -47,6 +47,35 @@ def build_habit_cycle_grid(habit: Habit, today: date) -> dict:
     }
 
 
+def compute_cycle_start_dates(
+    habit: Habit,
+    logs_by_cycle: dict[int, list[date]],
+) -> dict[int, date]:
+    """Вычисляет дату старта каждого цикла, идя назад от текущего."""
+    target_days = habit.target_days or 30
+    starts: dict[int, date] = {}
+    next_start = habit.start_date or date.today()
+    starts[habit.current_cycle] = next_start
+
+    for cycle_num in range(habit.current_cycle - 1, 0, -1):
+        candidate = next_start - timedelta(days=target_days)
+        marked = logs_by_cycle.get(cycle_num, [])
+
+        if marked:
+            mark_min = min(marked)
+            window_end = candidate + timedelta(days=target_days - 1)
+            if mark_min < candidate or max(marked) > window_end:
+                starts[cycle_num] = mark_min
+            else:
+                starts[cycle_num] = candidate
+        else:
+            starts[cycle_num] = candidate
+
+        next_start = starts[cycle_num]
+
+    return starts
+
+
 def build_habit_history_cycles(habit: Habit, logs: List[HabitLog], today: date) -> List[dict]:
     """Собирает историю отметок по циклам (новые сверху)."""
     by_cycle: dict[int, list[date]] = defaultdict(list)
@@ -54,39 +83,33 @@ def build_habit_history_cycles(habit: Habit, logs: List[HabitLog], today: date) 
         by_cycle[log.cycle_number].append(log.date)
 
     target_days = habit.target_days or 30
+    cycle_starts = compute_cycle_start_dates(habit, by_cycle)
     cycles: List[dict] = []
 
     for cycle_num in range(habit.current_cycle, 0, -1):
         marked_dates = sorted(set(by_cycle.get(cycle_num, [])))
         is_current = cycle_num == habit.current_cycle
+        marked_iso = {d.isoformat() for d in marked_dates}
 
         if is_current:
             grid = build_habit_cycle_grid(habit, today)
-            marked_iso = {d.isoformat() for d in marked_dates}
-            cycles.append({
-                "cycle_number": cycle_num,
-                "is_current": True,
-                "empty": False,
-                "dates": grid["dates"],
-                "logs": marked_iso,
-                "progress": len(marked_iso),
-                "start_weekday": grid["start_weekday"],
-            })
-        elif marked_dates:
-            cycles.append({
-                "cycle_number": cycle_num,
-                "is_current": False,
-                "empty": False,
-                "marked_dates": marked_dates,
-                "progress": len(marked_dates),
-            })
+            dates = grid["dates"]
+            start_weekday = grid["start_weekday"]
         else:
-            cycles.append({
-                "cycle_number": cycle_num,
-                "is_current": False,
-                "empty": True,
-                "progress": 0,
-            })
+            start = cycle_starts[cycle_num]
+            dates = [start + timedelta(days=i) for i in range(target_days)]
+            start_weekday = start.weekday()
+
+        cycles.append({
+            "cycle_number": cycle_num,
+            "is_current": is_current,
+            "empty": not marked_dates,
+            "dates": dates,
+            "logs": marked_iso,
+            "progress": len(marked_iso),
+            "start_weekday": start_weekday,
+            "target_days": target_days,
+        })
 
     return cycles
 

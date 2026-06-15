@@ -2,7 +2,7 @@
     <div class="flex items-start justify-between gap-3 p-4 border-b border-dark-600 shrink-0">
         <div class="min-w-0">
             <h2 class="text-base font-bold text-white truncate">{{ habit.title }}</h2>
-            <p class="text-[10px] text-gray-500 mt-0.5">{{ total_marks }} отметок всего</p>
+            <p class="text-[10px] text-gray-500 mt-0.5">{{ total_marks }} отметок · {{ cycles|length }} {{ 'цикл' if cycles|length == 1 else ('цикла' if cycles|length < 5 else 'циклов') }}</p>
         </div>
         <button type="button"
                 onclick="closeHabitHistory()"
@@ -14,61 +14,63 @@
         </button>
     </div>
 
-    <div class="overflow-y-auto p-4 space-y-5">
+    <div class="overflow-y-auto p-4 space-y-3">
         {% if cycles %}
             {% for cycle in cycles %}
-            <section>
-                <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center gap-2">
+            <details class="group/cycle rounded-xl border border-dark-600 bg-dark-900/40 overflow-hidden"
+                     {% if cycle.is_current %}open{% endif %}>
+                <summary class="flex items-center justify-between gap-2 px-3 py-2.5 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <svg class="w-3 h-3 text-gray-500 shrink-0 transition-transform group-open/cycle:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
                         <span class="text-xs font-bold text-gray-200">Цикл {{ cycle.cycle_number }}</span>
                         {% if cycle.is_current %}
                         <span class="text-[9px] bg-accent/20 text-accent px-1.5 py-0.5 rounded uppercase font-bold">Текущий</span>
                         {% endif %}
                     </div>
-                    <span class="text-[10px] font-bold text-accent">{{ cycle.progress }}/30</span>
-                </div>
-
-                {% if cycle.empty %}
-                <p class="text-[11px] text-gray-500">Нет отметок</p>
-                {% elif cycle.is_current %}
-                <div class="grid grid-cols-7 gap-1 self-center">
-                    <div class="text-[7px] text-gray-600 text-center font-bold">ПН</div>
-                    <div class="text-[7px] text-gray-600 text-center font-bold">ВТ</div>
-                    <div class="text-[7px] text-gray-600 text-center font-bold">СР</div>
-                    <div class="text-[7px] text-gray-600 text-center font-bold">ЧТ</div>
-                    <div class="text-[7px] text-gray-600 text-center font-bold">ПТ</div>
-                    <div class="text-[7px] text-gray-600 text-center font-bold">СБ</div>
-                    <div class="text-[7px] text-gray-600 text-center font-bold">ВС</div>
-
-                    {% for _ in range(cycle.start_weekday) %}
-                    <div class="w-6 h-6"></div>
-                    {% endfor %}
-
-                    {% for dt in cycle.dates %}
-                    {% set date_str = dt.isoformat() %}
-                    {% set is_checked = date_str in cycle.logs %}
-                    {% set is_today = dt == today %}
-                    <div class="w-6 h-6 rounded-sm flex items-center justify-center border text-[9px] font-bold
-                        {{ 'bg-accent border-accent text-white' if is_checked else 'bg-dark-700 border-dark-500 text-gray-600' }}
-                        {{ 'ring-1 ring-white/30' if is_today else '' }}">
-                        {{ loop.index }}
+                    <div class="flex items-center gap-2 shrink-0">
+                        {% if not cycle.empty %}
+                        <div class="w-16 h-1.5 bg-dark-700 rounded-full overflow-hidden">
+                            <div class="bg-accent h-full" style="width: {{ (cycle.progress / cycle.target_days * 100)|round }}%"></div>
+                        </div>
+                        {% endif %}
+                        <span class="text-[10px] font-bold text-accent tabular-nums">{{ cycle.progress }}/{{ cycle.target_days }}</span>
                     </div>
-                    {% endfor %}
+                </summary>
+
+                <div class="px-3 pb-3 pt-0">
+                    {% if cycle.empty %}
+                    <p class="text-[11px] text-gray-500 pl-5">Нет отметок</p>
+                    {% else %}
+                    <div class="grid grid-cols-7 gap-1 self-center pl-5">
+                        <div class="text-[7px] text-gray-600 text-center font-bold">ПН</div>
+                        <div class="text-[7px] text-gray-600 text-center font-bold">ВТ</div>
+                        <div class="text-[7px] text-gray-600 text-center font-bold">СР</div>
+                        <div class="text-[7px] text-gray-600 text-center font-bold">ЧТ</div>
+                        <div class="text-[7px] text-gray-600 text-center font-bold">ПТ</div>
+                        <div class="text-[7px] text-gray-600 text-center font-bold">СБ</div>
+                        <div class="text-[7px] text-gray-600 text-center font-bold">ВС</div>
+
+                        {% for _ in range(cycle.start_weekday) %}
+                        <div class="w-6 h-6"></div>
+                        {% endfor %}
+
+                        {% for dt in cycle.dates %}
+                        {% set date_str = dt.isoformat() %}
+                        {% set is_checked = date_str in cycle.logs %}
+                        {% set is_today = dt == today %}
+                        <div title="{{ dt.strftime('%d.%m.%Y') }}{% if is_checked %} — отмечено{% endif %}"
+                             class="w-6 h-6 rounded-sm flex items-center justify-center border text-[9px] font-bold
+                             {{ 'bg-accent border-accent text-white' if is_checked else 'bg-dark-700 border-dark-500 text-gray-600' }}
+                             {{ 'ring-1 ring-white/30' if is_today else '' }}">
+                            {{ loop.index }}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
                 </div>
-                {% else %}
-                {% if cycle.marked_dates %}
-                <div class="flex flex-wrap gap-1">
-                    {% for dt in cycle.marked_dates %}
-                    <span class="text-[10px] bg-accent/15 text-accent border border-accent/30 px-1.5 py-0.5 rounded font-mono">
-                        {{ dt.strftime('%d.%m.%y') }}
-                    </span>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <p class="text-[11px] text-gray-500">Нет отметок</p>
-                {% endif %}
-                {% endif %}
-            </section>
+            </details>
             {% endfor %}
         {% else %}
         <p class="text-sm text-gray-500 text-center py-6">Пока нет отметок</p>
