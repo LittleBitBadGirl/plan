@@ -311,16 +311,43 @@ class AIService:
         # 2. DeepSeek
         return await _deepseek_categorize(task_text, categories_list)
 
-    async def generate_impact_report(self, tasks_data: list) -> list:
-        """Генерация достижений через DeepSeek."""
+    async def generate_impact_report(self, tasks_data: list, context: str = "") -> list:
+        """Генерация достижений через DeepSeek с контекстом пользователя."""
         if not settings.deepseek_api_key and not settings.groq_api_key:
             return []
 
-        tasks_text = "\n".join([f"- {t['title']} ({t['category']})" for t in tasks_data])
-        prompt = f"""Ты — Senior Career Coach. Выбери из списка задач те, что имеют профессиональную ценность.
-Задачи:\n{tasks_text}
-Для каждой: original_title, impact, category.
-Ответ JSON: {{"achievements": [{{"original_title":"","impact":"","category":""}}]}}"""
+        tasks_text = "\n".join(
+            [f"- [{t['category']}] {t['title']}{' — ' + t['description'] if t.get('description') else ''}" 
+             for t in tasks_data]
+        )
+
+        context_block = f"\nКонтекст пользователя:\n{context}\n" if context else ""
+
+        prompt = f"""Ты — Senior Career Coach для product-менеджера в AI/tech.
+
+{context_block}
+Выбери из списка выполненных задач те, которые демонстрируют профессиональный рост
+и могут усилить резюме. Критерии отбора:
+
+1. **Запуск/внедрение продуктов или фич** — от идеи до работающего решения
+2. **Технические решения** — автоматизация, AI-интеграции, архитектура, DevOps
+3. **Работа с командой/подрядчиками** — управление, найм, процессы
+4. **Масштаб/цифры** — тендеры, бюджеты, пользователи, метрики
+5. **Публичная активность** — выступления, блог, конференции, open-source
+6. **Обучение и рост** — курсы, сертификации, освоение новых технологий
+
+НЕ включать: рутинные операции, покупки, мелкие багфиксы, личные дела.
+
+Для каждой отобранной задачи напиши impact — одно предложение на русском языке
+в формате STAR-lite: что сделано + какой результат/навык продемонстрирован.
+Используй профессиональную лексику product-менеджера.
+Избегай воды и общих фраз.
+
+Задачи:
+{tasks_text}
+
+Ответ строго в JSON:
+{{"achievements": [{{"original_title":"", "impact":"", "category":""}}]}}"""
 
         try:
             async with httpx.AsyncClient() as client:
@@ -336,7 +363,7 @@ class AIService:
                         "temperature": 0.0,
                         "response_format": {"type": "json_object"},
                     },
-                    timeout=15.0,
+                    timeout=30.0,
                 )
                 if resp.status_code == 200:
                     data = json.loads(resp.json()["choices"][0]["message"]["content"])
