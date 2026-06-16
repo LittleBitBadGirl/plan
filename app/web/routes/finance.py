@@ -36,6 +36,9 @@ import datetime as dt
 from sqlalchemy import desc, case
 from app.models.goal import FinancialGoal
 
+# ID категорий-сбережений (не считаются расходами)
+SAVINGS_CATEGORY_IDS = [37, 61]  # ИИС, Подушка
+
 @router.get("/finance", response_class=HTMLResponse)
 async def finance_page(request: Request, month: Optional[int] = None, year: Optional[int] = None):
     """Страница финансов (Excel-вид)"""
@@ -88,6 +91,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         transactions = result.scalars().all()
         
         # СВОДКА (Трехуровневая группировка: Месяц -> Глобальная Кат -> Подкат)
+        # Исключаем сбережения из сводки расходов
         summary_result = await db.execute(
             select(
                 Category.name.label('cat_name'),
@@ -95,7 +99,12 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
                 Category.parent_id
             )
             .join(Transaction)
-            .where(Transaction.date >= start_date, Transaction.date < end_date, Transaction.amount < 0)
+            .where(
+                Transaction.date >= start_date, 
+                Transaction.date < end_date, 
+                Transaction.amount < 0,
+                Transaction.category_id.notin_(SAVINGS_CATEGORY_IDS)
+            )
             .group_by(Category.id)
             .order_by(desc(func.sum(Transaction.amount)))
         )
@@ -109,10 +118,8 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
 
         for r in raw_summary:
             if r.parent_id:
-                # Подкатегория → группируем под родителем
                 p_name = parents_map.get(r.parent_id, r.cat_name)
             else:
-                # Root-категория → сама является группой
                 p_name = r.cat_name
 
             if p_name not in grouped_summary:
@@ -165,17 +172,30 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         )
         yearly_row = yearly_res.first()
         yearly_income = yearly_row.income or 0
-        yearly_expense = yearly_row.expense or 0
+        yearly_expense_gross = yearly_row.expense or 0
         
-        # Расчет итогов
-
+        # Сбережения за год
+        yearly_savings_res = await db.execute(
+            select(func.sum(func.abs(Transaction.amount)))
+            .where(
+                Transaction.date >= year_start, 
+                Transaction.date < year_end, 
+                Transaction.amount < 0,
+                Transaction.category_id.in_(SAVINGS_CATEGORY_IDS)
+            )
+        )
+        yearly_savings = yearly_savings_res.scalar() or 0
+        yearly_expense = yearly_expense_gross - yearly_savings
+        
+        # Расчет итогов за месяц
         total_income = sum(tx.amount for tx in transactions if tx.amount > 0)
-        total_expense = sum(abs(tx.amount) for tx in transactions if tx.amount < 0)
+        total_expense = sum(abs(tx.amount) for tx in transactions if tx.amount < 0 and tx.category_id not in SAVINGS_CATEGORY_IDS)
+        total_savings = sum(abs(tx.amount) for tx in transactions if tx.amount < 0 and tx.category_id in SAVINGS_CATEGORY_IDS)
         
         # Список категорий для модалки (иерархия)
         fin_cats_res = await db.execute(select(Category).where(Category.type == 'finance').order_by(Category.name))
         fin_categories_all = fin_cats_res.scalars().all()
-        fin_categories = fin_categories_all  # backward compat (flat)
+        fin_categories = fin_categories_all
         fin_parent_cats = [c for c in fin_categories_all if not c.parent_id]
         fin_sub_cats_by_parent: dict = {}
         for c in fin_categories_all:
@@ -189,14 +209,25 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         "category_summary": category_summary,
         "chart_expense_total": chart_expense_total,
         "goals": goals,
-        "yearly_stats": {"income": yearly_income, "expense": yearly_expense, "balance": yearly_income - yearly_expense},
+        "yearly_stats": {
+            "income": yearly_income, 
+            "expense": yearly_expense, 
+            "savings": yearly_savings,
+            "balance": yearly_income - yearly_expense - yearly_savings
+        },
         "month_tabs": month_tabs,
         "current_month": view_month,
         "current_year": view_year,
         "fin_categories": fin_categories,
         "fin_parent_cats": fin_parent_cats,
         "fin_sub_cats_by_parent": fin_sub_cats_by_parent,
-        "stats": {"income": total_income, "expense": total_expense, "balance": total_income - total_expense},
+        "stats": {
+            "income": total_income, 
+            "expense": total_expense, 
+            "savings": total_savings,
+            "balance": total_income - total_expense - total_savings
+        },
+        "month_name": f"{MONTH_NAMES[view_month]} {view_year}",
         "today": today
     })
 
@@ -243,7 +274,6 @@ async def update_transaction_category(
     cat_id = int(category_id) if category_id and category_id.isdigit() else None
 
     async with async_session() as db:
-        # Получаем целевую транзакцию
         res = await db.execute(select(Tx).where(Tx.id == tx_id))
         tx = res.scalar_one_or_none()
         if not tx:
@@ -252,7 +282,6 @@ async def update_transaction_category(
         description = tx.description
         tx.category_id = cat_id
 
-        # Применяем ко всем похожим (точное совпадение описания)
         updated_count = 1
         if apply_to_similar and description:
             from sqlalchemy import update as sa_update
@@ -265,7 +294,6 @@ async def update_transaction_category(
 
         await db.commit()
 
-        # Возвращаем название категории для обновления UI без перезагрузки
         cat_name = "Прочее"
         if cat_id:
             cat_res = await db.execute(select(Category).where(Category.id == cat_id))
