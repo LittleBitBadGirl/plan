@@ -166,6 +166,57 @@ async def ping():
     return {"status": "ok", "commit": sha, "note": "debug handler active"}
 
 
+@app.post("/api/admin/update-goals")
+async def update_goals(request: Request):
+    """ВРЕМЕННЫЙ: обновить финцели."""
+    from app.db.database import async_session
+    from app.models.goal import FinancialGoal
+    from sqlalchemy import select
+
+    updates = [
+        ("Подушка безопасности", 442706),
+        ("Инвестиции (ИИС)", 563980),
+    ]
+    new_goals = [
+        ("Первый взнос на квартиру", 1500000, 0),
+    ]
+
+    async with async_session() as db:
+        result = {"updated": [], "created": [], "current": []}
+
+        for name, new_current in updates:
+            goals = (await db.execute(
+                select(FinancialGoal).where(FinancialGoal.name.like(f"%{name.split('(')[0].strip()}%"))
+            )).scalars().all()
+            for g in goals:
+                g.current_amount = new_current
+                result["updated"].append({"name": g.name, "current": new_current})
+
+        for name, target, current in new_goals:
+            existing = (await db.execute(
+                select(FinancialGoal).where(FinancialGoal.name == name)
+            )).scalar()
+            if not existing:
+                goal = FinancialGoal(name=name, target_amount=target, current_amount=current)
+                db.add(goal)
+                result["created"].append({"name": name, "target": target})
+
+        await db.commit()
+
+        # Re-read all
+        all_goals = (await db.execute(select(FinancialGoal))).scalars().all()
+        for g in all_goals:
+            pct = round(g.current_amount / g.target_amount * 100, 1) if g.target_amount else 0
+            result["current"].append({
+                "name": g.name,
+                "current": g.current_amount,
+                "target": g.target_amount,
+                "pct": pct,
+            })
+
+    return JSONResponse(result)
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Глобальный обработчик ошибок — пишет в файл для отладки."""
