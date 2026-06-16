@@ -244,10 +244,12 @@ async def generate_milestones(request: Request, month: str = None, stage: str = 
 
         # Сохраняем в базу
         saved_count = 0
+        from app.services.ai_service import _stop_slop
         for item in impacts:
+            impact_text = await _stop_slop(item.get("impact") or "")
             impact_obj = CareerImpact(
                 original_title=item.get("original_title"),
-                impact_description=item.get("impact"),
+                impact_description=impact_text,
                 category_name=item.get("category"),
                 period_month=period_str,
             )

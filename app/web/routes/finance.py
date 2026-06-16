@@ -42,10 +42,7 @@ SAVINGS_CATEGORY_IDS = [37, 61]  # ИИС, Подушка
 @router.get("/finance", response_class=HTMLResponse)
 async def finance_page(request: Request, month: Optional[int] = None, year: Optional[int] = None):
     """Страница финансов (Excel-вид)"""
-    import datetime as dt
     today = dt.date.today()
-    from sqlalchemy import desc, case
-    from app.models.goal import FinancialGoal
     
     MONTH_NAMES = {
         1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",

@@ -144,28 +144,33 @@ FINANCE_PROMPT = """Ты — эксперт по банковским интер
 {{"type":"finance|calendar|other","data":{{"items":[{{"amount":число,"date":"YYYY-MM-DD","desc":"описание","category_hint":"категория"}}],"events":[{{"title":"","date":"YYYY-MM-DD","time":"HH:MM"}}]}}}}"""
 
 
+async def _prepare_image(image_path: str) -> str | None:
+    """Подготовка изображения: конвертация RGB, ресайз до 2000px, JPEG 85%, base64."""
+    path = Path(image_path)
+    if not path.exists():
+        return None
+    with Image.open(path) as img:
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        if img.width > 2000:
+            ratio = 2000 / float(img.width)
+            img = img.resize((2000, int(float(img.height) * ratio)), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85, optimize=True)
+        return base64.b64encode(buf.getvalue()).decode()
+
+
 async def _gemini_vision(image_path: str) -> Dict:
     """Анализ скриншота через Gemini Vision."""
     if not settings.gemini_api_key:
         app_logger.warning("GEMINI_API_KEY not set, falling back to Groq Vision")
         return await _groq_vision(image_path)
 
-    path = Path(image_path)
-    if not path.exists():
+    b64 = await _prepare_image(image_path)
+    if b64 is None:
         return {"type": "other"}
 
     try:
-        # Подготовка изображения
-        with Image.open(path) as img:
-            if img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
-            if img.width > 2000:
-                ratio = 2000 / float(img.width)
-                img = img.resize((2000, int(float(img.height) * ratio)), Image.LANCZOS)
-            buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=85, optimize=True)
-            b64 = base64.b64encode(buf.getvalue()).decode()
-        
         today = date.today()
         prompt = FINANCE_PROMPT.format(today=today.isoformat(), year=today.year)
 
@@ -197,6 +202,14 @@ async def _gemini_vision(image_path: str) -> Dict:
     return await _groq_vision(image_path)
 
 
+# ─── Vision fallback models ──────────────────────────────────────────────────
+
+VISION_FALLBACK_MODELS = [
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "llama-3.2-11b-vision-preview",
+]
+
+
 # ─── Groq Vision (fallback) ──────────────────────────────────────────────────
 
 async def _groq_vision(image_path: str) -> Dict:
@@ -204,27 +217,15 @@ async def _groq_vision(image_path: str) -> Dict:
     if not settings.groq_api_key:
         return {"type": "other"}
 
-    from datetime import date as dt_date
-    
-    path = Path(image_path)
-    if not path.exists():
+    b64 = await _prepare_image(image_path)
+    if b64 is None:
         return {"type": "other"}
 
     try:
-        with Image.open(path) as img:
-            if img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
-            if img.width > 2000:
-                ratio = 2000 / float(img.width)
-                img = img.resize((2000, int(float(img.height) * ratio)), Image.LANCZOS)
-            buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=85, optimize=True)
-            b64 = base64.b64encode(buf.getvalue()).decode()
-
-        today = dt_date.today()
+        today = date.today()
         prompt = FINANCE_PROMPT.format(today=today.isoformat(), year=today.year)
 
-        for model in ["meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.2-11b-vision-preview"]:
+        for model in VISION_FALLBACK_MODELS:
             try:
                 async with httpx.AsyncClient() as client:
                     resp = await client.post(
@@ -375,6 +376,57 @@ class AIService:
     async def vision_analyze_screenshot(self, image_path: str) -> Dict:
         """Анализ скриншота: Gemini → Groq Vision fallback."""
         return await _gemini_vision(image_path)
+
+
+# ─── Stop-Slop: очистка AI-текста от штампов ────────────────────────────────
+
+STOP_SLOP_PROMPT = """Ты — редактор. Перепиши ответ AI-ассистента, убрав все характерные AI-паттерны:
+
+1. Adverbs и filler-слова: "however", "moreover", "it turns out that", "notably", "indeed"
+2. Пассивный залог: переведи в активный где возможно
+3. Dramatic fragmentation: "But here is the thing." / "And then something interesting happened."
+4. Template transitions: "In conclusion", "To summarize", "Moving forward"
+5. AI-штампы: "game changer", "unlocked potential", "let that sink in", "revolutionary"
+6. Пустые комплименты пользователю: "you raised a great question"
+
+Сохрани СМЫСЛ, факты и структуру. Перепиши текст живым, прямым языком без воды. Не добавляй новую информацию.
+
+Исходный текст:
+{text}
+
+Очищенный текст:"""
+
+
+async def _stop_slop(text: str) -> str:
+    """Прогоняет AI-текст через DeepSeek для очистки от AI-штампов."""
+    if not text or not settings.deepseek_api_key:
+        return text
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                DEEPSEEK_URL,
+                headers={
+                    "Authorization": f"Bearer {settings.deepseek_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": DEEPSEEK_MODEL,
+                    "messages": [
+                        {"role": "user", "content": STOP_SLOP_PROMPT.format(text=text)},
+                    ],
+                    "temperature": 0.3,
+                },
+                timeout=30.0,
+            )
+            if resp.status_code == 200:
+                return resp.json()["choices"][0]["message"]["content"]
+            else:
+                app_logger.error(f"Stop-slop error: {resp.status_code}")
+    except Exception as e:
+        app_logger.error(f"Stop-slop exception: {e}")
+
+    return text  # fallback — вернуть как есть
 
 
 ai_service = AIService()
