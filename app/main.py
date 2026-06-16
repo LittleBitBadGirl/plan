@@ -173,6 +173,7 @@ async def import_bank(request: Request):
     from app.models.finance import Transaction
     from app.models.category import Category
     from sqlalchemy import select
+    from datetime import datetime
 
     body = await request.json()
     transactions = body.get("transactions", [])
@@ -201,7 +202,7 @@ async def import_bank(request: Request):
             cat_id = cat_by_name.get(cat_name) if cat_name else None
 
             tx = Transaction(
-                date=date_str,
+                date=datetime.strptime(date_str, "%Y-%m-%d").date(),
                 amount=amount,
                 description=desc,
                 category_id=cat_id,
