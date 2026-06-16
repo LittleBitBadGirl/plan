@@ -172,7 +172,7 @@ async def fix_finances(request: Request):
     from app.db.database import async_session
     from app.models.category import Category
     from app.models.finance import Transaction
-    from sqlalchemy import select
+    from sqlalchemy import select, func
 
     steps = []
 
@@ -242,15 +242,47 @@ async def fix_finances(request: Request):
                     cat.parent_id = income_parent
                     income_fixed += 1
 
-        await db.flush()
-        steps.append(f"Категории: создано {len(created_parents)} родительских, поправлено {fixed_hierarchy} иерархий, {income_fixed} доходных")
+        # Also create missing subcategories
+        missing_subs = {
+            "Аренда": "Вертикаль",
+            "Образование": "Даня",
+            "Штрафы": "Дом",
+            "Страховки": "Дом",
+            "Одежда и обувь": "Вещи",
+            "Книги": "Вещи",
+            "Телефон": "Связь",
+            "Брови": "Красота",
+        }
+        created_subs = 0
+        for sub_name, parent_name in missing_subs.items():
+            existing = (await db.execute(select(Category).where(Category.name == sub_name))).scalar()
+            if not existing:
+                parent = (await db.execute(select(Category).where(Category.name == parent_name))).scalar()
+                if parent:
+                    cat = Category(name=sub_name, parent_id=parent.id)
+                    db.add(cat)
+                    created_subs += 1
 
-        # === Шаг 3: Инвертировать знаки всех транзакций ===
-        all_tx = (await db.execute(select(Transaction))).scalars().all()
-        for tx in all_tx:
-            tx.amount = -tx.amount
         await db.flush()
-        steps.append(f"Знаки: инвертировано {len(all_tx)} транзакций")
+        steps.append(f"Категории: создано {len(created_parents)} родительских + {created_subs} дочерних, поправлено {fixed_hierarchy} иерархий, {income_fixed} доходных")
+
+        # === Шаг 3: Инвертировать знаки (только если доходы ещё отрицательные) ===
+        jan_check = (await db.execute(
+            select(func.sum(Transaction.amount)).where(
+                Transaction.date >= "2026-01-01",
+                Transaction.date < "2026-02-01",
+                Transaction.amount > 0
+            )
+        )).scalar() or 0
+
+        if jan_check < 100000:  # January income should be ~258k
+            all_tx = (await db.execute(select(Transaction))).scalars().all()
+            for tx in all_tx:
+                tx.amount = -tx.amount
+            await db.flush()
+            steps.append(f"Знаки: инвертировано {len(all_tx)} транзакций")
+        else:
+            steps.append(f"Знаки: уже корректны (январь доход={jan_check:,.0f}), пропущено")
 
         # === Шаг 4: Разобрать майские транзакции ===
         may_tx = (await db.execute(
@@ -269,11 +301,13 @@ async def fix_finances(request: Request):
         rules = [
             # Еда
             (["шефмаркет", "лента", "магнит", "продукты", "пятёрочка", "окей", "ашан", "fix price",
-              "лавка", "деливери", "3 сезона", "metro", "вкусвилл", "перекрёсток", "дикси"], "Продукты"),
+              "лавка", "деливери", "3 сезона", "metro", "вкусвилл", "перекрёсток", "дикси",
+              "ароматный мир", "красное&белое", "красное и белое", "росал"], "Продукты"),
             (["табак", "zhmud", "бристоль", "табако", "гэнг", "vapeshop", "кальян"], "Табак"),
             (["ресторан", "сыроварня", "cucumber", "кио кухня", "булки", "булочная",
-              "mychara", "вкусно — и точка", "most coffee", "кофейня", "812", "rest"], "Рестораны"),
-            (["фастфуд"], "Фастфуд"),
+              "mychara", "вкусно — и точка", "most coffee", "кофейня", "812", "rest",
+              "u mari", "yamaguchi"], "Рестораны"),
+            (["фастфуд", "булочные"], "Фастфуд"),
             (["метро"], "Метро"),
             # Дом
             (["ипотека", "сбер → ипотека"], "Ипотека"),
@@ -288,7 +322,7 @@ async def fix_finances(request: Request):
             (["образование", "школа"], "Образование"),
             # Вертикаль
             (["стирка", "we-i-ramada", "ramada"], "Стирка"),
-            (["аренда"], "Аренда"),
+            (["аренда", "vertical-hotel"], "Аренда"),
             # Транспорт
             (["бензин", "татнефть", "газпромнефть", "азс", "заправка"], "Бензин"),
             (["такси", "яндекс go"], "Такси"),
@@ -298,16 +332,18 @@ async def fix_finances(request: Request):
             (["подушка", "бкс"], "Подушка"),
             # Связь
             (["телефон", "мегафон", "мтс", "билайн", "tele2"], "Телефон"),
-            (["подписк", "subscription"], "Подписки"),
+            (["подписк", "subscription", "яндекс 360"], "Подписки"),
             # Здоровье
             (["аптека", "горздрав", "здоровье"], "Аптеки"),
             # Красота
             (["liks nail", "салон", "брови", "косметолог"], "Салоны"),
+            # Развлечения
+            (["evo_ekstrim", "sandiland", "термоланд"], "Развлечения"),
             # Подарки
             (["подарок", "цветы"], "Подарки"),
             # Благотворительность
             (["дари еду", "благотвор", "помощь рядом", "vmeste"], "Благотворительность"),
-            # Доходы
+            # Доходы (положительные суммы)
             (["зарплата", "аванс", "зачисление"], "Зарплата"),
             (["возврат", "налоговый вычет"], "Возврат"),
             (["кэшбэк"], "Кэшбэк"),
@@ -315,8 +351,16 @@ async def fix_finances(request: Request):
         ]
 
         categorized = 0
+        extra_income = 0
         for tx in may_tx:
             desc = (tx.description or "").lower()
+            # Special: positive amounts with person names → income
+            if tx.amount and tx.amount > 0:
+                extra_income += 1
+                tx.category_id = cat_by_name.get("Возврат") or cat_by_name.get("Прочее")
+                categorized += 1
+                continue
+
             for keywords, cat_name in rules:
                 if any(kw in desc for kw in keywords):
                     if cat_name in cat_by_name:
@@ -325,7 +369,7 @@ async def fix_finances(request: Request):
                         break
 
         await db.flush()
-        steps.append(f"Май: {categorized}/{len(may_tx)} транзакций размечены")
+        steps.append(f"Май: {categorized}/{len(may_tx)} транзакций размечены (вкл. {extra_income} доходов)")
 
         await db.commit()
 
