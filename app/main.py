@@ -166,36 +166,6 @@ async def ping():
     return {"status": "ok", "commit": sha, "note": "debug handler active"}
 
 
-@app.post("/api/admin/split-goals")
-async def split_goals(request: Request):
-    """ВРЕМЕННЫЙ: перераспределить общий котёл по целям."""
-    from app.db.database import async_session
-    from app.models.goal import FinancialGoal
-    from sqlalchemy import select
-
-    splits = {
-        "Подушка безопасности": 200000,
-        "Автомобиль": 100000,
-        "Первый взнос на квартиру": 142706,
-    }
-
-    async with async_session() as db:
-        result = []
-        for name, amount in splits.items():
-            goal = (await db.execute(
-                select(FinancialGoal).where(FinancialGoal.name == name)
-            )).scalar()
-            if goal:
-                goal.current_amount = amount
-                result.append({"name": name, "current": amount})
-        await db.commit()
-
-        all_goals = (await db.execute(select(FinancialGoal))).scalars().all()
-        current = [{"name": g.name, "current": g.current_amount, "target": g.target_amount} for g in all_goals]
-
-    return JSONResponse({"updated": result, "current": current})
-
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Глобальный обработчик ошибок — пишет в файл для отладки."""
