@@ -166,6 +166,196 @@ async def ping():
     return {"status": "ok", "commit": sha, "note": "debug handler active"}
 
 
+@app.post("/api/admin/fix-finances")
+async def fix_finances(request: Request):
+    """ВРЕМЕННЫЙ: миграция финансов — категории, знаки, май."""
+    from app.db.database import async_session
+    from app.models.category import Category
+    from app.models.finance import Transaction
+    from sqlalchemy import select
+
+    steps = []
+
+    async with async_session() as db:
+        # === Шаг 1: Создать недостающие родительские категории ===
+        new_parents = {
+            "Финансы": None,
+            "Связь": None,
+            "Красота": None,
+            "Доходы": None,
+        }
+        created_parents = {}
+        for name, parent in new_parents.items():
+            existing = (await db.execute(select(Category).where(Category.name == name))).scalar()
+            if not existing:
+                cat = Category(name=name, parent_id=None)
+                db.add(cat)
+                await db.flush()
+                created_parents[name] = cat.id
+            else:
+                created_parents[name] = existing.id
+
+        # Rename Отдых → Развлечения
+        otdyh = (await db.execute(select(Category).where(Category.name == "Отдых"))).scalar()
+        if otdyh:
+            otdyh.name = "Развлечения"
+
+        # === Шаг 2: Поправить иерархию ===
+        hierarchy_fixes = {
+            "Табак": "Еда",
+            "ИИС": "Финансы",
+            "Подушка": "Финансы",
+            "Подписки": "Связь",
+            "Салоны": "Красота",
+            "Косметолог": "Красота",
+            "Хозтовары": "Дом",
+            "Метро": "Еда",
+            "Аптеки": "Здоровье",
+            "Бензин": "Транспорт",
+            "Парковка": "Транспорт",
+            "Такси": "Транспорт",
+            "Ипотека": "Дом",
+            "Коммуналка": "Дом",
+            "Налоги": "Дом",
+            "Продукты": "Еда",
+            "Рестораны": "Еда",
+            "Фастфуд": "Еда",
+            "Стирка": "Вертикаль",
+        }
+
+        fixed_hierarchy = 0
+        for child_name, parent_name in hierarchy_fixes.items():
+            child = (await db.execute(select(Category).where(Category.name == child_name))).scalar()
+            parent = (await db.execute(select(Category).where(Category.name == parent_name))).scalar()
+            if child and parent and child.parent_id != parent.id:
+                child.parent_id = parent.id
+                fixed_hierarchy += 1
+
+        # Group income cats under Доходы
+        income_cats = ["Зарплата", "Аванс", "Кэшбэк", "Возврат", "Авито", "Командировочные"]
+        income_parent = created_parents.get("Доходы")
+        income_fixed = 0
+        if income_parent:
+            for name in income_cats:
+                cat = (await db.execute(select(Category).where(Category.name == name))).scalar()
+                if cat and cat.parent_id != income_parent:
+                    cat.parent_id = income_parent
+                    income_fixed += 1
+
+        await db.flush()
+        steps.append(f"Категории: создано {len(created_parents)} родительских, поправлено {fixed_hierarchy} иерархий, {income_fixed} доходных")
+
+        # === Шаг 3: Инвертировать знаки всех транзакций ===
+        all_tx = (await db.execute(select(Transaction))).scalars().all()
+        for tx in all_tx:
+            tx.amount = -tx.amount
+        await db.flush()
+        steps.append(f"Знаки: инвертировано {len(all_tx)} транзакций")
+
+        # === Шаг 4: Разобрать майские транзакции ===
+        may_tx = (await db.execute(
+            select(Transaction).where(
+                Transaction.date >= "2026-05-01",
+                Transaction.date < "2026-06-01",
+                Transaction.category_id.is_(None)
+            )
+        )).scalars().all()
+
+        # Build category lookup
+        all_cats = (await db.execute(select(Category))).scalars().all()
+        cat_by_name = {c.name: c.id for c in all_cats}
+
+        # Classification rules: (keyword(s), category_name)
+        rules = [
+            # Еда
+            (["шефмаркет", "лента", "магнит", "продукты", "пятёрочка", "окей", "ашан", "fix price",
+              "лавка", "деливери", "3 сезона", "metro", "вкусвилл", "перекрёсток", "дикси"], "Продукты"),
+            (["табак", "zhmud", "бристоль", "табако", "гэнг", "vapeshop", "кальян"], "Табак"),
+            (["ресторан", "сыроварня", "cucumber", "кио кухня", "булки", "булочная",
+              "mychara", "вкусно — и точка", "most coffee", "кофейня", "812", "rest"], "Рестораны"),
+            (["фастфуд"], "Фастфуд"),
+            (["метро"], "Метро"),
+            # Дом
+            (["ипотека", "сбер → ипотека"], "Ипотека"),
+            (["коммуналка", "eirc", "epr"], "Коммуналка"),
+            (["снт", "взнос"], "Коммуналка"),
+            (["страховк", "sber life", "sberin"], "Коммуналка"),
+            (["налоги", "фнс"], "Налоги"),
+            (["озон", "wildberries"], "Вещи"),
+            (["хозтовары"], "Хозтовары"),
+            # Даня
+            (["садик", "виктория д."], "Садик"),
+            (["образование", "школа"], "Образование"),
+            # Вертикаль
+            (["стирка", "we-i-ramada", "ramada"], "Стирка"),
+            (["аренда"], "Аренда"),
+            # Транспорт
+            (["бензин", "татнефть", "газпромнефть", "азс", "заправка"], "Бензин"),
+            (["такси", "яндекс go"], "Такси"),
+            (["парковка"], "Парковка"),
+            # Финансы
+            (["иис", "совкомбанк"], "ИИС"),
+            (["подушка", "бкс"], "Подушка"),
+            # Связь
+            (["телефон", "мегафон", "мтс", "билайн", "tele2"], "Телефон"),
+            (["подписк", "subscription"], "Подписки"),
+            # Здоровье
+            (["аптека", "горздрав", "здоровье"], "Аптеки"),
+            # Красота
+            (["liks nail", "салон", "брови", "косметолог"], "Салоны"),
+            # Подарки
+            (["подарок", "цветы"], "Подарки"),
+            # Благотворительность
+            (["дари еду", "благотвор", "помощь рядом", "vmeste"], "Благотворительность"),
+            # Доходы
+            (["зарплата", "аванс", "зачисление"], "Зарплата"),
+            (["возврат", "налоговый вычет"], "Возврат"),
+            (["кэшбэк"], "Кэшбэк"),
+            (["перевод"], "Возврат"),
+        ]
+
+        categorized = 0
+        for tx in may_tx:
+            desc = (tx.description or "").lower()
+            for keywords, cat_name in rules:
+                if any(kw in desc for kw in keywords):
+                    if cat_name in cat_by_name:
+                        tx.category_id = cat_by_name[cat_name]
+                        categorized += 1
+                        break
+
+        await db.flush()
+        steps.append(f"Май: {categorized}/{len(may_tx)} транзакций размечены")
+
+        await db.commit()
+
+    # Verify monthly totals
+    async with async_session() as db:
+        verify = {}
+        for m in range(1, 6):
+            month = f"2026-{m:02d}"
+            next_month = f"2026-{m+1:02d}-01" if m < 12 else "2027-01-01"
+            result = await db.execute(
+                select(Transaction.amount).where(
+                    Transaction.date >= f"{month}-01",
+                    Transaction.date < next_month,
+                )
+            )
+            amounts = [r[0] for r in result.all()]
+            income = sum(a for a in amounts if a and a > 0)
+            expense = sum(abs(a) for a in amounts if a and a < 0)
+            verify[month] = {
+                "income": round(income, 2),
+                "expense": round(expense, 2),
+            }
+
+    return JSONResponse({
+        "status": "ok",
+        "steps": steps,
+        "verify": verify,
+    })
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Глобальный обработчик ошибок — пишет в файл для отладки."""
