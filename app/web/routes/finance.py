@@ -95,7 +95,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
                 Category.parent_id
             )
             .join(Transaction)
-            .where(Transaction.date >= start_date, Transaction.date < end_date, Transaction.amount > 0)
+            .where(Transaction.date >= start_date, Transaction.date < end_date, Transaction.amount < 0)
             .group_by(Category.id)
             .order_by(desc(func.sum(Transaction.amount)))
         )
@@ -118,23 +118,23 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
             if p_name not in grouped_summary:
                 grouped_summary[p_name] = {"total": 0, "sub_items": []}
             if r.parent_id:
-                grouped_summary[p_name]["sub_items"].append({"name": r.cat_name, "amount": r.total})
-            grouped_summary[p_name]["total"] += r.total
+                grouped_summary[p_name]["sub_items"].append({"name": r.cat_name, "amount": abs(r.total)})
+            grouped_summary[p_name]["total"] += abs(r.total)
 
         # Добавляем некатегоризированные расходы
         uncat_res = await db.execute(
             select(func.sum(Transaction.amount)).where(
                 Transaction.date >= start_date,
                 Transaction.date < end_date,
-                Transaction.amount > 0,
+                Transaction.amount < 0,
                 Transaction.category_id.is_(None),
             )
         )
         uncat_total = uncat_res.scalar() or 0
-        if uncat_total > 0:
+        if uncat_total < 0:
             grouped_summary["Без категории"] = {
-                "total": uncat_total,
-                "sub_items": [{"name": "Нет категории", "amount": uncat_total}],
+                "total": abs(uncat_total),
+                "sub_items": [{"name": "Нет категории", "amount": abs(uncat_total)}],
             }
 
         # Сортируем по убыванию суммы
@@ -143,7 +143,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         )
 
         category_summary = [
-            {"name": name, "amount": float(data["total"])}
+            {"name": name, "amount": float(abs(data["total"]))}
             for name, data in grouped_summary.items()
         ]
         chart_expense_total = sum(item["amount"] for item in category_summary)
@@ -158,8 +158,8 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         
         yearly_res = await db.execute(
             select(
-                func.sum(case((Transaction.amount < 0, func.abs(Transaction.amount)), else_=0)).label('income'),
-                func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0)).label('expense')
+                func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0)).label('income'),
+                func.sum(case((Transaction.amount < 0, func.abs(Transaction.amount)), else_=0)).label('expense')
             )
             .where(Transaction.date >= year_start, Transaction.date < year_end)
         )
@@ -169,8 +169,8 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         
         # Расчет итогов
 
-        total_income = sum(abs(tx.amount) for tx in transactions if tx.amount < 0)
-        total_expense = sum(tx.amount for tx in transactions if tx.amount > 0)
+        total_income = sum(tx.amount for tx in transactions if tx.amount > 0)
+        total_expense = sum(abs(tx.amount) for tx in transactions if tx.amount < 0)
         
         # Список категорий для модалки (иерархия)
         fin_cats_res = await db.execute(select(Category).where(Category.type == 'finance').order_by(Category.name))
