@@ -26,19 +26,17 @@
     <!-- Goals: single row of 4 -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3" x-data="{ showAddModal: false }">
         {% for goal in goals %}
-        <div class="bg-dark-800 rounded-lg px-3 py-2 border border-dark-600">
-            <div class="flex justify-between items-baseline mb-1">
-                <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider truncate mr-1">{{ goal.name }}</span>
-                <span class="text-[9px] font-bold text-white shrink-0">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</span>
-            </div>
+        <div class="bg-dark-800 rounded-lg px-3 py-2.5 border border-dark-600">
+            <p class="text-[8px] font-bold text-gray-500 uppercase tracking-wider truncate mb-1">{{ goal.name }}</p>
+            <p class="text-sm font-extrabold text-white mb-1">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</p>
             {% set pct = (goal.current_amount / goal.target_amount * 100) if goal.target_amount > 0 else 0 %}
-            <div class="w-full bg-dark-700 rounded-full h-1 mb-1 overflow-hidden">
+            <div class="w-full bg-dark-700 rounded-full h-0.5 mb-1.5 overflow-hidden">
                 <div class="bg-gradient-to-r from-blue-600 to-purple-500 h-full" style="width: {{ pct }}%"></div>
             </div>
-            <div class="flex justify-between text-[7px] font-bold">
-                <span class="text-blue-400">{{ pct|round(1) }}%</span>
-                <span class="text-gray-600">
-                    {% if goal.target_amount >= 1000000 %}{{ "{:,.1f}".format(goal.target_amount / 1000000) }}М
+            <div class="flex justify-between items-baseline">
+                <span class="text-[10px] font-bold text-blue-400">{{ pct|round(1) }}%</span>
+                <span class="text-[8px] font-bold text-gray-600">
+                    цель {% if goal.target_amount >= 1000000 %}{{ "{:,.1f}".format(goal.target_amount / 1000000) }}М
                     {% else %}{{ "{:,.0f}".format(goal.target_amount / 1000) }}к{% endif %}
                 </span>
             </div>
@@ -48,7 +46,7 @@
 
     <!-- Balance: wide row -->
     <div class="bg-dark-800 rounded-xl border border-dark-600 shadow-lg mb-6">
-        <div class="grid grid-cols-2 lg:grid-cols-3 divide-x divide-dark-700">
+        <div class="grid grid-cols-2 divide-x divide-dark-700">
             <!-- Месяц -->
             <div class="p-3">
                 <p class="text-[8px] text-gray-500 uppercase font-bold mb-2">{{ month_name }}</p>
@@ -76,7 +74,7 @@
                 </div>
             </div>
             <!-- Год -->
-            <div class="p-3">
+            <div class="p-3 rounded-r-xl">
                 <p class="text-[8px] text-gray-500 uppercase font-bold mb-2">{{ current_year }}</p>
                 <div class="space-y-1.5">
                     <div class="flex justify-between text-[11px]">
@@ -101,18 +99,9 @@
                     </div>
                 </div>
             </div>
-            <!-- Net -->
-            <div class="p-3 flex flex-col justify-center items-center bg-dark-700/30 rounded-r-xl">
-                <p class="text-[8px] text-gray-500 uppercase font-bold mb-2">Свободно</p>
-                <p class="text-xl font-black {{ 'text-green-400' if yearly_stats.balance >= 0 else 'text-red-400' }}">
-                    {{ "{:,.0f}".format(yearly_stats.balance).replace(',', ' ') }}
-                </p>
-                <p class="text-[9px] text-gray-600 mt-0.5">за {{ current_year }}</p>
             </div>
-        </div>
-    </div>
 
-    <!-- Month Tabs -->
+            <!-- Month Tabs -->
     <div class="flex gap-1.5 mb-6 overflow-x-auto pb-1.5 scrollbar-hide">
         {% for tab in month_tabs|reverse %}
         <a href="/finance?month={{ tab.month }}&year={{ tab.year }}"
@@ -126,13 +115,13 @@
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <!-- Main Content (Detailed Transactions) -->
         <div class="lg:col-span-3 space-y-4">
-            <div class="bg-dark-800 rounded-xl border border-dark-600 shadow-xl overflow-hidden" x-data="{ search: '' }">
-                <div class="bg-dark-700/30 p-3 border-b border-dark-600 flex justify-between items-center">
+            <div class="bg-dark-800 rounded-xl border border-dark-600 shadow-xl overflow-hidden flex flex-col" x-data="{ search: '' }" style="max-height: calc(100vh - 280px)">
+                <div class="bg-dark-700/30 p-3 border-b border-dark-600 flex justify-between items-center shrink-0">
                     <h2 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Все операции</h2>
                     <input type="text" x-model="search" placeholder="Фильтр..." 
                            class="bg-dark-900 border border-dark-600 rounded-lg px-2.5 py-1 text-[10px] text-white focus:outline-none focus:border-accent w-36 transition-all">
                 </div>
-                <div class="overflow-x-auto">
+                <div class="overflow-y-auto overflow-x-auto flex-1">
                     <table class="w-full text-left border-collapse">
                         <thead>
                             <tr class="bg-dark-700/20 border-b border-dark-600 text-[9px] font-bold text-gray-500 uppercase tracking-wider">
@@ -224,36 +213,9 @@
             </div>
         </div>
 
-        <!-- Right Sidebar (Chart + Summary) -->
+        <!-- Right Sidebar (Chart only) -->
         <div class="space-y-6">
             {% include "partials/finance_expense_chart.html" %}
-
-            <div class="bg-dark-800 rounded-xl border border-dark-600 shadow-xl overflow-hidden">
-                <div class="bg-dark-700/30 p-3 border-b border-dark-600">
-                    <h2 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Сводка</h2>
-                </div>
-                <div class="divide-y divide-dark-600 overflow-y-auto max-h-[400px]">
-                    {% for group, data in grouped_summary.items() %}
-                    <div x-data="{ open: false }" class="group">
-                        <div @click="open = !open" class="flex justify-between items-center p-2.5 bg-dark-700/10 cursor-pointer hover:bg-dark-700/20 transition-colors">
-                            <div class="flex items-center gap-1.5">
-                                <span class="text-[9px] text-gray-500 transition-transform" :class="open ? 'rotate-90' : ''">▶</span>
-                                <span class="text-[11px] font-bold text-white">{{ group }}</span>
-                            </div>
-                            <span class="text-[11px] font-bold text-gray-400">{{ "{:,.0f}".format(data.total).replace(',', ' ') }}</span>
-                        </div>
-                        <div x-show="open" x-transition class="bg-dark-900/20">
-                            {% for item in data.sub_items %}
-                            <div class="flex justify-between items-center px-5 py-1.5 text-[10px] border-t border-dark-700/30">
-                                <span class="text-gray-500">{{ item.name }}</span>
-                                <span class="font-medium text-gray-600">{{ "{:,.0f}".format(item.amount).replace(',', ' ') }}</span>
-                            </div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
         </div>
     </div>
 </div>
