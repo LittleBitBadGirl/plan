@@ -166,6 +166,132 @@ async def ping():
     return {"status": "ok", "commit": sha, "note": "debug handler active"}
 
 
+@app.post("/api/admin/fix-transfers")
+async def fix_transfers(request: Request):
+    """ВРЕМЕННЫЙ: правка персональных переводов."""
+    from app.db.database import async_session
+    from app.models.finance import Transaction
+    from app.models.category import Category
+    from sqlalchemy import select, delete
+
+    async with async_session() as db:
+        all_cats = (await db.execute(select(Category))).scalars().all()
+        cat_by_name = {c.name: c.id for c in all_cats}
+
+        result = {"deleted": [], "recategorized": [], "uncategorized": []}
+
+        # === DELETE duplicates and internal transfers ===
+        to_delete = [
+            ("Ольга П.", 32500),         # дубль шашлыков
+            ("перевод между своими", None),  # все внутренние переводы
+        ]
+        # Delete ONE Роман И. -4450 duplicate (keep the first)
+        roman_dups = (await db.execute(
+            select(Transaction).where(
+                Transaction.description == "Роман И.",
+                Transaction.amount == -4450
+            ).order_by(Transaction.id)
+        )).scalars().all()
+        if len(roman_dups) > 1:
+            await db.delete(roman_dups[1])
+            result["deleted"].append(f"Роман И. дубль -4450 (id={roman_dups[1].id})")
+
+        # Delete Ольга П. duplicate (keep first)
+        olga_dups = (await db.execute(
+            select(Transaction).where(
+                Transaction.description == "Ольга П.",
+                Transaction.amount == 32500
+            ).order_by(Transaction.id)
+        )).scalars().all()
+        if len(olga_dups) > 1:
+            await db.delete(olga_dups[1])
+            result["deleted"].append(f"Ольга П. дубль 32500 (id={olga_dups[1].id})")
+
+        # Delete все "перевод между своими счетами"
+        internal = (await db.execute(
+            select(Transaction).where(
+                Transaction.description.like("%своими счетами%")
+            )
+        )).scalars().all()
+        for tx in internal:
+            result["deleted"].append(f"Внутренний перевод {tx.amount} (id={tx.id})")
+            await db.delete(tx)
+
+        await db.flush()
+
+        # === RECATEGORIZE ===
+        recats = [
+            # (description_pattern, amount, new_category)
+            ("Роман И.", 1200, "Возврат"),
+            ("Роман И.", -4450, "Такси"),
+            ("Перевод себе в другой банк", -30000, "Ипотека"),
+            ("Полина Ш.", None, None),  # special: positive→Возврат, negative→NULL
+        ]
+
+        # Роман И.
+        for desc, amt, new_cat in recats:
+            if desc == "Полина Ш.":
+                continue
+            query = select(Transaction).where(Transaction.description.like(f"%{desc}%"))
+            if amt is not None:
+                query = query.where(Transaction.amount == amt)
+            txs = (await db.execute(query)).scalars().all()
+            for tx in txs:
+                old_cat = tx.category_id
+                tx.category_id = cat_by_name.get(new_cat)
+                result["recategorized"].append(f"{desc} {tx.amount} → {new_cat}")
+
+        # Полина Ш. special
+        polina_txs = (await db.execute(
+            select(Transaction).where(Transaction.description.like("%Полина Ш%"))
+        )).scalars().all()
+        for tx in polina_txs:
+            if tx.amount and tx.amount > 0:
+                tx.category_id = cat_by_name.get("Возврат")
+                result["recategorized"].append(f"Полина Ш. {tx.amount} → Возврат")
+            else:
+                tx.category_id = None
+                result["uncategorized"].append(f"Полина Ш. {tx.amount} → без категории")
+
+        # Наталия Б. -500 → Подарки
+        natalia = (await db.execute(
+            select(Transaction).where(Transaction.description.like("%Наталия%"), Transaction.amount == -500)
+        )).scalars().all()
+        for tx in natalia:
+            tx.category_id = cat_by_name.get("Подарки")
+            result["recategorized"].append(f"Наталия Б. → Подарки")
+
+        # Георгий М. (все) → Хозтовары
+        georgiy = (await db.execute(
+            select(Transaction).where(Transaction.description.like("%Георгий%"))
+        )).scalars().all()
+        for tx in georgiy:
+            tx.category_id = cat_by_name.get("Хозтовары")
+            result["recategorized"].append(f"Георгий М. {tx.amount} → Хозтовары")
+
+        # FURSOV/Fursor → Прочее
+        fursov = (await db.execute(
+            select(Transaction).where(
+                Transaction.description.like("%FURS%") | Transaction.description.like("%Furs%")
+            )
+        )).scalars().all()
+        for tx in fursov:
+            tx.category_id = cat_by_name.get("Прочее")
+            result["recategorized"].append(f"FURSOV {tx.amount} → Прочее")
+
+        # KUCHMINA → Прочее
+        kuch = (await db.execute(
+            select(Transaction).where(Transaction.description.like("%KUCHMINA%"))
+        )).scalars().all()
+        for tx in kuch:
+            tx.category_id = cat_by_name.get("Прочее")
+            result["recategorized"].append(f"KUCHMINA {tx.amount} → Прочее")
+
+        await db.commit()
+
+    return JSONResponse(result)
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Глобальный обработчик ошибок — пишет в файл для отладки."""
