@@ -166,6 +166,21 @@ async def ping():
     return {"status": "ok", "commit": sha, "note": "debug handler active"}
 
 
+@app.delete("/api/admin/del-tx/{tx_id}")
+async def del_tx(tx_id: int):
+    """ВРЕМЕННЫЙ: удалить транзакцию."""
+    from app.db.database import async_session
+    from app.models.finance import Transaction
+    from sqlalchemy import select
+    async with async_session() as db:
+        tx = (await db.execute(select(Transaction).where(Transaction.id == tx_id))).scalar()
+        if tx:
+            await db.delete(tx)
+            await db.commit()
+            return JSONResponse({"deleted": tx_id, "amount": tx.amount, "desc": tx.description[:60]})
+    return JSONResponse({"error": "not found"}, status_code=404)
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Глобальный обработчик ошибок — пишет в файл для отладки."""
