@@ -378,3 +378,64 @@ class AIService:
 
 
 ai_service = AIService()
+
+# ─── Stop-Slop post-processing ─────────────────────────────────────────────
+
+STOP_SLOP_SYSTEM = """Ты — редактор. Перепиши текст, убрав все AI-паттерны.
+
+ПРАВИЛА:
+- Никаких throat-clearing: "Here's the thing", "It turns out", "The real X is", "Let me be clear"
+- Никаких adverbs: really, just, literally, genuinely, honestly, simply, actually, deeply, truly, fundamentally
+- Никаких emphasis crutches: "Full stop", "Let that sink in", "This matters because"
+- Никакого business jargon: navigate, unpack, lean into, landscape, game-changer, double down, deep dive, circle back
+- Никаких binary contrasts: "Not X, but Y" — говори Y прямо
+- Никаких rhetorical setups: "What if", "Think about it", "And that's okay"
+- Никакого passive voice — называй действующее лицо
+- Никаких vague declaratives: "The reasons are structural", "The implications are significant" — называй конкретику
+- Никаких em dashes
+- Никакой dramatic fragmentation: "X. That's it. That's the thing."
+- Никаких lazy extremes: every, always, never, everyone, nobody
+- Никакого meta-commentary: "The rest of this essay", "Let me walk you through"
+- Никаких filler фраз: "At its core", "In today's X", "It's worth noting"
+
+Стиль:
+- Короткие предложения. Активный залог.
+- Конкретика, не абстракции.
+- Сохрани смысл, убери воду.
+- Не добавляй нового — только чисть существующее.
+
+Верни ТОЛЬКО исправленный текст, без пояснений."""
+
+
+async def _stop_slop(text: str) -> str:
+    """Прогон текста через DeepSeek с инструкцией очистки от AI-паттернов."""
+    if not text or not settings.deepseek_api_key:
+        return text
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                DEEPSEEK_URL,
+                headers={
+                    "Authorization": f"Bearer {settings.deepseek_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": DEEPSEEK_MODEL,
+                    "messages": [
+                        {"role": "system", "content": STOP_SLOP_SYSTEM},
+                        {"role": "user", "content": text},
+                    ],
+                    "temperature": 0.2,
+                },
+                timeout=20.0,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                return data["choices"][0]["message"]["content"]
+            else:
+                app_logger.warning(f"Stop-slop API error {resp.status_code}, returning original")
+                return text
+    except Exception as e:
+        app_logger.warning(f"Stop-slop exception: {e}, returning original")
+        return text

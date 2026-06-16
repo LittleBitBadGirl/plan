@@ -234,6 +234,10 @@ async def run_ai_analysis(request: Request):
                 if response.status_code == 200:
                     analysis_content = response.json()['choices'][0]['message']['content']
                     
+                    # Stop-slop: удаляем AI-паттерны из текста
+                    from app.services.ai_service import _stop_slop
+                    analysis_content = await _stop_slop(analysis_content)
+                    
                     # Сохраняем
                     report = AIReport(report_date=today, content=analysis_content)
                     db.add(report)

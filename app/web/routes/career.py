@@ -228,6 +228,12 @@ async def generate_milestones(request: Request, month: str = None, stage: str = 
         # Отправляем на анализ
         impacts = await ai_service.generate_impact_report(tasks_data, vera_context)
 
+        # Stop-slop: чистим каждое достижение
+        from app.services.ai_service import _stop_slop
+        for item in impacts:
+            if item.get('impact'):
+                item['impact'] = await _stop_slop(item['impact'])
+
         if not impacts:
             return HTMLResponse(
                 f'<div class="p-4 bg-yellow-900/20 text-yellow-500 rounded-lg">'
