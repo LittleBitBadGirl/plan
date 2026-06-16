@@ -183,7 +183,7 @@ async def import_bank(request: Request):
 
         result = {"imported": 0, "skipped_duplicate": 0, "skipped_no_cat": 0, "errors": []}
 
-        existing = (await db.execute(select(Transaction.date, Transaction.amount))).scalars().all()
+        existing = (await db.execute(select(Transaction.date, Transaction.amount))).all()
         existing_set = {(d, round(abs(a), 0)) for d, a in existing}
 
         for tx_data in transactions:
