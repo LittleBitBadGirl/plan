@@ -61,6 +61,10 @@ INSERT OR IGNORE INTO categories (id, name, type, parent_id) VALUES (141, 'Об�
 -- 10. Исправить is_global=NULL → 0
 UPDATE categories SET is_global = 0 WHERE type = 'finance' AND parent_id IS NOT NULL AND (is_global IS NULL OR is_global != 0);
 
+-- 8. Каршеринг + Доходы/Прочее
+INSERT OR IGNORE INTO categories (id, name, type, parent_id) VALUES (142, 'Каршеринг', 'finance', 47);
+INSERT OR IGNORE INTO categories (id, name, type, parent_id) VALUES (143, 'Прочее', 'finance', 125);
+
 -- Проверка
 SELECT c.id, c.name, p.name as parent
 FROM categories c
