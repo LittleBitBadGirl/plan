@@ -69,10 +69,10 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         month_tabs = []
         for row in available_months:
             y, m = int(row.year), int(row.month)
-            month_tabs.append({"month": m, "year": y, "name": f"{MONTH_NAMES[m]} {y}"})
+            month_tabs.append({"month": m, "year": y, "name": f"{MONTH_NAMES[m]}"})
             
         if not month_tabs:
-            month_tabs.append({"month": today.month, "year": today.year, "name": f"{MONTH_NAMES[today.month]} {today.year}"})
+            month_tabs.append({"month": today.month, "year": today.year, "name": f"{MONTH_NAMES[today.month]}"})
 
         # Выбранный год (из параметра или максимальный доступный)
         selected_year = year or max(available_years)
@@ -81,7 +81,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         month_tabs_for_year.sort(key=lambda t: t["month"])
         
         if not month_tabs_for_year:
-            month_tabs_for_year = [{"month": today.month, "year": selected_year, "name": f"{MONTH_NAMES[today.month]} {selected_year}"}]
+            month_tabs_for_year = [{"month": today.month, "year": selected_year, "name": f"{MONTH_NAMES[today.month]}"}]
 
         view_month = month or month_tabs_for_year[-1]["month"]
         view_year = selected_year
