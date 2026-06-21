@@ -155,6 +155,10 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         # ЦЕЛИ
         goals_res = await db.execute(select(FinancialGoal))
         goals = goals_res.scalars().all()
+        # Разделение: инвестиционные счета (ИИС, брокерские) vs обычные цели
+        INVESTMENT_GOAL_IDS = [1, 6, 7]  # ИИС, Брокерский 1, Брокерский 2
+        investment_goals = [g for g in goals if g.id in INVESTMENT_GOAL_IDS]
+        other_goals = [g for g in goals if g.id not in INVESTMENT_GOAL_IDS]
         
         # ИТОГИ ГОДА (для view_year)
         year_start = dt.date(view_year, 1, 1)
@@ -206,11 +210,12 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         "category_summary": category_summary,
         "chart_expense_total": chart_expense_total,
         "goals": goals,
+        "investment_goals": investment_goals,
+        "other_goals": other_goals,
         "yearly_stats": {
             "income": yearly_income, 
             "expense": yearly_expense, 
-            "savings": yearly_savings,
-            "balance": yearly_income - yearly_expense - yearly_savings
+            "savings": yearly_savings
         },
         "month_tabs": month_tabs,
         "current_month": view_month,

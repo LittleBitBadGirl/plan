@@ -24,25 +24,52 @@
         </div>
     </div>
 
-    <!-- Goals: single row of 5 -->
-    <div class="grid grid-cols-3 md:grid-cols-5 gap-3 mb-4" x-data="{ showAddModal: false }">
-        {% for goal in goals %}
-        <div class="bg-dark-800/80 rounded-xl px-3.5 py-3 border border-dark-600/50 hover:border-dark-500/80 hover:bg-dark-800 transition-all duration-200 hover:-translate-y-0.5">
-            <p class="text-[9px] text-gray-500 tracking-wide mb-2 truncate">{{ goal.name }}</p>
-            <p class="text-lg font-bold text-white mb-2.5 tracking-tight">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</p>
-            {% set pct = (goal.current_amount / goal.target_amount * 100) if goal.target_amount > 0 else 0 %}
-            <div class="w-full bg-dark-700/50 rounded-full h-1 mb-2 overflow-hidden">
-                <div class="bg-blue-500 h-full rounded-full transition-all duration-500" style="width: {{ pct }}%"></div>
-            </div>
-            <div class="flex justify-between items-baseline">
-                <span class="text-[10px] font-semibold text-blue-400">{{ pct|round(1) }}%</span>
-                <span class="text-[9px] text-gray-600">
-                    цель {% if goal.target_amount >= 1000000 %}{{ "{:,.1f}".format(goal.target_amount / 1000000) }}M
-                    {% else %}{{ "{:,.0f}".format(goal.target_amount / 1000) }}k{% endif %}
-                </span>
+    <!-- Investments + Goals: desktop flex-row, mobile stacked -->
+    <div class="flex flex-col md:flex-row gap-3 mb-4" x-data="{ showAddModal: false }">
+        <!-- Investments: wide block (3 accounts) -->
+        <div class="md:flex-1 bg-dark-800/60 rounded-2xl border border-dark-600/50 p-4">
+            <p class="text-[9px] text-gray-500 tracking-wide mb-3">Инвестиции</p>
+            <div class="grid grid-cols-3 gap-3">
+                {% for goal in investment_goals %}
+                <div class="bg-dark-800/80 rounded-xl px-3.5 py-3 border border-dark-600/50 hover:border-dark-500/80 hover:bg-dark-800 transition-all duration-200 hover:-translate-y-0.5">
+                    <p class="text-[9px] text-gray-500 tracking-wide mb-2 truncate">{{ goal.name }}</p>
+                    <p class="text-lg font-bold text-white mb-2.5 tracking-tight">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</p>
+                    {% if goal.target_amount > 0 %}
+                    {% set pct = (goal.current_amount / goal.target_amount * 100) %}
+                    <div class="w-full bg-dark-700/50 rounded-full h-1 mb-2 overflow-hidden">
+                        <div class="bg-emerald-500 h-full rounded-full transition-all duration-500" style="width: {{ pct }}%"></div>
+                    </div>
+                    <div class="flex justify-between items-baseline">
+                        <span class="text-[10px] font-semibold text-emerald-400">{{ pct|round(1) }}%</span>
+                        <span class="text-[9px] text-gray-600">цель {{ "{:,.1f}".format(goal.target_amount / 1000000) }}M</span>
+                    </div>
+                    {% else %}
+                    <div class="text-[10px] text-gray-600">инфо</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
             </div>
         </div>
-        {% endfor %}
+        <!-- Other goals: 2x2 grid -->
+        <div class="grid grid-cols-2 gap-3 md:w-[380px]">
+            {% for goal in other_goals %}
+            <div class="bg-dark-800/80 rounded-xl px-3.5 py-3 border border-dark-600/50 hover:border-dark-500/80 hover:bg-dark-800 transition-all duration-200 hover:-translate-y-0.5">
+                <p class="text-[9px] text-gray-500 tracking-wide mb-2 truncate">{{ goal.name }}</p>
+                <p class="text-lg font-bold text-white mb-2.5 tracking-tight">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</p>
+                {% set pct = (goal.current_amount / goal.target_amount * 100) if goal.target_amount > 0 else 0 %}
+                <div class="w-full bg-dark-700/50 rounded-full h-1 mb-2 overflow-hidden">
+                    <div class="bg-blue-500 h-full rounded-full transition-all duration-500" style="width: {{ pct }}%"></div>
+                </div>
+                <div class="flex justify-between items-baseline">
+                    <span class="text-[10px] font-semibold text-blue-400">{{ pct|round(1) }}%</span>
+                    <span class="text-[9px] text-gray-600">
+                        цель {% if goal.target_amount >= 1000000 %}{{ "{:,.1f}".format(goal.target_amount / 1000000) }}M
+                        {% else %}{{ "{:,.0f}".format(goal.target_amount / 1000) }}k{% endif %}
+                    </span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
     </div>
 
     <!-- Balance: wide row -->
@@ -92,12 +119,6 @@
                         <span class="font-semibold text-purple-400/80 tabular-nums">{{ "{:,.0f}".format(yearly_stats.savings).replace(',', ' ') }}</span>
                     </div>
                     {% endif %}
-                    <div class="flex justify-between text-xs pt-2 border-t border-dark-700/50">
-                        <span class="text-gray-300 font-semibold">Баланс</span>
-                        <span class="font-bold tabular-nums {{ 'text-green-400/80' if yearly_stats.balance >= 0 else 'text-red-400/80' }}">
-                            {{ "{:,.0f}".format(yearly_stats.balance).replace(',', ' ') }} ₽
-                        </span>
-                    </div>
                 </div>
             </div>
         </div>
