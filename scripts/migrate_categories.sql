@@ -33,6 +33,10 @@ UPDATE categories SET parent_id = 122 WHERE id IN (37, 61);
 -- Красота: Салоны, Косметолог
 UPDATE categories SET parent_id = 124 WHERE id IN (97, 101);
 
+-- 4. Исправить is_global для новых родительских категорий (если миграция применяется повторно)
+UPDATE categories SET is_global = 1 WHERE id IN (122, 123, 124, 125);
+UPDATE categories SET is_global = 1 WHERE type = 'finance' AND parent_id IS NULL AND is_global = 0;
+
 -- Проверка
 SELECT c.id, c.name, p.name as parent
 FROM categories c

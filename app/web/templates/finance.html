@@ -237,11 +237,13 @@
 (function () {
     const canvas = document.getElementById('finance-expense-chart');
     const legendEl = document.getElementById('finance-chart-legend');
+    const backBtn = document.getElementById('chart-back-btn');
+    const drillLabel = document.getElementById('chart-drill-label');
     if (!canvas || !legendEl || typeof Chart === 'undefined') return;
 
-    const labels = JSON.parse(canvas.dataset.chartLabels || '[]');
-    const amounts = JSON.parse(canvas.dataset.chartAmounts || '[]');
-    const total = parseFloat(canvas.dataset.chartTotal || '0') || 0;
+    const parentLabels = JSON.parse(canvas.dataset.chartLabels || '[]');
+    const parentAmounts = JSON.parse(canvas.dataset.chartAmounts || '[]');
+    const drillData = JSON.parse(canvas.dataset.drill || '{}');
 
     const COLORS = [
         '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#22c55e',
@@ -251,40 +253,101 @@
 
     const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
 
-    new Chart(canvas, {
-        type: 'doughnut',
-        data: { labels, datasets: [{ data: amounts,
-            backgroundColor: labels.map((_, i) => COLORS[i % COLORS.length]),
-            borderColor: '#1a1a2e', borderWidth: 2, hoverOffset: 6 }] },
-        options: {
-            responsive: true, maintainAspectRatio: true, cutout: '58%',
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    backgroundColor: '#1e1e3a', titleColor: '#e5e7eb', bodyColor: '#9ca3af',
-                    borderColor: '#3a3a5c', borderWidth: 1,
-                    callbacks: {
-                        label(ctx) {
-                            const v = ctx.parsed || 0;
-                            const pct = total ? ((v / total) * 100).toFixed(1) : '0';
-                            return ' ' + fmt(v) + ' ₽ (' + pct + '%)';
+    let chart;
+    let currentParent = null;  // null = top level
+
+    function buildChart(labels, amounts, total) {
+        if (chart) chart.destroy();
+
+        chart = new Chart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels,
+                datasets: [{
+                    data: amounts,
+                    backgroundColor: labels.map((_, i) => COLORS[i % COLORS.length]),
+                    borderColor: '#1a1a2e',
+                    borderWidth: 2,
+                    hoverOffset: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                cutout: '58%',
+                onClick: (event, elements) => {
+                    if (elements.length === 0) return;
+                    const idx = elements[0].index;
+                    drillDown(labels[idx], amounts[idx]);
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1e1e3a',
+                        titleColor: '#e5e7eb',
+                        bodyColor: '#9ca3af',
+                        borderColor: '#3a3a5c',
+                        borderWidth: 1,
+                        callbacks: {
+                            label(ctx) {
+                                const v = ctx.parsed || 0;
+                                const pct = total ? ((v / total) * 100).toFixed(1) : '0';
+                                return ' ' + fmt(v) + ' ₽ (' + pct + '%)';
+                            }
                         }
                     }
                 }
             }
-        }
-    });
+        });
+    }
 
-    legendEl.innerHTML = labels.map((name, i) => {
-        const amount = amounts[i] || 0;
-        const pct = total ? ((amount / total) * 100).toFixed(1) : '0';
-        const color = COLORS[i % COLORS.length];
-        return '<li class="flex items-center justify-between gap-2 text-[10px]">'
-            + '<span class="flex items-center gap-2 min-w-0">'
-            + '<span class="w-2 h-2 rounded-full shrink-0" style="background:' + color + '"></span>'
-            + '<span class="text-gray-300 truncate">' + name + '</span></span>'
-            + '<span class="text-gray-500 shrink-0 tabular-nums">' + fmt(amount) + ' \u00b7 ' + pct + '%</span></li>';
-    }).join('');
+    function renderLegend(labels, amounts, total) {
+        legendEl.innerHTML = labels.map((name, i) => {
+            const amount = amounts[i] || 0;
+            const pct = total ? ((amount / total) * 100).toFixed(1) : '0';
+            const color = COLORS[i % COLORS.length];
+            return '<li class="flex items-center justify-between gap-2 text-[10px] cursor-pointer hover:bg-dark-700/30 rounded px-1 py-0.5 transition-colors"'
+                + ' onclick="document.__drillDown(\'' + name.replace(/'/g, "\\'") + '\')">'
+                + '<span class="flex items-center gap-2 min-w-0">'
+                + '<span class="w-2 h-2 rounded-full shrink-0" style="background:' + color + '"></span>'
+                + '<span class="text-gray-300 truncate">' + name + '</span></span>'
+                + '<span class="text-gray-500 shrink-0 tabular-nums">' + fmt(amount) + ' \u00b7 ' + pct + '%</span></li>';
+        }).join('');
+    }
+
+    function drillDown(name) {
+        const data = drillData[name];
+        if (!data || !data.sub_items || data.sub_items.length <= 1) return;
+
+        currentParent = name;
+        const subs = data.sub_items;
+        const labels = subs.map(s => s.name);
+        const amounts = subs.map(s => s.amount);
+        const total = amounts.reduce((a, b) => a + b, 0);
+
+        buildChart(labels, amounts, total);
+        renderLegend(labels, amounts, total);
+        drillLabel.querySelector('span').textContent = name;
+        drillLabel.classList.remove('hidden');
+        backBtn.classList.remove('hidden');
+    }
+
+    // Expose for legend clicks
+    document.__drillDown = drillDown;
+
+    window.drillUp = function () {
+        currentParent = null;
+        const total = parentAmounts.reduce((a, b) => a + b, 0);
+        buildChart(parentLabels, parentAmounts, total);
+        renderLegend(parentLabels, parentAmounts, total);
+        drillLabel.classList.add('hidden');
+        backBtn.classList.add('hidden');
+    };
+
+    // Initial render
+    const total = parentAmounts.reduce((a, b) => a + b, 0);
+    buildChart(parentLabels, parentAmounts, total);
+    renderLegend(parentLabels, parentAmounts, total);
 })();
 </script>
 {% endif %}
