@@ -38,7 +38,12 @@ UPDATE categories SET parent_id = 124 WHERE id IN (97, 101);
 UPDATE categories SET is_global = 1 WHERE id IN (122, 123, 124, 125);
 UPDATE categories SET is_global = 1 WHERE type = 'finance' AND parent_id IS NULL AND is_global = 0;
 
--- 5. Убрать Авито из Доходов и удалить (пустая категория)
+-- 5. Метро → Общественный (это транспорт, не магазин)
+INSERT OR IGNORE INTO categories (id, name, type, parent_id) VALUES (138, 'Общественный', 'finance', 47);  -- Транспорт
+UPDATE transactions SET category_id = 138 WHERE category_id = 71;
+DELETE FROM categories WHERE id = 71;
+
+-- 6. Убрать Авито из Доходов и удалить (пустая категория)
 UPDATE categories SET parent_id = NULL WHERE id = 93;
 UPDATE transactions SET category_id = 137 WHERE category_id = 93;
 DELETE FROM categories WHERE id = 93 AND NOT EXISTS (SELECT 1 FROM transactions WHERE category_id = 93);
