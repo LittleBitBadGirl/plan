@@ -61,6 +61,11 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         )
         available_months = available_months_res.all()
         
+        # Извлекаем уникальные года
+        available_years = sorted(set(int(row.year) for row in available_months), reverse=True)
+        if not available_years:
+            available_years = [today.year]
+        
         month_tabs = []
         for row in available_months:
             y, m = int(row.year), int(row.month)
@@ -69,8 +74,17 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         if not month_tabs:
             month_tabs.append({"month": today.month, "year": today.year, "name": f"{MONTH_NAMES[today.month]} {today.year}"})
 
-        view_month = month or month_tabs[0]["month"]
-        view_year = year or month_tabs[0]["year"]
+        # Выбранный год (из параметра или максимальный доступный)
+        selected_year = year or max(available_years)
+        # Месяцы только для выбранного года, в прямом порядке
+        month_tabs_for_year = [t for t in month_tabs if t["year"] == selected_year]
+        month_tabs_for_year.sort(key=lambda t: t["month"])
+        
+        if not month_tabs_for_year:
+            month_tabs_for_year = [{"month": today.month, "year": selected_year, "name": f"{MONTH_NAMES[today.month]} {selected_year}"}]
+
+        view_month = month or month_tabs_for_year[-1]["month"]
+        view_year = selected_year
         
         start_date = dt.date(view_year, view_month, 1)
         if view_month == 12:
@@ -217,7 +231,9 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
             "expense": yearly_expense, 
             "savings": yearly_savings
         },
-        "month_tabs": month_tabs,
+        "month_tabs": month_tabs_for_year,
+        "available_years": available_years,
+        "selected_year": selected_year,
         "current_month": view_month,
         "current_year": view_year,
         "fin_categories": fin_categories,

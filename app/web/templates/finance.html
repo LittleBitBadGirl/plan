@@ -125,9 +125,19 @@
         </div>
     </div>
 
+    <!-- Year selector -->
+    <div class="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+        {% for y in available_years %}
+        <a href="/finance?year={{ y }}&month={{ current_month }}"
+           class="px-3 py-1.5 rounded-lg text-[10px] font-medium transition-all duration-200 border
+                  {{ 'bg-accent/10 border-accent/30 text-accent' if y == selected_year else 'bg-dark-800 border-dark-600/50 text-gray-400 hover:border-dark-500 hover:text-gray-300' }}">
+            {{ y }}
+        </a>
+        {% endfor %}
+    </div>
     <!-- Month Tabs -->
     <div class="flex gap-1.5 mb-6 overflow-x-auto pb-2 scrollbar-hide">
-        {% for tab in month_tabs|reverse %}
+        {% for tab in month_tabs %}
         <a href="/finance?month={{ tab.month }}&year={{ tab.year }}"
            class="px-4 py-2 rounded-lg text-[10px] font-medium whitespace-nowrap transition-all duration-200 border
                   {{ 'bg-accent/10 border-accent/30 text-accent' if tab.month == current_month and tab.year == current_year else 'bg-dark-800 border-dark-600/50 text-gray-400 hover:border-dark-500 hover:text-gray-300' }}">
