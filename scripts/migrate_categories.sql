@@ -48,7 +48,17 @@ UPDATE categories SET parent_id = NULL WHERE id = 93;
 UPDATE transactions SET category_id = 137 WHERE category_id = 93;
 DELETE FROM categories WHERE id = 93 AND NOT EXISTS (SELECT 1 FROM transactions WHERE category_id = 93);
 
--- 7. Исправить is_global=NULL → 0 для всех подкатегорий
+-- 7. Переименования и правки
+UPDATE categories SET name = 'Быт' WHERE id = 91;
+UPDATE categories SET name = 'Развлечения' WHERE id = 114;
+UPDATE categories SET name = 'Досуг' WHERE id = 134;
+
+-- 9. Новые подкатегории (Ремонт, Штрафы, Обслуживание)
+INSERT OR IGNORE INTO categories (id, name, type, parent_id) VALUES (139, 'Ремонт', 'finance', 106);
+INSERT OR IGNORE INTO categories (id, name, type, parent_id) VALUES (140, 'Штрафы', 'finance', 47);
+INSERT OR IGNORE INTO categories (id, name, type, parent_id) VALUES (141, 'Обслуживание', 'finance', 47);
+
+-- 10. Исправить is_global=NULL → 0
 UPDATE categories SET is_global = 0 WHERE type = 'finance' AND parent_id IS NOT NULL AND (is_global IS NULL OR is_global != 0);
 
 -- Проверка
