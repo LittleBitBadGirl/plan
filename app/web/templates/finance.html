@@ -196,7 +196,7 @@
                                 class="hover:bg-dark-700/20 transition-colors duration-150 group"
                                 x-show="'{{ tx.date.strftime('%d') }} {{ tx.description|lower }} {{ (tx.category.name)|lower if tx.category else '' }}'.includes(search.toLowerCase())">
                                 <td class="px-2 py-2 text-[11px] text-gray-500 font-mono tabular-nums w-6 align-top">{{ tx.date.strftime('%d') }}</td>
-                                <td class="px-2 py-2 text-xs text-gray-200 leading-tight">
+                                <td class="px-2 py-2 text-xs text-gray-200 leading-tight break-words">
                                     <div class="text-gray-200">{{ tx.description or '—' }}</div>
                                     <div class="text-[8px] text-gray-500 mt-0.5">{{ (tx.category.name if tx.category else '—') }}</div>
                                 </td>
@@ -239,7 +239,7 @@
                                         </div>
                                     </div>
                                 </td>
-                                <td class="px-2 py-2 text-xs font-semibold text-right tabular-nums align-top {{ 'text-green-400' if tx.amount > 0 else 'text-red-400' }}">
+                                <td class="px-2 py-2 text-xs font-semibold text-right tabular-nums align-top whitespace-nowrap {{ 'text-green-400' if tx.amount > 0 else 'text-red-400' }}">
                                     {{ "{:,.0f}".format(tx.amount).replace(',', ' ') }}
                                 </td>
                             </tr>
