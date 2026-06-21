@@ -48,6 +48,9 @@ UPDATE categories SET parent_id = NULL WHERE id = 93;
 UPDATE transactions SET category_id = 137 WHERE category_id = 93;
 DELETE FROM categories WHERE id = 93 AND NOT EXISTS (SELECT 1 FROM transactions WHERE category_id = 93);
 
+-- 7. Исправить is_global=NULL → 0 для всех подкатегорий
+UPDATE categories SET is_global = 0 WHERE type = 'finance' AND parent_id IS NOT NULL AND (is_global IS NULL OR is_global != 0);
+
 -- Проверка
 SELECT c.id, c.name, p.name as parent
 FROM categories c
