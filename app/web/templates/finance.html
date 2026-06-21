@@ -24,53 +24,25 @@
         </div>
     </div>
 
-    <!-- Investments + Goals: desktop flex-row, mobile stacked -->
-    <div class="flex flex-col md:flex-row gap-3 mb-4" x-data="{ showAddModal: false }">
-        <!-- Investments: wide block (compact rows) -->
-        <div class="md:flex-1 bg-dark-800/60 rounded-2xl border border-dark-600/50 p-4">
-            <p class="text-[9px] text-gray-500 tracking-wide mb-3">Инвестиции</p>
-            <div class="space-y-2">
-                {% for goal in investment_goals %}
-                <div class="flex items-center gap-3 hover:bg-dark-700/30 rounded-lg px-2 py-1.5 -mx-2 transition-colors duration-150">
-                    <span class="text-[11px] text-gray-400 w-24 md:w-28 shrink-0 truncate">{{ goal.name }}</span>
-                    <span class="text-sm font-bold text-white tabular-nums text-right shrink-0 min-w-[4.5rem]">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</span>
-                    {% if goal.target_amount > 0 %}
-                    {% set pct = (goal.current_amount / goal.target_amount * 100) %}
-                    <!-- Desktop: progress bar + % + target -->
-                    <div class="hidden md:flex flex-1 items-center gap-3">
-                        <div class="flex-1 bg-dark-700/50 rounded-full h-1.5 overflow-hidden">
-                            <div class="bg-emerald-500 h-full rounded-full transition-all duration-500" style="width: {{ pct }}%"></div>
-                        </div>
-                        <span class="text-[10px] text-emerald-400 w-12 text-right tabular-nums shrink-0">{{ pct|round(1) }}%</span>
-                        <span class="text-[9px] text-gray-600 w-14 text-right shrink-0">цель {{ "{:,.1f}".format(goal.target_amount / 1000000) }}M</span>
-                    </div>
-                    <!-- Mobile: just % -->
-                    <span class="md:hidden text-[10px] text-emerald-400 tabular-nums ml-auto">{{ pct|round(1) }}%</span>
-                    {% endif %}
-                </div>
-                {% endfor %}
+    <!-- Goals: single row of 5 -->
+    <div class="grid grid-cols-3 md:grid-cols-5 gap-3 mb-4" x-data="{ showAddModal: false }">
+        {% for goal in goals %}
+        <div class="bg-dark-800/80 rounded-xl px-3.5 py-3 border border-dark-600/50 hover:border-dark-500/80 hover:bg-dark-800 transition-all duration-200 hover:-translate-y-0.5">
+            <p class="text-[9px] text-gray-500 tracking-wide mb-2 truncate">{{ goal.name }}</p>
+            <p class="text-lg font-bold text-white mb-2.5 tracking-tight">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</p>
+            {% set pct = (goal.current_amount / goal.target_amount * 100) if goal.target_amount > 0 else 0 %}
+            <div class="w-full bg-dark-700/50 rounded-full h-1 mb-2 overflow-hidden">
+                <div class="bg-blue-500 h-full rounded-full transition-all duration-500" style="width: {{ pct }}%"></div>
+            </div>
+            <div class="flex justify-between items-baseline">
+                <span class="text-[10px] font-semibold text-blue-400">{{ pct|round(1) }}%</span>
+                <span class="text-[9px] text-gray-600">
+                    цель {% if goal.target_amount >= 1000000 %}{{ "{:,.1f}".format(goal.target_amount / 1000000) }}M
+                    {% else %}{{ "{:,.0f}".format(goal.target_amount / 1000) }}k{% endif %}
+                </span>
             </div>
         </div>
-        <!-- Other goals: 2x2 grid -->
-        <div class="grid grid-cols-2 gap-3 md:w-[380px]">
-            {% for goal in other_goals %}
-            <div class="bg-dark-800/80 rounded-xl px-3.5 py-3 border border-dark-600/50 hover:border-dark-500/80 hover:bg-dark-800 transition-all duration-200 hover:-translate-y-0.5">
-                <p class="text-[9px] text-gray-500 tracking-wide mb-2 truncate">{{ goal.name }}</p>
-                <p class="text-lg font-bold text-white mb-2.5 tracking-tight">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</p>
-                {% set pct = (goal.current_amount / goal.target_amount * 100) if goal.target_amount > 0 else 0 %}
-                <div class="w-full bg-dark-700/50 rounded-full h-1 mb-2 overflow-hidden">
-                    <div class="bg-blue-500 h-full rounded-full transition-all duration-500" style="width: {{ pct }}%"></div>
-                </div>
-                <div class="flex justify-between items-baseline">
-                    <span class="text-[10px] font-semibold text-blue-400">{{ pct|round(1) }}%</span>
-                    <span class="text-[9px] text-gray-600">
-                        цель {% if goal.target_amount >= 1000000 %}{{ "{:,.1f}".format(goal.target_amount / 1000000) }}M
-                        {% else %}{{ "{:,.0f}".format(goal.target_amount / 1000) }}k{% endif %}
-                    </span>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
+        {% endfor %}
     </div>
 
     <!-- Balance: wide row -->
@@ -120,24 +92,20 @@
                         <span class="font-semibold text-purple-400/80 tabular-nums">{{ "{:,.0f}".format(yearly_stats.savings).replace(',', ' ') }}</span>
                     </div>
                     {% endif %}
+                    <div class="flex justify-between text-xs pt-2 border-t border-dark-700/50">
+                        <span class="text-gray-300 font-semibold">Баланс</span>
+                        <span class="font-bold tabular-nums {{ 'text-green-400/80' if yearly_stats.balance >= 0 else 'text-red-400/80' }}">
+                            {{ "{:,.0f}".format(yearly_stats.balance).replace(',', ' ') }} ₽
+                        </span>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Year selector -->
-    <div class="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
-        {% for y in available_years %}
-        <a href="/finance?year={{ y }}&month={{ current_month }}"
-           class="px-3 py-1.5 rounded-lg text-[10px] font-medium transition-all duration-200 border
-                  {{ 'bg-accent/10 border-accent/30 text-accent' if y == selected_year else 'bg-dark-800 border-dark-600/50 text-gray-400 hover:border-dark-500 hover:text-gray-300' }}">
-            {{ y }}
-        </a>
-        {% endfor %}
-    </div>
     <!-- Month Tabs -->
     <div class="flex gap-1.5 mb-6 overflow-x-auto pb-2 scrollbar-hide">
-        {% for tab in month_tabs %}
+        {% for tab in month_tabs|reverse %}
         <a href="/finance?month={{ tab.month }}&year={{ tab.year }}"
            class="px-4 py-2 rounded-lg text-[10px] font-medium whitespace-nowrap transition-all duration-200 border
                   {{ 'bg-accent/10 border-accent/30 text-accent' if tab.month == current_month and tab.year == current_year else 'bg-dark-800 border-dark-600/50 text-gray-400 hover:border-dark-500 hover:text-gray-300' }}">
@@ -155,14 +123,14 @@
                     <input type="text" x-model="search" placeholder="Поиск..." 
                            class="bg-dark-900/80 border border-dark-600 rounded-lg px-2.5 py-1 text-[10px] text-white placeholder-gray-600 focus:outline-none focus:border-accent/50 w-36 transition-all duration-200">
                 </div>
-                <div class="overflow-y-auto flex-1">
+                <div class="overflow-y-auto overflow-x-auto flex-1">
                     <table class="w-full text-left border-collapse">
                         <thead class="sticky top-0 z-10">
                             <tr class="bg-dark-800/95 backdrop-blur-sm border-b border-dark-600/50 text-[9px] font-medium text-gray-500 tracking-wide">
-                                <th class="px-2 py-3 w-6">#</th>
-                                <th class="px-2 py-3">Описание</th>
-                                <th class="px-2 py-3 hidden md:table-cell">Категория</th>
-                                <th class="px-2 py-3 text-right">Сумма</th>
+                                <th class="px-4 py-3">Дата</th>
+                                <th class="px-4 py-3">Описание</th>
+                                <th class="px-4 py-3">Категория</th>
+                                <th class="px-4 py-3 text-right">Сумма</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-dark-700/30">
@@ -171,6 +139,7 @@
                                     editing: false,
                                     catId: '{{ tx.category_id or '' }}',
                                     catName: '{{ tx.category.name if tx.category else 'Прочее' }}',
+                                    catParent: '{{ tx.category.parent.name if tx.category and tx.category.parent else '' }}',
                                     applyAll: false,
                                     saving: false,
                                     async save() {
@@ -186,6 +155,7 @@
                                         });
                                         const data = await r.json();
                                         this.catName = data.category_name;
+                                        this.catParent = data.category_parent || '';
                                         if (data.updated > 1) {
                                             this.catName += ' \u2713\u00d7' + data.updated;
                                         }
@@ -194,18 +164,20 @@
                                     }
                                 }"
                                 class="hover:bg-dark-700/20 transition-colors duration-150 group"
-                                x-show="'{{ tx.date.strftime('%d') }} {{ tx.description|lower }} {{ (tx.category.name)|lower if tx.category else '' }}'.includes(search.toLowerCase())">
-                                <td class="px-2 py-2 text-[11px] text-gray-500 font-mono tabular-nums w-6 align-top">{{ tx.date.strftime('%d') }}</td>
-                                <td class="px-2 py-2 text-xs text-gray-200 leading-tight break-words">
-                                    <div class="text-gray-200">{{ tx.description or '—' }}</div>
-                                    <div class="text-[8px] text-gray-500 mt-0.5">{{ (tx.category.name if tx.category else '—') }}</div>
-                                </td>
+                                x-show="'{{ tx.date.strftime('%d.%m.%y') }} {{ tx.description|lower }} {{ (tx.category.name)|lower if tx.category else '' }}'.includes(search.toLowerCase())">
+                                <td class="px-4 py-3 text-[11px] text-gray-500 font-mono tabular-nums">{{ tx.date.strftime('%d.%m.%y') }}</td>
+                                <td class="px-4 py-3 text-xs text-gray-200">{{ tx.description or '—' }}</td>
 
-                                <td class="px-3 py-3 hidden md:table-cell">
+                                <td class="px-4 py-3">
                                     <span x-show="!editing"
                                           @click="editing = true"
-                                          x-text="catName"
-                                          class="px-2 py-0.5 rounded-md bg-dark-700/50 hover:bg-dark-600/50 text-[9px] text-gray-400 cursor-pointer transition-all duration-150 border border-transparent hover:border-dark-500">
+                                          class="px-2 py-0.5 rounded-md bg-dark-700/50 hover:bg-dark-600/50 text-[9px] text-gray-400 cursor-pointer transition-all duration-150 border border-transparent hover:border-dark-500 inline-flex items-center gap-1">
+                                        <template x-if="catParent">
+                                            <span><span x-text="catParent" class="text-gray-500"></span> <span class="text-gray-600">→</span> <span x-text="catName" class="text-gray-300"></span></span>
+                                        </template>
+                                        <template x-if="!catParent">
+                                            <span x-text="catName"></span>
+                                        </template>
                                     </span>
                                     <div x-show="editing" x-cloak class="space-y-1.5 min-w-[140px]">
                                         <select x-model="catId"
@@ -239,7 +211,7 @@
                                         </div>
                                     </div>
                                 </td>
-                                <td class="px-2 py-2 text-xs font-semibold text-right tabular-nums align-top whitespace-nowrap {{ 'text-green-400' if tx.amount > 0 else 'text-red-400' }}">
+                                <td class="px-4 py-3 text-xs font-semibold text-right tabular-nums {{ 'text-green-400' if tx.amount > 0 else 'text-red-400' }}">
                                     {{ "{:,.0f}".format(tx.amount).replace(',', ' ') }}
                                 </td>
                             </tr>
@@ -251,7 +223,7 @@
         </div>
 
         <!-- Right Sidebar (Chart only) -->
-        <div class="space-y-6 order-first lg:order-none">
+        <div class="space-y-6">
             {% include "partials/finance_expense_chart.html" %}
         </div>
     </div>

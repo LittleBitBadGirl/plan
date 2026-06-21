@@ -61,30 +61,16 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         )
         available_months = available_months_res.all()
         
-        # Извлекаем уникальные года
-        available_years = sorted(set(int(row.year) for row in available_months), reverse=True)
-        if not available_years:
-            available_years = [today.year]
-        
         month_tabs = []
         for row in available_months:
             y, m = int(row.year), int(row.month)
-            month_tabs.append({"month": m, "year": y, "name": f"{MONTH_NAMES[m]}"})
+            month_tabs.append({"month": m, "year": y, "name": f"{MONTH_NAMES[m]} {y}"})
             
         if not month_tabs:
-            month_tabs.append({"month": today.month, "year": today.year, "name": f"{MONTH_NAMES[today.month]}"})
+            month_tabs.append({"month": today.month, "year": today.year, "name": f"{MONTH_NAMES[today.month]} {today.year}"})
 
-        # Выбранный год (из параметра или максимальный доступный)
-        selected_year = year or max(available_years)
-        # Месяцы только для выбранного года, в прямом порядке
-        month_tabs_for_year = [t for t in month_tabs if t["year"] == selected_year]
-        month_tabs_for_year.sort(key=lambda t: t["month"])
-        
-        if not month_tabs_for_year:
-            month_tabs_for_year = [{"month": today.month, "year": selected_year, "name": f"{MONTH_NAMES[today.month]}"}]
-
-        view_month = month or month_tabs_for_year[-1]["month"]
-        view_year = selected_year
+        view_month = month or month_tabs[0]["month"]
+        view_year = year or month_tabs[0]["year"]
         
         start_date = dt.date(view_year, view_month, 1)
         if view_month == 12:
@@ -169,10 +155,6 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         # ЦЕЛИ
         goals_res = await db.execute(select(FinancialGoal))
         goals = goals_res.scalars().all()
-        # Разделение: инвестиционные счета (ИИС, брокерские) vs обычные цели
-        INVESTMENT_GOAL_IDS = [1, 6, 7]  # ИИС, Брокерский 1, Брокерский 2
-        investment_goals = [g for g in goals if g.id in INVESTMENT_GOAL_IDS]
-        other_goals = [g for g in goals if g.id not in INVESTMENT_GOAL_IDS]
         
         # ИТОГИ ГОДА (для view_year)
         year_start = dt.date(view_year, 1, 1)
@@ -224,16 +206,13 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         "category_summary": category_summary,
         "chart_expense_total": chart_expense_total,
         "goals": goals,
-        "investment_goals": investment_goals,
-        "other_goals": other_goals,
         "yearly_stats": {
             "income": yearly_income, 
             "expense": yearly_expense, 
-            "savings": yearly_savings
+            "savings": yearly_savings,
+            "balance": yearly_income - yearly_expense - yearly_savings
         },
-        "month_tabs": month_tabs_for_year,
-        "available_years": available_years,
-        "selected_year": selected_year,
+        "month_tabs": month_tabs,
         "current_month": view_month,
         "current_year": view_year,
         "fin_categories": fin_categories,
@@ -313,10 +292,15 @@ async def update_transaction_category(
         await db.commit()
 
         cat_name = "Прочее"
+        cat_parent = ""
         if cat_id:
-            cat_res = await db.execute(select(Category).where(Category.id == cat_id))
+            cat_res = await db.execute(
+                select(Category).options(selectinload(Category.parent)).where(Category.id == cat_id)
+            )
             cat = cat_res.scalar_one_or_none()
             if cat:
                 cat_name = cat.name
+                if cat.parent:
+                    cat_parent = cat.parent.name
 
-    return JSONResponse({"category_name": cat_name, "updated": updated_count})
+    return JSONResponse({"category_name": cat_name, "category_parent": cat_parent, "updated": updated_count})
