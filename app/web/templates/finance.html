@@ -26,25 +26,26 @@
 
     <!-- Investments + Goals: desktop flex-row, mobile stacked -->
     <div class="flex flex-col md:flex-row gap-3 mb-4" x-data="{ showAddModal: false }">
-        <!-- Investments: wide block (3 accounts) -->
+        <!-- Investments: wide block (compact rows) -->
         <div class="md:flex-1 bg-dark-800/60 rounded-2xl border border-dark-600/50 p-4">
             <p class="text-[9px] text-gray-500 tracking-wide mb-3">Инвестиции</p>
-            <div class="grid grid-cols-3 gap-3">
+            <div class="space-y-2">
                 {% for goal in investment_goals %}
-                <div class="bg-dark-800/80 rounded-xl px-3.5 py-3 border border-dark-600/50 hover:border-dark-500/80 hover:bg-dark-800 transition-all duration-200 hover:-translate-y-0.5">
-                    <p class="text-[9px] text-gray-500 tracking-wide mb-2 truncate">{{ goal.name }}</p>
-                    <p class="text-lg font-bold text-white mb-2.5 tracking-tight">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</p>
+                <div class="flex items-center gap-3 hover:bg-dark-700/30 rounded-lg px-2 py-1.5 -mx-2 transition-colors duration-150">
+                    <span class="text-[11px] text-gray-400 w-24 md:w-28 shrink-0 truncate">{{ goal.name }}</span>
+                    <span class="text-sm font-bold text-white tabular-nums text-right shrink-0 min-w-[4.5rem]">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</span>
                     {% if goal.target_amount > 0 %}
                     {% set pct = (goal.current_amount / goal.target_amount * 100) %}
-                    <div class="w-full bg-dark-700/50 rounded-full h-1 mb-2 overflow-hidden">
-                        <div class="bg-emerald-500 h-full rounded-full transition-all duration-500" style="width: {{ pct }}%"></div>
+                    <!-- Desktop: progress bar + % + target -->
+                    <div class="hidden md:flex flex-1 items-center gap-3">
+                        <div class="flex-1 bg-dark-700/50 rounded-full h-1.5 overflow-hidden">
+                            <div class="bg-emerald-500 h-full rounded-full transition-all duration-500" style="width: {{ pct }}%"></div>
+                        </div>
+                        <span class="text-[10px] text-emerald-400 w-12 text-right tabular-nums shrink-0">{{ pct|round(1) }}%</span>
+                        <span class="text-[9px] text-gray-600 w-14 text-right shrink-0">цель {{ "{:,.1f}".format(goal.target_amount / 1000000) }}M</span>
                     </div>
-                    <div class="flex justify-between items-baseline">
-                        <span class="text-[10px] font-semibold text-emerald-400">{{ pct|round(1) }}%</span>
-                        <span class="text-[9px] text-gray-600">цель {{ "{:,.1f}".format(goal.target_amount / 1000000) }}M</span>
-                    </div>
-                    {% else %}
-                    <div class="text-[10px] text-gray-600">инфо</div>
+                    <!-- Mobile: just % -->
+                    <span class="md:hidden text-[10px] text-emerald-400 tabular-nums ml-auto">{{ pct|round(1) }}%</span>
                     {% endif %}
                 </div>
                 {% endfor %}
