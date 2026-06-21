@@ -14,6 +14,7 @@ INSERT OR IGNORE INTO categories (id, name, type, parent_id) VALUES (128, 'Кл�
 INSERT OR IGNORE INTO categories (id, name, type, parent_id) VALUES (129, 'Премии', 'finance', 125);     -- Доходы
 INSERT OR IGNORE INTO categories (id, name, type, parent_id) VALUES (130, 'Телефон', 'finance', 123);    -- Связь
 INSERT OR IGNORE INTO categories (id, name, type, parent_id) VALUES (131, 'Озон / ВБ', 'finance', 43);   -- Вещи
+INSERT OR IGNORE INTO categories (id, name, type, parent_id) VALUES (137, 'Магазины', 'finance', 43);     -- Вещи
 INSERT OR IGNORE INTO categories (id, name, type, parent_id) VALUES (132, 'Мотоцикл', 'finance', 47);    -- Транспорт
 INSERT OR IGNORE INTO categories (id, name, type, parent_id) VALUES (133, 'Вещи', 'finance', 107);       -- Даня
 INSERT OR IGNORE INTO categories (id, name, type, parent_id) VALUES (134, 'Развлечения', 'finance', 107);-- Даня
