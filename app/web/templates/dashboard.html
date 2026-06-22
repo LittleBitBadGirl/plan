@@ -36,6 +36,15 @@
     .period-cell--period:hover {
         background: rgba(225, 29, 72, 0.9);
     }
+    .period-cell--spotting {
+        background: rgba(217, 119, 6, 0.55);
+        border-color: rgba(251, 191, 36, 0.4);
+        color: #fcd34d;
+        cursor: pointer;
+    }
+    .period-cell--spotting:hover {
+        background: rgba(217, 119, 6, 0.7);
+    }
     .period-cell--pain {
         background: rgba(190, 18, 60, 0.9);
         border-color: rgba(253, 164, 175, 0.8);
@@ -260,6 +269,7 @@
                         class="period-cell
                                {% if day.state == 'period' %}period-cell--period
                                {% elif day.state == 'pain' %}period-cell--pain
+                               {% elif day.state == 'spotting' %}period-cell--spotting
                                {% elif day.state == 'future' %}period-cell--future
                                {% else %}period-cell--default{% endif %}
                                {% if day.is_today %}period-cell--today{% endif %}">
@@ -281,7 +291,7 @@
                 </div>
                 {% endif %}
 
-                <p class="text-[8px] text-gray-700 text-center mt-2.5">тап: период → боль → снять</p>
+                <p class="text-[8px] text-gray-700 text-center mt-2.5">тап: мазня → мес. → боль → снять</p>
             </div>
         </div>
 
@@ -382,7 +392,7 @@ document.body.addEventListener('htmx:afterRequest', function (evt) {
 });
 
 function applyPeriodCellState(btn, state) {
-    btn.classList.remove('period-cell--default', 'period-cell--period', 'period-cell--pain', 'period-cell--future');
+    btn.classList.remove('period-cell--default', 'period-cell--period', 'period-cell--pain', 'period-cell--spotting', 'period-cell--future');
     const dot = btn.querySelector('.period-pain-dot');
     if (state === 'period') {
         btn.classList.add('period-cell--period');
@@ -390,6 +400,9 @@ function applyPeriodCellState(btn, state) {
     } else if (state === 'pain') {
         btn.classList.add('period-cell--pain');
         if (dot) dot.style.opacity = '1';
+    } else if (state === 'spotting') {
+        btn.classList.add('period-cell--spotting');
+        if (dot) dot.style.opacity = '0';
     } else {
         btn.classList.add('period-cell--default');
         if (dot) dot.style.opacity = '0';
@@ -400,7 +413,7 @@ function applyPeriodCellState(btn, state) {
 async function togglePeriodDay(dateStr, btn) {
     try {
         const card = document.getElementById('period-tracker-card');
-        const markedBefore = card.querySelectorAll('[data-state="period"], [data-state="pain"]').length;
+        const markedBefore = card.querySelectorAll('[data-state="spotting"], [data-state="period"], [data-state="pain"]').length;
 
         const resp = await fetch('/api/period/toggle', {
             method: 'POST',
@@ -410,7 +423,7 @@ async function togglePeriodDay(dateStr, btn) {
         const data = await resp.json();
         applyPeriodCellState(btn, data.state);
 
-        if (markedBefore === 0 && data.state === 'period') {
+        if (markedBefore === 0 && (data.state === 'period' || data.state === 'spotting')) {
             setTimeout(() => window.location.reload(), 350);
         }
     } catch (e) {

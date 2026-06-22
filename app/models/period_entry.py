@@ -9,4 +9,5 @@ class PeriodEntry(Base):
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, nullable=False, unique=True, index=True)
     has_pain = Column(Boolean, default=False, nullable=False)
+    is_spotting = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

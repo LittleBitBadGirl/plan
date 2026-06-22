@@ -70,7 +70,8 @@ def _period_phase(day: int, avg_cycle: int, avg_period: int) -> str:
 
 
 def _build_month_calendar(today: date, period_map: dict) -> tuple[str, int, list]:
-    """Обычный календарь текущего месяца — цифры = числа месяца."""
+    """Обычный календарь текущего месяца — цифры = числа месяца.
+    period_map: {date: (has_pain, is_spotting)} — оба bool."""
     import calendar as _cal
 
     year, month = today.year, today.month
@@ -82,7 +83,13 @@ def _build_month_calendar(today: date, period_map: dict) -> tuple[str, int, list
     for day_num in range(1, days_in_month + 1):
         d = date(year, month, day_num)
         if d in period_map:
-            state = "pain" if period_map[d] else "period"
+            has_pain, is_spotting = period_map[d]
+            if has_pain:
+                state = "pain"
+            elif is_spotting:
+                state = "spotting"
+            else:
+                state = "period"
         elif d > today:
             state = "future"
         else:
@@ -102,8 +109,11 @@ def compute_period_data(entries, today: date) -> dict:
     """
     entries: list of PeriodEntry objects.
     Returns context dict for the dashboard period tracker card.
+
+    Spotting days (is_spotting=True) are tracked but excluded from avg_period.
+    Cycle starts from the first non-spotting day in each group.
     """
-    period_map = {e.date: e.has_pain for e in entries} if entries else {}
+    period_map = {e.date: (e.has_pain, e.is_spotting) for e in entries} if entries else {}
 
     if not entries:
         month_label, start_weekday, calendar_days = _build_month_calendar(today, period_map)
@@ -124,6 +134,7 @@ def compute_period_data(entries, today: date) -> dict:
 
     sorted_entries = sorted(entries, key=lambda e: e.date)
 
+    # Group consecutive entries (gap ≤ 2 days) into cycles
     cycles: list[list] = []
     group = [sorted_entries[0]]
     for entry in sorted_entries[1:]:
@@ -134,14 +145,27 @@ def compute_period_data(entries, today: date) -> dict:
             group = [entry]
     cycles.append(group)
 
-    cycle_starts = [g[0].date for g in cycles]
+    # Cycle starts = first NON-spotting day in each group
+    cycle_starts = []
+    for g in cycles:
+        for e in g:
+            if not e.is_spotting:
+                cycle_starts.append(e.date)
+                break
+        else:
+            # All days are spotting — fall back to first day of group
+            cycle_starts.append(g[0].date)
+
     cycle_lengths = [
         (cycle_starts[i + 1] - cycle_starts[i]).days
         for i in range(len(cycle_starts) - 1)
     ]
 
+    # avg_period = mean of non-spotting days per cycle
+    period_day_counts = [sum(1 for e in g if not e.is_spotting) for g in cycles]
     avg_cycle = round(mean(cycle_lengths)) if cycle_lengths else 28
-    avg_period = max(1, round(mean(len(g) for g in cycles)))
+    avg_period = max(1, round(mean(period_day_counts))) if period_day_counts else 5
+
     last_start = cycle_starts[-1]
     current_day = (today - last_start).days + 1
     current_phase = _period_phase(current_day, avg_cycle, avg_period)
@@ -153,12 +177,17 @@ def compute_period_data(entries, today: date) -> dict:
     for i, grp in enumerate(cycles):
         cl = cycle_lengths[i] if i < len(cycle_lengths) else None
         pain_count = sum(1 for e in grp if e.has_pain)
+        spotting_count = sum(1 for e in grp if e.is_spotting)
+        full_period_days = sum(1 for e in grp if not e.is_spotting)
         cycles_history.append({
             "num": i + 1,
             "start": grp[0].date.strftime("%d.%m.%Y"),
+            "period_start": next((e.date.strftime("%d.%m.%Y") for e in grp if not e.is_spotting), grp[0].date.strftime("%d.%m.%Y")),
             "length": cl,
-            "period_days": len(grp),
+            "period_days": full_period_days,
             "pain_days": pain_count,
+            "spotting_days": spotting_count,
+            "total_days": len(grp),
             "is_current": cl is None,
         })
 
