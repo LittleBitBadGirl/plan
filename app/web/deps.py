@@ -177,8 +177,19 @@ def compute_period_data(entries, today: date) -> dict:
     for i, grp in enumerate(cycles):
         cl = cycle_lengths[i] if i < len(cycle_lengths) else None
         pain_count = sum(1 for e in grp if e.has_pain)
-        spotting_count = sum(1 for e in grp if e.is_spotting)
         full_period_days = sum(1 for e in grp if not e.is_spotting)
+
+        # Split spotting into before / after relative to period days
+        period_entries = [e for e in grp if not e.is_spotting]
+        if period_entries:
+            first_period_date = period_entries[0].date
+            last_period_date = period_entries[-1].date
+            spotting_before = sum(1 for e in grp if e.is_spotting and e.date < first_period_date)
+            spotting_after = sum(1 for e in grp if e.is_spotting and e.date > last_period_date)
+        else:
+            spotting_before = sum(1 for e in grp if e.is_spotting)
+            spotting_after = 0
+
         cycles_history.append({
             "num": i + 1,
             "start": grp[0].date.strftime("%d.%m.%Y"),
@@ -186,7 +197,8 @@ def compute_period_data(entries, today: date) -> dict:
             "length": cl,
             "period_days": full_period_days,
             "pain_days": pain_count,
-            "spotting_days": spotting_count,
+            "spotting_before": spotting_before,
+            "spotting_after": spotting_after,
             "total_days": len(grp),
             "is_current": cl is None,
         })
