@@ -39,6 +39,9 @@ from app.models.goal import FinancialGoal
 # ID категорий-сбережений (не считаются расходами)
 SAVINGS_CATEGORY_IDS = [37, 61]  # ИИС, Подушка
 
+# ID инвестиционных целей (выносятся в отдельный блок)
+INVESTMENT_GOAL_IDS = [1, 6, 7]  # ИИС, Брокерский 1, Брокерский 2
+
 @router.get("/finance", response_class=HTMLResponse)
 async def finance_page(request: Request, month: Optional[int] = None, year: Optional[int] = None):
     """Страница финансов (Excel-вид)"""
@@ -64,13 +67,27 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         month_tabs = []
         for row in available_months:
             y, m = int(row.year), int(row.month)
-            month_tabs.append({"month": m, "year": y, "name": f"{MONTH_NAMES[m]} {y}"})
+            month_tabs.append({"month": m, "year": y, "name": f"{MONTH_NAMES[m]}"})
             
         if not month_tabs:
-            month_tabs.append({"month": today.month, "year": today.year, "name": f"{MONTH_NAMES[today.month]} {today.year}"})
+            month_tabs.append({"month": today.month, "year": today.year, "name": f"{MONTH_NAMES[today.month]}"})
 
-        view_month = month or month_tabs[0]["month"]
-        view_year = year or month_tabs[0]["year"]
+        # Извлекаем уникальные года для переключателя
+        available_years = sorted(set(int(row.year) for row in available_months), reverse=True)
+        if not available_years:
+            available_years = [today.year]
+
+        # Выбранный год (из параметра или максимальный доступный)
+        selected_year = year or max(available_years)
+        # Месяцы только для выбранного года, в прямом порядке
+        month_tabs_for_year = [t for t in month_tabs if t["year"] == selected_year]
+        month_tabs_for_year.sort(key=lambda t: t["month"])
+        
+        if not month_tabs_for_year:
+            month_tabs_for_year = [{"month": today.month, "year": selected_year, "name": f"{MONTH_NAMES[today.month]}"}]
+
+        view_month = month or month_tabs_for_year[-1]["month"]
+        view_year = selected_year
         
         start_date = dt.date(view_year, view_month, 1)
         if view_month == 12:
@@ -121,8 +138,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
 
             if p_name not in grouped_summary:
                 grouped_summary[p_name] = {"total": 0, "sub_items": []}
-            if r.parent_id:
-                grouped_summary[p_name]["sub_items"].append({"name": r.cat_name, "amount": abs(r.total)})
+            grouped_summary[p_name]["sub_items"].append({"name": r.cat_name, "amount": abs(r.total)})
             grouped_summary[p_name]["total"] += abs(r.total)
 
         # Добавляем некатегоризированные расходы
@@ -146,6 +162,28 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
             sorted(grouped_summary.items(), key=lambda x: x[1]["total"], reverse=True)
         )
 
+
+        all_subs_res = await db.execute(
+            select(Category).where(Category.parent_id.isnot(None), Category.type == "finance")
+        )
+        sub_by_parent = {}
+        for sc in all_subs_res.scalars().all():
+            sub_by_parent.setdefault(sc.parent_id, []).append(sc.name)
+
+        parent_name_to_id = {}
+        pid_res = await db.execute(
+            select(Category.id, Category.name).where(Category.type == "finance", Category.parent_id.is_(None))
+        )
+        for pid, pname in pid_res.all():
+            parent_name_to_id[pname] = pid
+
+        for pname, pdata in grouped_summary.items():
+            pid = parent_name_to_id.get(pname)
+            if pid and pid in sub_by_parent:
+                existing = {s["name"] for s in pdata["sub_items"]}
+                for sname in sub_by_parent[pid]:
+                    if sname not in existing:
+                        pdata["sub_items"].append({"name": sname, "amount": 0})
         category_summary = [
             {"name": name, "amount": float(abs(data["total"]))}
             for name, data in grouped_summary.items()
@@ -155,6 +193,9 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         # ЦЕЛИ
         goals_res = await db.execute(select(FinancialGoal))
         goals = goals_res.scalars().all()
+        # Разделение: инвестиционные счета (ИИС, брокерские) vs обычные цели
+        investment_goals = [g for g in goals if g.id in INVESTMENT_GOAL_IDS]
+        other_goals = [g for g in goals if g.id not in INVESTMENT_GOAL_IDS]
         
         # ИТОГИ ГОДА (для view_year)
         year_start = dt.date(view_year, 1, 1)
@@ -206,13 +247,17 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         "category_summary": category_summary,
         "chart_expense_total": chart_expense_total,
         "goals": goals,
+        "investment_goals": investment_goals,
+        "other_goals": other_goals,
         "yearly_stats": {
             "income": yearly_income, 
             "expense": yearly_expense, 
             "savings": yearly_savings,
             "balance": yearly_income - yearly_expense - yearly_savings
         },
-        "month_tabs": month_tabs,
+        "month_tabs": month_tabs_for_year,
+        "available_years": available_years,
+        "selected_year": selected_year,
         "current_month": view_month,
         "current_year": view_year,
         "fin_categories": fin_categories,
@@ -224,7 +269,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
             "savings": total_savings,
             "balance": total_income - total_expense - total_savings
         },
-        "month_name": f"{MONTH_NAMES[view_month]} {view_year}",
+        "month_name": f"{MONTH_NAMES[view_month]}",
         "today": today
     })
 
