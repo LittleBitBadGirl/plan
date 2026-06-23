@@ -130,6 +130,8 @@ def compute_period_data(entries, today: date) -> dict:
             "calendar_days": calendar_days,
             "days_until_next": None,
             "cycles_history": [],
+            "pending_spotting_days": 0,
+            "pending_spotting_start": None,
         }
 
     sorted_entries = sorted(entries, key=lambda e: e.date)
@@ -145,55 +147,76 @@ def compute_period_data(entries, today: date) -> dict:
             group = [entry]
     cycles.append(group)
 
-    # Cycle starts = first NON-spotting day in each group
+    # Cycle starts = first NON-spotting day in each group.
+    # A group made up ENTIRELY of spotting is NOT a new cycle — it's
+    # pre-menstrual spotting, the period hasn't actually started yet.
     cycle_starts = []
     for g in cycles:
-        for e in g:
-            if not e.is_spotting:
-                cycle_starts.append(e.date)
-                break
-        else:
-            # All days are spotting — fall back to first day of group
-            cycle_starts.append(g[0].date)
+        period_day = next((e.date for e in g if not e.is_spotting), None)
+        if period_day is not None:
+            cycle_starts.append(period_day)
+
+    # Is the most recent group spotting-only? → period not yet started
+    pending_spotting = bool(cycles) and all(e.is_spotting for e in cycles[-1])
 
     cycle_lengths = [
         (cycle_starts[i + 1] - cycle_starts[i]).days
         for i in range(len(cycle_starts) - 1)
     ]
 
-    # avg_period = mean of non-spotting days per cycle
-    period_day_counts = [sum(1 for e in g if not e.is_spotting) for g in cycles]
+    # avg_period = mean of non-spotting days per REAL cycle (skip spotting-only groups)
+    period_day_counts = [
+        sum(1 for e in g if not e.is_spotting)
+        for g in cycles
+        if any(not e.is_spotting for e in g)
+    ]
     avg_cycle = round(mean(cycle_lengths)) if cycle_lengths else 28
     avg_period = max(1, round(mean(period_day_counts))) if period_day_counts else 5
 
-    last_start = cycle_starts[-1]
-    current_day = (today - last_start).days + 1
-    current_phase = _period_phase(current_day, avg_cycle, avg_period)
-    days_until_next = avg_cycle - current_day if cycle_lengths else None
+    if cycle_starts:
+        # Count from the last REAL period start, never from spotting.
+        last_start = cycle_starts[-1]
+        current_day = (today - last_start).days + 1
+        if pending_spotting:
+            # Only spotting so far — show PMS colour + explicit label,
+            # never "Менструация". The real cycle hasn't started yet.
+            current_phase = "pms"
+            current_phase_label = "Мазня · ПМС"
+        else:
+            current_phase = _period_phase(current_day, avg_cycle, avg_period)
+            current_phase_label = _PHASE_LABELS.get(current_phase, "—")
+        days_until_next = avg_cycle - current_day if cycle_lengths else None
+    else:
+        # Whole history is spotting only — no real period day on record yet.
+        last_start = None
+        current_day = None
+        current_phase = "pms"
+        current_phase_label = "Мазня (цикл не начался)"
+        days_until_next = None
 
     month_label, start_weekday, calendar_days = _build_month_calendar(today, period_map)
 
+    # Only groups with an actual bleed day are cycles. A spotting-only group
+    # (pre-menstrual spotting) is NOT a cycle — it's surfaced separately below.
     cycles_history = []
-    for i, grp in enumerate(cycles):
-        cl = cycle_lengths[i] if i < len(cycle_lengths) else None
-        pain_count = sum(1 for e in grp if e.has_pain)
-        full_period_days = sum(1 for e in grp if not e.is_spotting)
-
-        # Split spotting into before / after relative to period days
+    real_idx = 0
+    for grp in cycles:
         period_entries = [e for e in grp if not e.is_spotting]
-        if period_entries:
-            first_period_date = period_entries[0].date
-            last_period_date = period_entries[-1].date
-            spotting_before = sum(1 for e in grp if e.is_spotting and e.date < first_period_date)
-            spotting_after = sum(1 for e in grp if e.is_spotting and e.date > last_period_date)
-        else:
-            spotting_before = sum(1 for e in grp if e.is_spotting)
-            spotting_after = 0
+        if not period_entries:
+            continue
+        cl = cycle_lengths[real_idx] if real_idx < len(cycle_lengths) else None
+        pain_count = sum(1 for e in grp if e.has_pain)
+        full_period_days = len(period_entries)
+        first_period_date = period_entries[0].date
+        last_period_date = period_entries[-1].date
+        spotting_before = sum(1 for e in grp if e.is_spotting and e.date < first_period_date)
+        spotting_after = sum(1 for e in grp if e.is_spotting and e.date > last_period_date)
 
         cycles_history.append({
-            "num": i + 1,
-            "start": grp[0].date.strftime("%d.%m.%Y"),
-            "period_start": next((e.date.strftime("%d.%m.%Y") for e in grp if not e.is_spotting), grp[0].date.strftime("%d.%m.%Y")),
+            "num": real_idx + 1,
+            # Cycle starts on the first real bleed day, not the first spotting day
+            "start": first_period_date.strftime("%d.%m.%Y"),
+            "period_start": first_period_date.strftime("%d.%m.%Y"),
             "length": cl,
             "period_days": full_period_days,
             "pain_days": pain_count,
@@ -202,13 +225,23 @@ def compute_period_data(entries, today: date) -> dict:
             "total_days": len(grp),
             "is_current": cl is None,
         })
+        real_idx += 1
+
+    # Pre-menstrual spotting in progress: current group is spotting-only.
+    if pending_spotting:
+        last_grp = cycles[-1]
+        pending_spotting_days = sum(1 for e in last_grp if e.is_spotting)
+        pending_spotting_start = last_grp[0].date.strftime("%d.%m.%Y")
+    else:
+        pending_spotting_days = 0
+        pending_spotting_start = None
 
     return {
         "has_data": True,
         "last_period_start": last_start,
         "current_cycle_day": current_day,
         "current_phase": current_phase,
-        "current_phase_label": _PHASE_LABELS.get(current_phase, "—"),
+        "current_phase_label": current_phase_label,
         "avg_cycle": avg_cycle,
         "avg_period": avg_period,
         "month_label": month_label,
@@ -216,6 +249,8 @@ def compute_period_data(entries, today: date) -> dict:
         "calendar_days": calendar_days,
         "days_until_next": days_until_next,
         "cycles_history": cycles_history,
+        "pending_spotting_days": pending_spotting_days,
+        "pending_spotting_start": pending_spotting_start,
     }
 
 # Шаблоны

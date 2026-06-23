@@ -231,7 +231,7 @@
     </details>
 
     <!-- Цикл — для врача -->
-    {% if period_stats.has_data %}
+    {% if period_stats.has_data and period_stats.cycles_history %}
     {% set lengths = period_stats.cycles_history | selectattr('length', 'ne', none) | map(attribute='length') | list %}
     <div class="bg-dark-800 rounded-2xl border border-dark-600 p-4 sm:p-6 mb-8 shadow-lg">
         <div class="mb-5 sm:mb-6">
@@ -334,14 +334,23 @@
             </table>
         </div>
 
+        {% if period_stats.pending_spotting_days %}
+        <div class="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 mb-5 sm:mb-6">
+            <p class="text-sm font-bold text-amber-400">Сейчас — предменструальная мазня</p>
+            <p class="text-xs text-gray-400 mt-1">{{ period_stats.pending_spotting_days }} дн. с {{ period_stats.pending_spotting_start }}. Месячные ещё не начались — это не новый цикл.</p>
+        </div>
+        {% endif %}
+
         <div class="bg-dark-900/60 rounded-xl border border-dark-600 p-3 sm:p-4 overflow-hidden">
             <p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-2 sm:mb-3">Текст для врача — скопировать</p>
-            <pre class="text-[11px] sm:text-xs text-gray-300 leading-relaxed whitespace-pre-wrap break-words font-mono select-all overflow-x-auto">Отслежено {{ period_stats.cycles_history|length - 1 }} полных цикл(ов) (с {{ period_stats.cycles_history[0].start }}).
+            <pre class="text-[11px] sm:text-xs text-gray-300 leading-relaxed whitespace-pre-wrap break-words font-mono select-all overflow-x-auto">Отслежено {{ lengths|length }} полных цикл(ов) (с {{ period_stats.cycles_history[0].start }}).
 Средняя длина цикла: {{ period_stats.avg_cycle }} дней{% if lengths|length > 1 %} (разброс {{ lengths|min }}–{{ lengths|max }}){% endif %}.
 Средняя продолжительность менструации: {{ period_stats.avg_period }} дня.
 {% set spotting_before_total = period_stats.cycles_history | sum(attribute='spotting_before') %}
 {% set spotting_after_total = period_stats.cycles_history | sum(attribute='spotting_after') %}
 {% if spotting_before_total or spotting_after_total %}Мазня: {{ spotting_before_total }} дн. до месячных, {{ spotting_after_total }} дн. после.{% else %}Мазни не отмечено.{% endif %}
+{% if period_stats.pending_spotting_days %}Сейчас предменструальная мазня: {{ period_stats.pending_spotting_days }} дн. (с {{ period_stats.pending_spotting_start }}), месячные ещё не начались.
+{% endif %}
 {% set pain_cycles = period_stats.cycles_history | selectattr('pain_days', 'gt', 0) | list %}{% if pain_cycles %}Боли отмечены в {{ pain_cycles|length }} из {{ period_stats.cycles_history|length }} цикл(ов).{% else %}Болей не отмечено.{% endif %}
 Нерегулярность: {% if lengths|length > 1 and (lengths|max - lengths|min) <= 3 %}низкая (±{{ ((lengths|max - lengths|min) / 2)|round(1) }} дня){% elif lengths|length > 1 %}умеренная (разброс {{ lengths|max - lengths|min }} дней){% else %}недостаточно данных для оценки{% endif %}.</pre>
         </div>
