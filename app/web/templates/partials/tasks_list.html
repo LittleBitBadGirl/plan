@@ -23,7 +23,11 @@
                 {% set current_subtasks = subtasks_map.get(task.id, []) if subtasks_map else [] %}
                 
                 {% if task.category %}
+                    {% if task.category.parent %}
+                    <span class="text-gray-500 font-medium">{{ task.category.parent.name | noemoji }} → {{ task.category.name }}</span>
+                    {% else %}
                     <span class="text-gray-500 font-medium">{{ task.category.name }}</span>
+                    {% endif %}
                 {% endif %}
                 
                 {% if task.postpones and task.postpones > 0 %}

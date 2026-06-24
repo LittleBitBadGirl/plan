@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql import func
 from app.models.base import Base
 
@@ -14,6 +14,13 @@ class Category(Base):
     type = Column(String(20), default="task", index=True)  # task / finance
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    # Связи
-    children = relationship("Category", backref="parent", remote_side=[id], lazy="select")
+    # Связи (adjacency list). ВАЖНО: remote_side=[id] должен стоять на backref
+    # «parent», а не на «children» — иначе атрибуты инвертируются и
+    # category.parent начинает отдавать СПИСОК ДЕТЕЙ вместо родителя.
+    # Корректно: children = дети (коллекция), parent = родитель (скаляр).
+    children = relationship(
+        "Category",
+        backref=backref("parent", remote_side=[id]),
+        lazy="select",
+    )
     tasks = relationship("Task", back_populates="category", lazy="select")

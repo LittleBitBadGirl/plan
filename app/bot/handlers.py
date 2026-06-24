@@ -338,11 +338,28 @@ async def _category_name(db, cat_id) -> str:
     return c.name if c else "Без категории"
 
 
-async def _build_category_picker(db, task_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура выбора категории (листья task-дерева), по 2 в ряд."""
+async def _build_group_picker(db, task_id: int) -> InlineKeyboardMarkup:
+    """Уровень 1: глобальные категории задач (Работа / Личное / Бренд-учёба)."""
     res = await db.execute(
         select(Category)
-        .where(Category.type == "task", Category.is_global == False)
+        .where(Category.type == "task", Category.is_global == True)
+        .order_by(Category.name)
+    )
+    groups = res.scalars().all()
+    rows = [[InlineKeyboardButton(text=g.name, callback_data=f"catgrp:{task_id}:{g.id}")] for g in groups]
+    rows.append([InlineKeyboardButton(text="✖️ отмена", callback_data=f"catcancel:{task_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _build_leaf_picker(db, task_id: int, group_id: int) -> InlineKeyboardMarkup:
+    """Уровень 2: подкатегории выбранной глобальной категории, по 2 в ряд."""
+    res = await db.execute(
+        select(Category)
+        .where(
+            Category.type == "task",
+            Category.is_global == False,
+            Category.parent_id == group_id,
+        )
         .order_by(Category.name)
     )
     leaves = res.scalars().all()
@@ -353,7 +370,10 @@ async def _build_category_picker(db, task_id: int) -> InlineKeyboardMarkup:
             rows.append(row); row = []
     if row:
         rows.append(row)
-    rows.append([InlineKeyboardButton(text="✖️ отмена", callback_data=f"catcancel:{task_id}")])
+    rows.append([
+        InlineKeyboardButton(text="← назад", callback_data=f"catchg:{task_id}"),
+        InlineKeyboardButton(text="✖️ отмена", callback_data=f"catcancel:{task_id}"),
+    ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -375,7 +395,7 @@ async def cb_cat_ok(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("catchg:"))
 async def cb_cat_change(callback: CallbackQuery):
-    """Показать список категорий для смены."""
+    """Уровень 1: показать глобальные категории для смены."""
     task_id = int(callback.data.split(":")[1])
     async with async_session() as db:
         res = await db.execute(select(Task).where(Task.id == task_id))
@@ -384,8 +404,28 @@ async def cb_cat_change(callback: CallbackQuery):
             await callback.message.edit_text("❌ Задача не найдена.")
             await callback.answer()
             return
-        kb = await _build_category_picker(db, task_id)
-    await callback.message.edit_text(f"✏️ Категория для:\n«{t.title}»", reply_markup=kb)
+        kb = await _build_group_picker(db, task_id)
+    await callback.message.edit_text(f"✏️ Куда отнести:\n«{t.title}»", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("catgrp:"))
+async def cb_cat_group(callback: CallbackQuery):
+    """Уровень 2: выбрана глобальная категория — показать её подкатегории."""
+    parts = callback.data.split(":")
+    task_id, group_id = int(parts[1]), int(parts[2])
+    async with async_session() as db:
+        res = await db.execute(select(Task).where(Task.id == task_id))
+        t = res.scalar_one_or_none()
+        if not t:
+            await callback.message.edit_text("❌ Задача не найдена.")
+            await callback.answer()
+            return
+        gres = await db.execute(select(Category).where(Category.id == group_id))
+        g = gres.scalar_one_or_none()
+        kb = await _build_leaf_picker(db, task_id, group_id)
+    gname = g.name if g else ""
+    await callback.message.edit_text(f"✏️ {gname} →\n«{t.title}»", reply_markup=kb)
     await callback.answer()
 
 
