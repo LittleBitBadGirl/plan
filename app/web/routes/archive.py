@@ -28,6 +28,7 @@ from app.web.deps import (
     _render_shopping_list,
     _shopping_stats_oob,
     _shopping_list_response,
+    _reading_url,
 )
 
 router = APIRouter()
@@ -54,11 +55,13 @@ async def archive_page(
     request: Request,
     page: int = 1,
     shop_page: int = 1,
+    read_page: int = 1,
     limit: int = 50,
 ):
-    """Архив — задачи (item_kind=task) и покупки (item_kind=purchase) отдельно."""
+    """Архив — задачи (task), покупки (purchase) и «Читать» (reading) отдельно."""
     offset = (page - 1) * limit
     shop_offset = (shop_page - 1) * limit
+    read_offset = (read_page - 1) * limit
 
     async with async_session() as db:
         total_result = await db.execute(
@@ -96,10 +99,34 @@ async def archive_page(
         )
         shopping_archived = list(shop_result.scalars().all())
 
+        read_total_result = await db.execute(
+            select(func.count(ShoppingItem.id)).where(
+                ShoppingItem.is_archived == True,
+                ShoppingItem.item_kind == "reading",
+            )
+        )
+        read_total = read_total_result.scalar() or 0
+
+        read_result = await db.execute(
+            select(ShoppingItem)
+            .where(ShoppingItem.is_archived == True, ShoppingItem.item_kind == "reading")
+            .order_by(ShoppingItem.purchased_at.desc(), ShoppingItem.created_at.desc())
+            .offset(read_offset)
+            .limit(limit)
+        )
+        reading_archived_raw = list(read_result.scalars().all())
+
         has_prev = page > 1
         has_next = offset + limit < total
         shop_has_prev = shop_page > 1
         shop_has_next = shop_offset + limit < shop_total
+        read_has_prev = read_page > 1
+        read_has_next = read_offset + limit < read_total
+
+    reading_archived = [
+        {"id": it.id, "title": it.title, "url": _reading_url(it.title), "purchased_at": it.purchased_at}
+        for it in reading_archived_raw
+    ]
 
     return templates.TemplateResponse(request, "archive.html", {
         "request": request,
@@ -118,6 +145,13 @@ async def archive_page(
         "shop_has_next": shop_has_next,
         "shop_prev_page": shop_page - 1,
         "shop_next_page": shop_page + 1,
+        "reading_archived": reading_archived,
+        "read_total": read_total,
+        "read_page": read_page,
+        "read_has_prev": read_has_prev,
+        "read_has_next": read_has_next,
+        "read_prev_page": read_page - 1,
+        "read_next_page": read_page + 1,
     })
 
 
@@ -133,4 +167,19 @@ async def restore_shopping_from_archive(item_id: int):
             item.purchased_at = None
             await db.commit()
             return HTMLResponse(f'<div id="archive-shop-{item_id}" class="hidden"></div>')
+    return HTMLResponse('<div class="text-red-400 p-4">Ошибка восстановления</div>')
+
+
+@router.post("/archive/reading/{item_id}/restore", response_class=HTMLResponse)
+async def restore_reading_from_archive(item_id: int):
+    """Вернуть пункт «Читать» в активный список."""
+    async with async_session() as db:
+        result = await db.execute(select(ShoppingItem).where(ShoppingItem.id == item_id))
+        item = result.scalar_one_or_none()
+        if item:
+            item.is_archived = False
+            item.is_purchased = False
+            item.purchased_at = None
+            await db.commit()
+            return HTMLResponse(f'<div id="archive-read-{item_id}" class="hidden"></div>')
     return HTMLResponse('<div class="text-red-400 p-4">Ошибка восстановления</div>')

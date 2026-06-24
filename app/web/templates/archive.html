@@ -7,11 +7,11 @@
 <div class="max-w-6xl mx-auto">
     <div class="mb-4">
         <h1 class="text-2xl font-bold text-white">Архив</h1>
-        <p class="text-gray-500 text-sm mt-0.5">Задачи и покупки — отдельные колонки, каждая прокручивается сама</p>
+        <p class="text-gray-500 text-sm mt-0.5">Задачи, покупки и «Читать» — отдельные колонки, каждая прокручивается сама</p>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-        <!-- Покупки: на мобилке сверху, на десктопе справа -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        <!-- Покупки -->
         <section id="archive-shopping"
                  class="order-1 lg:order-2 flex flex-col min-h-0 rounded-xl border border-yellow-500/20 bg-dark-800/80 overflow-hidden max-h-[min(42vh,22rem)] lg:max-h-[calc(100vh-10rem)] lg:sticky lg:top-4">
             <div class="shrink-0 px-3 py-2 border-b border-dark-600 bg-yellow-500/5 flex items-center justify-between gap-2">
@@ -52,18 +52,74 @@
             {% if shop_has_prev or shop_has_next %}
             <div class="shrink-0 px-3 py-2 border-t border-dark-600 flex items-center justify-center gap-3 text-[10px]">
                 {% if shop_has_prev %}
-                <a href="?page={{ page }}&shop_page={{ shop_prev_page }}#archive-shopping" class="text-gray-400 hover:text-white">←</a>
+                <a href="?page={{ page }}&shop_page={{ shop_prev_page }}&read_page={{ read_page }}#archive-shopping" class="text-gray-400 hover:text-white">←</a>
                 {% endif %}
                 <span class="text-gray-600 tabular-nums">{{ shop_page }}</span>
                 {% if shop_has_next %}
-                <a href="?page={{ page }}&shop_page={{ shop_next_page }}#archive-shopping" class="text-gray-400 hover:text-white">→</a>
+                <a href="?page={{ page }}&shop_page={{ shop_next_page }}&read_page={{ read_page }}#archive-shopping" class="text-gray-400 hover:text-white">→</a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </section>
+
+        <!-- Читать -->
+        <section id="archive-reading"
+                 class="order-2 lg:order-3 flex flex-col min-h-0 rounded-xl border border-sky-500/20 bg-dark-800/80 overflow-hidden max-h-[min(42vh,22rem)] lg:max-h-[calc(100vh-10rem)] lg:sticky lg:top-4">
+            <div class="shrink-0 px-3 py-2 border-b border-dark-600 bg-sky-500/5 flex items-center justify-between gap-2">
+                <h2 class="text-sm font-bold text-sky-400/90">Читать</h2>
+                <span class="text-[10px] text-gray-500 tabular-nums">{{ read_total }}</span>
+            </div>
+
+            <div class="flex-1 min-h-0 overflow-y-auto">
+                {% if reading_archived %}
+                <ul class="divide-y divide-dark-700/80">
+                    {% for item in reading_archived %}
+                    <li id="archive-read-{{ item.id }}"
+                        class="group px-3 py-1.5 hover:bg-dark-700/40 flex items-center gap-2 min-h-[2rem]">
+                        <div class="flex-1 min-w-0">
+                            {% if item.url %}
+                            <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer"
+                               class="text-sm text-sky-300 hover:text-sky-200 hover:underline truncate block" title="{{ item.title }}">{{ item.title }}</a>
+                            {% else %}
+                            <span class="text-sm text-gray-200 truncate block" title="{{ item.title }}">{{ item.title }}</span>
+                            {% endif %}
+                            {% if item.purchased_at %}
+                            <span class="text-[10px] text-gray-600 tabular-nums">{{ item.purchased_at.strftime('%d.%m.%Y') }}</span>
+                            {% endif %}
+                        </div>
+                        <form hx-post="/archive/reading/{{ item.id }}/restore"
+                              hx-target="#archive-read-{{ item.id }}"
+                              hx-swap="outerHTML"
+                              class="shrink-0">
+                            <button type="submit"
+                                    class="icon-action icon-action--warn opacity-80 group-hover:opacity-100"
+                                    title="Вернуть в список «Читать»">
+                                {{ icon_restore() }}
+                            </button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-center py-8 text-sm text-gray-600">В архиве пусто</p>
+                {% endif %}
+            </div>
+
+            {% if read_has_prev or read_has_next %}
+            <div class="shrink-0 px-3 py-2 border-t border-dark-600 flex items-center justify-center gap-3 text-[10px]">
+                {% if read_has_prev %}
+                <a href="?page={{ page }}&shop_page={{ shop_page }}&read_page={{ read_prev_page }}#archive-reading" class="text-gray-400 hover:text-white">←</a>
+                {% endif %}
+                <span class="text-gray-600 tabular-nums">{{ read_page }}</span>
+                {% if read_has_next %}
+                <a href="?page={{ page }}&shop_page={{ shop_page }}&read_page={{ read_next_page }}#archive-reading" class="text-gray-400 hover:text-white">→</a>
                 {% endif %}
             </div>
             {% endif %}
         </section>
 
         <!-- Задачи -->
-        <section class="order-2 lg:order-1 flex flex-col min-h-0 rounded-xl border border-dark-600 bg-dark-800/80 overflow-hidden max-h-[min(55vh,32rem)] lg:max-h-[calc(100vh-10rem)]">
+        <section class="order-3 lg:order-1 flex flex-col min-h-0 rounded-xl border border-dark-600 bg-dark-800/80 overflow-hidden max-h-[min(55vh,32rem)] lg:max-h-[calc(100vh-10rem)]">
             <div class="shrink-0 px-3 py-2 border-b border-dark-600 flex items-center justify-between gap-2">
                 <h2 class="text-sm font-bold text-blue-400/90">Задачи</h2>
                 <span class="text-[10px] text-gray-500 tabular-nums">{{ total }}</span>
@@ -110,11 +166,11 @@
             {% if has_prev or has_next %}
             <div class="shrink-0 px-3 py-2 border-t border-dark-600 flex items-center justify-center gap-3 text-[10px]">
                 {% if has_prev %}
-                <a href="?page={{ prev_page }}&shop_page={{ shop_page }}" class="text-gray-400 hover:text-white">←</a>
+                <a href="?page={{ prev_page }}&shop_page={{ shop_page }}&read_page={{ read_page }}" class="text-gray-400 hover:text-white">←</a>
                 {% endif %}
                 <span class="text-gray-600 tabular-nums">{{ page }}</span>
                 {% if has_next %}
-                <a href="?page={{ next_page }}&shop_page={{ shop_page }}" class="text-gray-400 hover:text-white">→</a>
+                <a href="?page={{ next_page }}&shop_page={{ shop_page }}&read_page={{ read_page }}" class="text-gray-400 hover:text-white">→</a>
                 {% endif %}
             </div>
             {% endif %}

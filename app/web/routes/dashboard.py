@@ -33,6 +33,7 @@ from app.web.deps import (
     _render_shopping_list,
     _shopping_stats_oob,
     _shopping_list_response,
+    reading_items_view,
 )
 
 router = APIRouter()
@@ -123,8 +124,9 @@ async def dashboard(request: Request):
         # Получаем статистику через хелпер
         completed, total = await get_today_stats(db)
 
-        from app.services.shopping_service import load_active_shopping
+        from app.services.shopping_service import load_active_shopping, load_active_reading
         shopping_items = await load_active_shopping(db)
+        reading_items = await load_active_reading(db)
 
         # Категории для формы — только задачные, финансовые не смешиваем
         cats_result = await db.execute(
@@ -166,6 +168,7 @@ async def dashboard(request: Request):
         "habits_data": habits_data,
         "period_data": period_data,
         "shopping_items": shopping_items,
+        "reading_items": reading_items_view(reading_items),
         "shop_stats": {
             "total": len(shopping_items),
             "remaining": len(shopping_items),

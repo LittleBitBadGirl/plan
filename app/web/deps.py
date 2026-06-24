@@ -606,6 +606,38 @@ async def _shopping_toggle_response(db: AsyncSession):
     return HTMLResponse(content=_shopping_stats_oob(total, archived_count))
 
 
+# ─── Reading list («Читать») ─────────────────────────────────────────────────
+
+_READING_URL_RE = re.compile(r"https?://\S+")
+
+
+def _reading_url(title: str):
+    """Извлечь первый URL из строки (если есть) — для кликабельных пунктов «Читать»."""
+    if not title:
+        return None
+    m = _READING_URL_RE.search(title)
+    return m.group(0).rstrip(".,);]") if m else None
+
+
+def reading_items_view(items: list) -> list:
+    """ShoppingItem(reading) → dict {id, title, url} для шаблона."""
+    return [{"id": it.id, "title": it.title, "url": _reading_url(it.title)} for it in items]
+
+
+def _render_reading_list(request: Request, reading_items: list) -> str:
+    tpl = templates.get_template("partials/reading_list.html")
+    return tpl.render({"request": request, "reading_items": reading_items})
+
+
+async def _reading_list_response(request: Request, db: AsyncSession):
+    from fastapi.responses import HTMLResponse
+    from app.services.shopping_service import load_active_reading
+
+    items = await load_active_reading(db)
+    html = _render_reading_list(request, reading_items_view(items))
+    return HTMLResponse(content=html)
+
+
 async def get_history_data(db, period: str):
     """Данные для графика динамики (неделя/месяц — все календарные дни, выходные помечены)."""
     today = date.today()
@@ -704,4 +736,7 @@ __all__ = [
     "_shopping_list_response",
     "_shopping_toggle_response",
     "_shopping_counts",
+    "reading_items_view",
+    "_render_reading_list",
+    "_reading_list_response",
 ]

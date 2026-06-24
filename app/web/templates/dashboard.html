@@ -368,6 +368,29 @@
                 </div>
             </div>
 
+            <!-- Reading List -->
+            <div class="space-y-4">
+                <div class="flex items-center justify-between px-1">
+                    <h2 class="text-xl font-bold text-sky-400">Читать</h2>
+                </div>
+
+                <div class="bg-dark-800 rounded-xl p-3 border border-dark-600 shadow-lg">
+                    <form hx-post="/api/reading/create"
+                          hx-target="#reading-list"
+                          hx-swap="innerHTML"
+                          hx-on::after-request="this.reset()"
+                          class="flex gap-2 mb-3">
+                        <input type="text" name="title" placeholder="+ Ссылка или книга..." required
+                               class="flex-1 bg-dark-700 border border-dark-500 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-sky-500">
+                        <button type="submit" class="bg-sky-600 hover:bg-sky-500 text-white font-bold px-3 rounded-lg text-sm transition-all">+</button>
+                    </form>
+
+                    <div id="reading-list" class="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
+                        {% include "partials/reading_list.html" %}
+                    </div>
+                </div>
+            </div>
+
         </div>
 
     </div>

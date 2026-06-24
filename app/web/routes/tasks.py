@@ -332,20 +332,10 @@ async def task_create_htmx(
             pass
 
     async with async_session() as db:
-        # Автоматическая категоризация через AI, если категория не выбрана
-        final_category_id = None
-        if category_id and category_id.isdigit():
-            final_category_id = int(category_id)
-        else:
-            # Пытаемся определить категорию через AI
-            # Сначала получаем список всех категорий для контекста
-            cat_stmt = select(Category).order_by(Category.is_global.desc(), Category.name)
-            cat_res = await db.execute(cat_stmt)
-            all_cats = [{"id": c.id, "name": c.name, "is_global": c.is_global} for c in cat_res.scalars().all()]
-            
-            ai_result = await ai_service.categorize(title, all_cats)
-            if ai_result and ai_result.get("category_id"):
-                final_category_id = int(ai_result["category_id"])
+        # Категория ставится ТОЛЬКО при явном выборе. AI-категоризация убрана
+        # из создания задачи (тормозила ответ до ~25с при недоступности
+        # провайдеров). Незакатегоризированные задачи разбирает крон-категоризатор.
+        final_category_id = int(category_id) if (category_id and category_id.isdigit()) else None
 
         task = Task(
             title=title,

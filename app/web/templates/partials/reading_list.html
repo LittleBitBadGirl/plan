@@ -1,0 +1,38 @@
+{% from 'partials/icons_macros.html' import icon_check, icon_trash %}
+
+{% if reading_items %}
+    {% for item in reading_items %}
+    <div class="reading-item bg-dark-800 rounded-lg p-2 px-3 border border-dark-700 hover:border-sky-600/50 transition flex items-center gap-2"
+         id="reading-{{ item.id }}">
+        <button type="button"
+                hx-post="/api/reading/{{ item.id }}/toggle"
+                hx-target="closest .reading-item"
+                hx-swap="delete"
+                class="icon-action icon-action--success flex-shrink-0"
+                title="Прочитано">
+            {{ icon_check() }}
+        </button>
+        <div class="flex-1 min-w-0">
+            {% if item.url %}
+            <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer"
+               class="font-medium text-sm text-sky-300 hover:text-sky-200 hover:underline flex items-center gap-1 min-w-0"
+               title="{{ item.title }}">
+                <span class="truncate">{{ item.title }}</span>
+                <svg class="w-3 h-3 shrink-0 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+            </a>
+            {% else %}
+            <span class="font-medium text-sm text-white truncate block" title="{{ item.title }}">{{ item.title }}</span>
+            {% endif %}
+        </div>
+        <form hx-delete="/api/reading/{{ item.id }}" hx-target="#reading-list" hx-swap="innerHTML" class="flex-shrink-0">
+            <button type="submit" class="icon-action icon-action--danger" title="Удалить">
+                {{ icon_trash() }}
+            </button>
+        </form>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="text-center py-8 text-gray-500">
+        <p class="text-sm">Список пуст</p>
+    </div>
+{% endif %}

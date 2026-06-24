@@ -9,6 +9,7 @@ from app.web.routes import (
     categories,
     dashboard,
     finance,
+    reading,
     recurring,
     shopping,
     stats,
@@ -26,6 +27,7 @@ router.include_router(archive.router)
 router.include_router(stats.router)
 router.include_router(recurring.router)
 router.include_router(shopping.router)
+router.include_router(reading.router)
 router.include_router(career.router)
 router.include_router(finance.router)
 
