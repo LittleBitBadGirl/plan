@@ -124,3 +124,38 @@ async def bulk_create_shopping_items(request: Request, titles: str = Form(...)):
                 db.add(ShoppingItem(title=clean_title, item_kind="purchase"))
         await db.commit()
         return await _shopping_list_response(request, db)
+
+
+@router.post("/api/shopping/send-to-telegram", response_class=HTMLResponse)
+async def send_shopping_to_telegram():
+    """Отправить активный список покупок в Telegram через бота планера."""
+    import httpx
+    from app.utils.logger import app_logger
+
+    token = settings.telegram_bot_token
+    chat_id = settings.telegram_admin_chat_id
+    if not token or not chat_id:
+        return HTMLResponse('<span class="text-red-400 text-[9px] font-bold">ТГ не настроен</span>')
+
+    async with async_session() as db:
+        items = await load_active_shopping(db)
+
+    if not items:
+        return HTMLResponse('<span class="text-gray-400 text-[9px] font-bold">Список пуст</span>')
+
+    text = "\n".join(["🛒 Список покупок:"] + [f"• {it.title}" for it in items])
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id, "text": text},
+                timeout=10.0,
+            )
+        if resp.status_code == 200:
+            return HTMLResponse('<span class="text-green-400 text-[9px] font-bold">✓ Отправлено</span>')
+        app_logger.error(f"Shopping→TG: {resp.status_code} {resp.text[:200]}")
+        return HTMLResponse(f'<span class="text-red-400 text-[9px] font-bold">Ошибка {resp.status_code}</span>')
+    except Exception as e:
+        app_logger.error(f"Shopping→TG error: {e}")
+        return HTMLResponse('<span class="text-red-400 text-[9px] font-bold">Ошибка отправки</span>')

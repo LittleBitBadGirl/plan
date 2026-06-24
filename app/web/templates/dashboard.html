@@ -344,10 +344,15 @@
             <div class="space-y-4">
                 <div class="flex items-center justify-between px-1">
                     <h2 class="text-xl font-bold text-yellow-400">Покупки</h2>
-                    <button onclick="alert('Скоро здесь будет отправка в Telegram!')" 
-                            class="text-[9px] bg-[#229ED9]/20 hover:bg-[#229ED9]/40 text-[#229ED9] px-2 py-1 rounded-lg border border-[#229ED9]/30 transition-all font-bold uppercase">
-                        В ТГ
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <span id="tg-send-status"></span>
+                        <button hx-post="/api/shopping/send-to-telegram"
+                                hx-target="#tg-send-status"
+                                hx-swap="innerHTML"
+                                class="text-[9px] bg-[#229ED9]/20 hover:bg-[#229ED9]/40 text-[#229ED9] px-2 py-1 rounded-lg border border-[#229ED9]/30 transition-all font-bold uppercase">
+                            В ТГ
+                        </button>
+                    </div>
                 </div>
 
                 <div class="bg-dark-800 rounded-xl p-3 border border-dark-600 shadow-lg">
