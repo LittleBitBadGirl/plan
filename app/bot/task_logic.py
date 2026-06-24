@@ -49,11 +49,9 @@ def detect_intent(text: str, *, done_suffix: re.Pattern, done_prefix: re.Pattern
         if len(clean) > 1:
             return {"intent": "bulk_add", "tasks": clean, "target": "backlog"}
 
-    if text.count(",") >= 2:
-        parts = [part.strip() for part in text.split(",") if part.strip()]
-        if len(parts) >= 2:
-            return {"intent": "bulk_add", "tasks": parts, "target": "backlog"}
-
+    # Запятые НЕ дробят задачу: при письме их ставят редко, а в голосовой
+    # транскрипции их насыпает транскрайбер по паузам — дробление по запятым
+    # рвало одну мысль на куски. Несколько задач = несколько строк (см. выше).
     return {"intent": "add", "task_name": text, "target": "today"}
 
 
@@ -132,7 +130,13 @@ async def create_task_from_text(
     clean_title, due_time = parse_time_from_title(text)
     clean_title = _strip_date_words(clean_title) or text
 
-    cat_list = await load_task_categories(db)
+    # Категория и теги НЕ проставляются ботом — кривая AI-категоризация убрана.
+    # Незакатегоризированные задачи разбирает крон-категоризатор (с аппрувом и
+    # обучением на правках). Бот лишь быстро кладёт задачу.
+    if target == "backlog":
+        task_due_date = None
+    else:
+        task_due_date = date.today()
 
     dup_filters = [
         Task.title == clean_title,
@@ -141,29 +145,7 @@ async def create_task_from_text(
     ]
     if target == "backlog":
         dup_filters.append(Task.due_date == None)
-        task_due_date = None
-        category_id = None
-        tags_str = None
-        if cat_list:
-            ai_result = await ai_service.categorize(raw_text, cat_list)
-            category_id = ai_result.get("category_id")
-            tags_list = ai_result.get("tags", [])
-            tags_str = ", ".join(tags_list) if tags_list else None
     else:
-        task_due_date = date.today()
-        category_id = None
-        tags_str = None
-        if cat_list:
-            ai_result = await ai_service.categorize(raw_text, cat_list)
-            category_id = ai_result.get("category_id")
-            tags_list = ai_result.get("tags", [])
-            tags_str = ", ".join(tags_list) if tags_list else None
-            due_date_str = ai_result.get("due_date")
-            if due_date_str:
-                try:
-                    task_due_date = date.fromisoformat(due_date_str)
-                except ValueError:
-                    pass
         dup_filters.append(Task.due_date == task_due_date)
 
     dup = await db.execute(select(Task).where(*dup_filters))
@@ -173,33 +155,21 @@ async def create_task_from_text(
 
     task = Task(
         title=clean_title,
-        category_id=category_id,
+        category_id=None,
         source=source,
         due_date=task_due_date,
         due_time=due_time if target == "today" else None,
-        tags=tags_str,
         status="новая",
     )
     db.add(task)
     await db.commit()
     await db.refresh(task)
 
-    cat_name = "Без категории"
-    if category_id:
-        cat_obj = next((c for c in cat_list if c["id"] == category_id), None)
-        if cat_obj:
-            cat_name = cat_obj["name"]
-
     if target == "backlog":
-        summary = f"📥 В бэклог: {clean_title}\n📂 {cat_name}"
+        summary = f"📥 В бэклог: {clean_title}"
     else:
         time_part = f" ⏰ {due_time.strftime('%H:%M')}" if due_time else ""
-        summary = (
-            f"✅ На {task_due_date.strftime('%d.%m.%Y')}: {clean_title}{time_part}\n"
-            f"📂 {cat_name}"
-        )
-    if tags_str:
-        summary += f"\n🏷️ {tags_str}"
+        summary = f"✅ На {task_due_date.strftime('%d.%m.%Y')}: {clean_title}{time_part}"
 
     return task, summary
 
