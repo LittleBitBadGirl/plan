@@ -318,6 +318,120 @@ async def cb_cancel(callback: CallbackQuery):
     await callback.answer()
 
 
+# ─── Ревью категорий (крон-категоризатор B3) ─────────────────────────────────
+# Крон 2x/день проставляет категории задачам без категории и шлёт по сообщению
+# на задачу с кнопками [✓ ок][✏️ изменить]. Хэндлеры ниже ловят нажатия.
+
+def _cat_review_keyboard(task_id: int) -> InlineKeyboardMarkup:
+    """Кнопки подтверждения категории под сообщением-ревью."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✓ ок", callback_data=f"catok:{task_id}"),
+        InlineKeyboardButton(text="✏️ изменить", callback_data=f"catchg:{task_id}"),
+    ]])
+
+
+async def _category_name(db, cat_id) -> str:
+    if not cat_id:
+        return "Без категории"
+    res = await db.execute(select(Category).where(Category.id == cat_id))
+    c = res.scalar_one_or_none()
+    return c.name if c else "Без категории"
+
+
+async def _build_category_picker(db, task_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура выбора категории (листья task-дерева), по 2 в ряд."""
+    res = await db.execute(
+        select(Category)
+        .where(Category.type == "task", Category.is_global == False)
+        .order_by(Category.name)
+    )
+    leaves = res.scalars().all()
+    rows, row = [], []
+    for c in leaves:
+        row.append(InlineKeyboardButton(text=c.name, callback_data=f"catset:{task_id}:{c.id}"))
+        if len(row) == 2:
+            rows.append(row); row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton(text="✖️ отмена", callback_data=f"catcancel:{task_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("catok:"))
+async def cb_cat_ok(callback: CallbackQuery):
+    """Подтвердить предложенную кроном категорию (она уже проставлена)."""
+    task_id = int(callback.data.split(":")[1])
+    async with async_session() as db:
+        res = await db.execute(select(Task).where(Task.id == task_id))
+        t = res.scalar_one_or_none()
+        if not t:
+            await callback.message.edit_text("❌ Задача не найдена.")
+            await callback.answer()
+            return
+        cat_name = await _category_name(db, t.category_id)
+    await callback.message.edit_text(f"✅ {t.title}\n📂 {cat_name}")
+    await callback.answer("Подтверждено")
+
+
+@router.callback_query(F.data.startswith("catchg:"))
+async def cb_cat_change(callback: CallbackQuery):
+    """Показать список категорий для смены."""
+    task_id = int(callback.data.split(":")[1])
+    async with async_session() as db:
+        res = await db.execute(select(Task).where(Task.id == task_id))
+        t = res.scalar_one_or_none()
+        if not t:
+            await callback.message.edit_text("❌ Задача не найдена.")
+            await callback.answer()
+            return
+        kb = await _build_category_picker(db, task_id)
+    await callback.message.edit_text(f"✏️ Категория для:\n«{t.title}»", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("catset:"))
+async def cb_cat_set(callback: CallbackQuery):
+    """Применить выбранную категорию + залогировать правку (обучение)."""
+    parts = callback.data.split(":")
+    task_id, cat_id = int(parts[1]), int(parts[2])
+    async with async_session() as db:
+        res = await db.execute(select(Task).where(Task.id == task_id))
+        t = res.scalar_one_or_none()
+        if not t:
+            await callback.message.edit_text("❌ Задача не найдена.")
+            await callback.answer()
+            return
+        old_cat = t.category_id
+        t.category_id = cat_id
+        await db.commit()
+        cat_name = await _category_name(db, cat_id)
+    # Сигнал обучения: правка попадает в историю задач; крон-категоризатор
+    # сверяется с ней и ведёт правила в gbrain (planner/task-category-rules).
+    app_logger.info(
+        f"CAT_CORRECTION task={task_id} title={t.title!r} {old_cat}->{cat_id} ({cat_name})"
+    )
+    await callback.message.edit_text(f"✅ {t.title}\n📂 {cat_name}")
+    await callback.answer("Категория обновлена")
+
+
+@router.callback_query(F.data.startswith("catcancel:"))
+async def cb_cat_cancel(callback: CallbackQuery):
+    """Вернуть сообщение-ревью к виду [✓ ок][✏️ изменить]."""
+    task_id = int(callback.data.split(":")[1])
+    async with async_session() as db:
+        res = await db.execute(select(Task).where(Task.id == task_id))
+        t = res.scalar_one_or_none()
+        if not t:
+            await callback.message.edit_text("❌ Задача не найдена.")
+            await callback.answer()
+            return
+        cat_name = await _category_name(db, t.category_id)
+    await callback.message.edit_text(
+        f"🗂 {t.title}\n📂 {cat_name}", reply_markup=_cat_review_keyboard(task_id)
+    )
+    await callback.answer()
+
+
 async def _process_and_create_task(
     text: str,
     message: Message,
