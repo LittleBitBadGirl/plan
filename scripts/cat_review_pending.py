@@ -1,8 +1,13 @@
 """Вывести JSON: задачи без категории + категории-листья — для крон-категоризатора.
 Запуск: docker exec task_planner python3 scripts/cat_review_pending.py
 """
+import os
+import sys
 import json
 import asyncio
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from sqlalchemy import select
 from app.db.database import async_session
 from app.models.task import Task

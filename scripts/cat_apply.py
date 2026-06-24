@@ -2,9 +2,13 @@
 БЕЗОПАСНО: меняет ТОЛЬКО category_id одной задачи, никаких удалений.
 Запуск: docker exec task_planner python3 scripts/cat_apply.py <task_id> <cat_id>
 """
+import os
 import sys
 import asyncio
 import httpx
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from sqlalchemy import select
 from app.db.database import async_session
 from app.models.task import Task
