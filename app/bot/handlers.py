@@ -443,6 +443,8 @@ async def cb_cat_set(callback: CallbackQuery):
             return
         old_cat = t.category_id
         t.category_id = cat_id
+        t.suggested_title = None
+        t.suggested_due_date = None
         await db.commit()
         cat_name = await _category_name(db, cat_id)
     # Сигнал обучения: правка попадает в историю задач; крон-категоризатор
@@ -470,6 +472,66 @@ async def cb_cat_cancel(callback: CallbackQuery):
         f"🗂 {t.title}\n📂 {cat_name}", reply_markup=_cat_review_keyboard(task_id)
     )
     await callback.answer()
+
+
+# ─── Применение нормализации (чистый текст + вынесенная дата) ────────────────
+# Крон кладёт предложение в suggested_title / suggested_due_date и шлёт ревью
+# с кнопками [✓ применить][✏️ категория][✖️ как есть]. Применяем только по кнопке.
+
+@router.callback_query(F.data.startswith("txtok:"))
+async def cb_txt_ok(callback: CallbackQuery):
+    """Применить предложенные кроном чистый текст и/или вынесенную дату."""
+    task_id = int(callback.data.split(":")[1])
+    async with async_session() as db:
+        res = await db.execute(select(Task).where(Task.id == task_id))
+        t = res.scalar_one_or_none()
+        if not t:
+            await callback.message.edit_text("❌ Задача не найдена.")
+            await callback.answer()
+            return
+        old_title = t.title
+        old_due = t.due_date
+        applied = []
+        if t.suggested_title:
+            t.title = t.suggested_title
+            applied.append("текст")
+        if t.suggested_due_date:
+            t.due_date = t.suggested_due_date
+            applied.append("дата")
+        t.suggested_title = None
+        t.suggested_due_date = None
+        await db.commit()
+        cat_name = await _category_name(db, t.category_id)
+        new_title = t.title
+        new_due = t.due_date
+    app_logger.info(
+        f"TXT_APPLY task={task_id} title={old_title!r}->{new_title!r} due={old_due}->{new_due}"
+    )
+    msg = f"✅ {new_title}\n📂 {cat_name}"
+    if new_due:
+        msg += f"\n📅 {new_due.strftime('%d.%m.%Y')}"
+    await callback.message.edit_text(msg)
+    await callback.answer(("Применено: " + ", ".join(applied)) if applied else "Готово")
+
+
+@router.callback_query(F.data.startswith("txtskip:"))
+async def cb_txt_skip(callback: CallbackQuery):
+    """Оставить текст/дату как есть — только сбросить предложение крона."""
+    task_id = int(callback.data.split(":")[1])
+    async with async_session() as db:
+        res = await db.execute(select(Task).where(Task.id == task_id))
+        t = res.scalar_one_or_none()
+        if not t:
+            await callback.message.edit_text("❌ Задача не найдена.")
+            await callback.answer()
+            return
+        t.suggested_title = None
+        t.suggested_due_date = None
+        await db.commit()
+        cat_name = await _category_name(db, t.category_id)
+        title = t.title
+    await callback.message.edit_text(f"✅ {title}\n📂 {cat_name}")
+    await callback.answer("Оставлено как есть")
 
 
 async def _process_and_create_task(

@@ -36,6 +36,11 @@ class Task(Base):
     estimated_minutes = Column(Integer, nullable=True)
     actual_minutes = Column(Integer, nullable=True)
 
+    # Нормализация кроном: предложение «чистого» текста и вынесенной из текста
+    # даты. Применяются ТОЛЬКО по кнопке подтверждения в Telegram (не молча).
+    suggested_title = Column(String(500), nullable=True)
+    suggested_due_date = Column(Date, nullable=True)
+
     # Связи
     category = relationship("Category", back_populates="tasks")
     subtasks = relationship("Task", backref="parent_task", remote_side=[id], lazy="select")
