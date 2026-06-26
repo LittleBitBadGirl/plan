@@ -687,6 +687,22 @@ async def handle_photo(message: Message, bot: Bot):
                             if cat_obj:
                                 cat_id = cat_obj.id
 
+                    # --- Фильтрация и коррекция знака ---
+                    INCOME_CATEGORY_IDS = {65, 85, 66, 86, 94, 129}
+
+                    # Пропускаем микрокэшбэк: маленькие положительные суммы,
+                    # которые не являются доходом
+                    if amount > 0 and amount < 100 and cat_id not in INCOME_CATEGORY_IDS:
+                        app_logger.info(f"⏭ Пропущен кэшбэк: {amount}₽ — {desc}")
+                        continue
+
+                    # Расходы должны быть отрицательными.
+                    # Если категория известна и это НЕ доход → инвертируем знак.
+                    # Если категория неизвестна — предполагаем расход (тоже инвертируем).
+                    is_income = cat_id in INCOME_CATEGORY_IDS if cat_id else False
+                    if amount > 0 and not is_income:
+                        amount = -amount
+
                     db.add(Transaction(
                         date=tx_date,
                         amount=amount,
