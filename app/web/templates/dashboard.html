@@ -91,11 +91,11 @@
             <div class="flex-1 lg:flex-none">
                 <div class="flex justify-between items-center mb-1 px-1">
                     <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Прогресс сегодня</span>
-                    <span id="today-stats-counter" class="font-bold text-sm text-emerald-400">{{ completed }}/{{ total }}</span>
+                    <span id="today-stats-counter" class="font-bold text-sm text-amber-400">{{ completed }}/{{ total }}</span>
                 </div>
                 <div class="w-full bg-dark-800 rounded-full h-1.5 lg:h-1 border border-dark-600 overflow-hidden">
                     {% set progress = ([completed / total * 100, 100] | min) if total > 0 else 0 %}
-                    <div id="today-progress-bar" class="bg-emerald-500 h-full transition-all duration-500" style="width: {{ progress }}%"></div>
+                    <div id="today-progress-bar" class="bg-amber-600 h-full transition-all duration-500" style="width: {{ progress }}%"></div>
                 </div>
             </div>
 
@@ -103,12 +103,12 @@
             <div class="flex-1 lg:flex-none lg:mt-3">
                 <div class="flex justify-between items-center mb-1 px-1">
                     <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Подзадачи</span>
-                    <span id="today-subtask-counter" class="font-bold text-sm text-rose-400">Сделано {{ subtask_progress.parent_done }}/{{ subtask_progress.parent_total }}</span>
+                    <span id="today-subtask-counter" class="font-bold text-sm text-amber-400">Сделано {{ subtask_progress.parent_done }}/{{ subtask_progress.parent_total }}</span>
                 </div>
                 <div id="today-subtask-bar" class="w-full bg-dark-800 rounded-full h-1.5 lg:h-1 border border-dark-600 overflow-hidden flex">
                     {% if subtask_progress.subtask_total > 0 %}
                     {% for i in range(subtask_progress.subtask_total) %}
-                    <div class="flex-1 h-full transition-all duration-500 {{ 'bg-emerald-500' if i < subtask_progress.subtask_done else 'bg-dark-600' }}{{ ' mx-px first:ml-0 last:mr-0' if subtask_progress.subtask_total > 1 else '' }}"></div>
+                    <div class="flex-1 h-full transition-all duration-500 {{ 'bg-amber-600' if i < subtask_progress.subtask_done else 'bg-dark-600' }}{{ ' mx-px first:ml-0 last:mr-0' if subtask_progress.subtask_total > 1 else '' }}"></div>
                     {% endfor %}
                     {% endif %}
                 </div>
@@ -180,7 +180,7 @@
                                     История
                                 </button>
                                 <form action="/api/habits/{{ h_item.habit.id }}/next-cycle" method="POST" class="inline-flex items-center m-0" onsubmit="return confirm('Начать следующие 30 дней?')">
-                                    <button type="submit" class="inline-flex items-center justify-center h-6 px-2 text-[10px] leading-none bg-rose-600/20 text-rose-400 rounded border border-rose-500/30 hover:bg-rose-600 hover:text-white transition-all font-bold uppercase whitespace-nowrap opacity-0 group-hover:opacity-100">
+                                    <button type="submit" class="inline-flex items-center justify-center h-6 px-2 text-[10px] leading-none bg-amber-900/20 text-amber-400 rounded border border-amber-700/30 hover:bg-amber-700 hover:text-white transition-all font-bold uppercase whitespace-nowrap opacity-0 group-hover:opacity-100">
                                         След. 30 дней
                                     </button>
                                 </form>
@@ -327,15 +327,15 @@
             <!-- Recurring Tasks -->
             {% if recurring_tasks %}
             <div class="space-y-4">
-                <h2 class="text-xl font-bold text-rose-300 px-1">Регулярные</h2>
+                <h2 class="text-xl font-bold text-stone-300 px-1">Регулярные</h2>
                 <div class="space-y-3">
                     {% for rt in recurring_tasks %}
-                    <div class="bg-rose-950/20 rounded-xl p-3 border border-rose-800/20 hover:border-rose-500/40 transition group" id="recurring-{{ rt.id }}">
+                    <div class="bg-dark-800 rounded-xl p-3 border border-dark-600 hover:border-amber-700/40 transition group" id="recurring-{{ rt.id }}">
                         <div class="flex justify-between items-start">
                             <div class="flex-1">
-                                <h3 class="font-semibold text-rose-200 text-sm">{{ rt.title }}</h3>
+                                <h3 class="font-semibold text-stone-300 text-sm">{{ rt.title }}</h3>
                                 <div class="flex items-center gap-2 mt-1">
-                                    <span class="text-[8px] uppercase tracking-wider text-rose-300 font-bold">
+                                    <span class="text-[8px] uppercase tracking-wider text-stone-500 font-bold">
                                         {% if rt.recurrence_type == 'daily' %}ежедневно
                                         {% elif rt.recurrence_type == 'weekly' %}еженедельно
                                         {% else %}ежемесячно{% endif %}
@@ -361,13 +361,13 @@
             <!-- Shopping List -->
             <div class="space-y-4">
                 <div class="flex items-center justify-between px-1">
-                    <h2 class="text-xl font-bold text-yellow-400">Покупки</h2>
+                    <h2 class="text-xl font-bold text-stone-300 px-1">Покупки</h2>
                     <div class="flex items-center gap-2">
                         <span id="tg-send-status"></span>
                         <button hx-post="/api/shopping/send-to-telegram"
                                 hx-target="#tg-send-status"
                                 hx-swap="innerHTML"
-                                class="text-[9px] bg-[#229ED9]/20 hover:bg-[#229ED9]/40 text-[#229ED9] px-2 py-1 rounded-lg border border-[#229ED9]/30 transition-all font-bold uppercase">
+                                class="text-[9px] bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 px-2 py-1 rounded-lg border border-amber-700/30 transition-all font-bold uppercase">
                             В ТГ
                         </button>
                     </div>
@@ -380,8 +380,8 @@
                           hx-on::after-request="this.reset()"
                           class="flex gap-2 mb-3">
                         <input type="text" name="title" placeholder="+ Продукт..." required
-                               class="flex-1 bg-dark-700 border border-dark-500 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-yellow-500">
-                        <button type="submit" class="bg-yellow-600 hover:bg-yellow-500 text-white font-bold px-3 rounded-lg text-sm transition-all">+</button>
+                               class="flex-1 bg-dark-700 border border-dark-500 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-amber-600">
+                        <button type="submit" class="bg-amber-700 hover:bg-amber-600 text-white font-bold px-3 rounded-lg text-sm transition-all">+</button>
                     </form>
                     
                     <div id="shopping-list" class="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
@@ -394,7 +394,7 @@
             <!-- Reading List -->
             <div class="space-y-4">
                 <div class="flex items-center justify-between px-1">
-                    <h2 class="text-xl font-bold text-sky-400">Читать</h2>
+                    <h2 class="text-xl font-bold text-stone-300 px-1">Читать</h2>
                 </div>
 
                 <div class="bg-dark-800 rounded-xl p-3 border border-dark-600 shadow-lg">
@@ -404,8 +404,8 @@
                           hx-on::after-request="this.reset()"
                           class="flex gap-2 mb-3">
                         <input type="text" name="title" placeholder="+ Ссылка или книга..." required
-                               class="flex-1 bg-dark-700 border border-dark-500 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-sky-500">
-                        <button type="submit" class="bg-sky-600 hover:bg-sky-500 text-white font-bold px-3 rounded-lg text-sm transition-all">+</button>
+                               class="flex-1 bg-dark-700 border border-dark-500 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-amber-600">
+                        <button type="submit" class="bg-amber-700 hover:bg-amber-600 text-white font-bold px-3 rounded-lg text-sm transition-all">+</button>
                     </form>
 
                     <div id="reading-list" class="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">

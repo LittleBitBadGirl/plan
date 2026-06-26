@@ -13,20 +13,20 @@
 .icon-action:hover {
     background: rgba(255, 255, 255, 0.06);
 }
-.icon-action--success { color: #34d399; }
-.icon-action--success:hover { color: #6ee7b7; background: rgba(16, 185, 129, 0.12); }
-.icon-action--info { color: #fda4af; }
-.icon-action--info:hover { color: #fecdd3; background: rgba(225, 29, 72, 0.12); }
-.icon-action--warn { color: #fbbf24; }
-.icon-action--warn:hover { color: #fcd34d; background: rgba(217, 119, 6, 0.12); }
+.icon-action--success { color: #b45309; }
+.icon-action--success:hover { color: #d97706; background: rgba(180, 83, 9, 0.12); }
+.icon-action--info { color: #b45309; }
+.icon-action--info:hover { color: #d97706; background: rgba(180, 83, 9, 0.12); }
+.icon-action--warn { color: #b45309; }
+.icon-action--warn:hover { color: #d97706; background: rgba(180, 83, 9, 0.12); }
 .icon-action--muted { color: #78716c; }
 .icon-action--muted:hover { color: #d6d3d1; background: rgba(255, 255, 255, 0.08); }
 .icon-action--danger { color: #78716c; }
 .icon-action--danger:hover { color: #fca5a5; background: rgba(239, 68, 68, 0.12); }
-.icon-action--today { color: #fb923c; }
-.icon-action--today:hover { color: #fdba74; background: rgba(249, 115, 22, 0.12); }
-.icon-action--purple { color: #fda4af; }
-.icon-action--purple:hover { color: #fecdd3; background: rgba(225, 29, 72, 0.12); }
+.icon-action--today { color: #b45309; }
+.icon-action--today:hover { color: #d97706; background: rgba(180, 83, 9, 0.12); }
+.icon-action--purple { color: #b45309; }
+.icon-action--purple:hover { color: #d97706; background: rgba(180, 83, 9, 0.12); }
 .icon-link {
     display: inline-flex;
     align-items: center;
@@ -108,8 +108,8 @@
 
 /* Статусы задач */
 .status-new {
-    background-color: rgba(225, 29, 72, 0.15);
-    color: #fda4af;
+    background-color: rgba(180, 83, 9, 0.12);
+    color: #d97706;
 }
 
 .status-in_progress {
@@ -160,7 +160,7 @@ input[type="date"]:focus,
 input[type="time"]:focus,
 textarea:focus,
 select:focus {
-    box-shadow: 0 0 0 2px rgba(225, 29, 72, 0.25);
+    box-shadow: 0 0 0 2px rgba(180, 83, 9, 0.25);
 }
 
 /* Кнопки */
@@ -214,8 +214,8 @@ select:focus {
 }
 
 .calendar-day.today {
-    background-color: rgba(225, 29, 72, 0.08);
-    border: 1px solid rgba(225, 29, 72, 0.25);
+    background-color: rgba(180, 83, 9, 0.08);
+    border: 1px solid rgba(180, 83, 9, 0.25);
 }
 
 /* Пагинация */
@@ -228,7 +228,7 @@ select:focus {
 }
 
 .pagination-btn.active {
-    background-color: #e11d48;
+    background-color: #b45309;
     color: white;
 }
 
