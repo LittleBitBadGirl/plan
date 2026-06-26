@@ -363,35 +363,36 @@ def _today_roots_filter(today: date) -> list:
 
 
 async def get_today_progress(db: AsyncSession) -> tuple[int, int]:
-    """Прогресс дня: Y = карточки + регулярные на сегодня, X = закрытые + чекнутые подзадачи + регулярные."""
+    """Прогресс дня для STANDALONE-задач (без подзадач) + регулярные.
+
+    Задачи с подзадачами исключены — их прогресс считается отдельно
+    через get_subtask_today_progress().
+    """
     today = date.today()
 
     roots_result = await db.execute(select(Task).where(*_today_roots_filter(today)))
     roots = roots_result.scalars().all()
 
-    total = len(roots)
-    completed = 0
+    # Собираем подзадачи для всех корневых, чтобы отфильтровать родителей
+    standalone_total = 0
+    standalone_completed = 0
 
     if roots:
         root_ids = [r.id for r in roots]
         subs_result = await db.execute(
             select(Task).where(Task.parent_task_id.in_(root_ids))
         )
-        subs_by_parent: dict[int, list[Task]] = defaultdict(list)
+        parents_with_subs: set[int] = set()
         for sub in subs_result.scalars().all():
-            subs_by_parent[sub.parent_task_id].append(sub)
+            parents_with_subs.add(sub.parent_task_id)
 
         for root in roots:
-            subs = subs_by_parent.get(root.id, [])
-            if subs:
-                if root.status == "выполнена" and _completed_on_day(root.completed_at, today):
-                    completed += 1
-                else:
-                    for sub in subs:
-                        if sub.status == "выполнена" and _completed_on_day(sub.completed_at, today):
-                            completed += 1
-            elif root.status == "выполнена" and _completed_on_day(root.completed_at, today):
-                completed += 1
+            if root.id in parents_with_subs:
+                # Пропускаем: задача с подзадачами — в отдельной полоске
+                continue
+            standalone_total += 1
+            if root.status == "выполнена" and _completed_on_day(root.completed_at, today):
+                standalone_completed += 1
 
     from app.services.recurring_schedule import get_recurring_templates_for_date
     from app.services.recurring_completion_service import get_completed_today_keys
@@ -404,7 +405,60 @@ async def get_today_progress(db: AsyncSession) -> tuple[int, int]:
         1 for rt in recurring_today if (rt.title, rt.category_id) in completed_keys
     )
 
-    return completed + recurring_completed, total + len(recurring_today)
+    return standalone_completed + recurring_completed, standalone_total + len(recurring_today)
+
+
+async def get_subtask_today_progress(db: AsyncSession) -> dict:
+    """Прогресс задач С подзадачами: родители + подзадачи.
+
+    Returns:
+        parent_total: сколько родительских задач с подзадачами на сегодня
+        parent_done:  сколько родителей, у которых ВСЕ подзадачи выполнены
+        subtask_total: общее количество подзадач
+        subtask_done:  сколько подзадач выполнено
+    """
+    today = date.today()
+
+    roots_result = await db.execute(select(Task).where(*_today_roots_filter(today)))
+    roots = roots_result.scalars().all()
+
+    if not roots:
+        return {"parent_total": 0, "parent_done": 0, "subtask_total": 0, "subtask_done": 0}
+
+    root_ids = [r.id for r in roots]
+    subs_result = await db.execute(
+        select(Task).where(Task.parent_task_id.in_(root_ids))
+    )
+    subs_by_parent: dict[int, list[Task]] = defaultdict(list)
+    for sub in subs_result.scalars().all():
+        subs_by_parent[sub.parent_task_id].append(sub)
+
+    parent_total = 0
+    parent_done = 0
+    subtask_total = 0
+    subtask_done = 0
+
+    for root in roots:
+        subs = subs_by_parent.get(root.id, [])
+        if not subs:
+            continue
+        parent_total += 1
+        all_done = True
+        for sub in subs:
+            subtask_total += 1
+            if sub.status == "выполнена":
+                subtask_done += 1
+            else:
+                all_done = False
+        if all_done:
+            parent_done += 1
+
+    return {
+        "parent_total": parent_total,
+        "parent_done": parent_done,
+        "subtask_total": subtask_total,
+        "subtask_done": subtask_done,
+    }
 
 
 async def get_today_stats(db: AsyncSession):
@@ -424,9 +478,51 @@ def today_stats_oob_html(completed: int, total: int) -> str:
     )
 
 
+def today_subtask_stats_oob_html(sp: dict) -> str:
+    """HTMX OOB: полоска прогресса подзадач (сегментированная) + лейбл «Сделано X/Y»."""
+    if sp["parent_total"] == 0:
+        return (
+            f'<div id="today-subtask-stats-block" hx-swap-oob="true" class="hidden"></div>'
+        )
+
+    # Сегментированная полоска: каждый сегмент = одна подзадача
+    segments_html = ""
+    if sp["subtask_total"] > 0:
+        # Идём по родителям, рендерим их подзадачи как сегменты с микро-разделителями
+        # Но проще: непрерывная полоска + лейбл
+        # Для сегментов генерируем N элементов
+        segs = []
+        for i in range(sp["subtask_total"]):
+            is_done = i < sp["subtask_done"]
+            segs.append(
+                f'<div class="flex-1 h-full rounded-sm transition-all duration-500 '
+                f'{"bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.3)]" if is_done else "bg-dark-600"}'
+                f'{" mx-px first:ml-0 last:mr-0" if sp["subtask_total"] > 1 else ""}'
+                f'"></div>'
+            )
+        segments_html = "".join(segs)
+
+    pct = min(int(sp["subtask_done"] / sp["subtask_total"] * 100), 100) if sp["subtask_total"] > 0 else 0
+
+    return (
+        f'<div id="today-subtask-stats-block" hx-swap-oob="true" class="w-full lg:flex-1 lg:max-w-sm">'
+        f'<div class="flex justify-between items-center mb-1 px-1">'
+        f'<span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Подзадачи</span>'
+        f'<span id="today-subtask-counter" class="font-bold text-sm text-purple-400">'
+        f'Сделано {sp["parent_done"]}/{sp["parent_total"]}'
+        f'</span>'
+        f'</div>'
+        f'<div id="today-subtask-bar" class="w-full bg-dark-800 rounded-full h-1.5 lg:h-1 border border-dark-600 overflow-hidden flex">'
+        f'{segments_html}'
+        f'</div>'
+        f'</div>'
+    )
+
+
 async def append_today_stats_oob(content: str, db: AsyncSession) -> str:
     completed, total = await get_today_stats(db)
-    return content + today_stats_oob_html(completed, total)
+    sp = await get_subtask_today_progress(db)
+    return content + today_stats_oob_html(completed, total) + today_subtask_stats_oob_html(sp)
 
 
 def _completed_tasks_base_filter(start: date, end: date):
@@ -709,8 +805,17 @@ async def get_tasks_today(db: AsyncSession, request: Request):
     subtasks_map = await load_subtasks_map(db, task_ids)
     await db.commit()
 
-    template = templates.get_template("partials/tasks_list.html")
-    content = template.render({"request": request, "tasks": tasks, "subtasks_map": subtasks_map})
+    # Разделяем: с подзадачами и standalone
+    tasks_with_subtasks = [t for t in tasks if subtasks_map.get(t.id)]
+    standalone_tasks = [t for t in tasks if not subtasks_map.get(t.id)]
+
+    template = templates.get_template("partials/tasks_list_split.html")
+    content = template.render({
+        "request": request,
+        "tasks_with_subtasks": tasks_with_subtasks,
+        "standalone_tasks": standalone_tasks,
+        "subtasks_map": subtasks_map,
+    })
 
     return await append_today_stats_oob(content, db)
 
@@ -720,7 +825,9 @@ __all__ = [
     "get_categories_list",
     "get_today_stats",
     "get_today_progress",
+    "get_subtask_today_progress",
     "today_stats_oob_html",
+    "today_subtask_stats_oob_html",
     "append_today_stats_oob",
     "load_subtasks_map",
     "repair_archived_subtasks",

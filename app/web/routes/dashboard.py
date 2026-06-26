@@ -26,6 +26,7 @@ from app.web.deps import (
     get_history_data,
     get_tasks_today,
     append_today_stats_oob,
+    get_subtask_today_progress,
     load_subtasks_map,
     repair_archived_subtasks,
     dashboard_task_order_by,
@@ -115,6 +116,10 @@ async def dashboard(request: Request):
         subtasks_map = await load_subtasks_map(db, [t.id for t in tasks])
         await db.commit()
 
+        # Разделяем задачи: с подзадачами и standalone
+        tasks_with_subtasks = [t for t in tasks if subtasks_map.get(t.id)]
+        standalone_tasks = [t for t in tasks if not subtasks_map.get(t.id)]
+
         from app.services.recurring_schedule import get_recurring_templates_for_date
 
         recurring_today = await get_recurring_templates_for_date(
@@ -123,6 +128,7 @@ async def dashboard(request: Request):
 
         # Получаем статистику через хелпер
         completed, total = await get_today_stats(db)
+        subtask_progress = await get_subtask_today_progress(db)
 
         from app.services.shopping_service import load_active_shopping, load_active_reading
         shopping_items = await load_active_shopping(db)
@@ -158,11 +164,14 @@ async def dashboard(request: Request):
     return templates.TemplateResponse(request, "dashboard.html", {
         "request": request,
         "tasks": tasks,
+        "tasks_with_subtasks": tasks_with_subtasks,
+        "standalone_tasks": standalone_tasks,
         "subtasks_map": subtasks_map,
         "recurring_tasks": recurring_today,
         "categories": categories,
         "completed": completed,
         "total": total,
+        "subtask_progress": subtask_progress,
         "today": today,
         "ai_warning": ai_warning,
         "habits_data": habits_data,

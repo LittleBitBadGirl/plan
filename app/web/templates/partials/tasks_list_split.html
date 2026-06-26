@@ -1,0 +1,39 @@
+{% if tasks_with_subtasks %}
+<div class="mb-6">
+    <div class="flex items-center gap-2 mb-3 px-1">
+        <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+        <h3 class="text-sm font-bold text-purple-300 uppercase tracking-wider">С подзадачами</h3>
+        <span class="text-[10px] text-gray-600">({{ tasks_with_subtasks|length }})</span>
+    </div>
+    <div class="space-y-3">
+    {% for task in tasks_with_subtasks %}
+        {% set current_subtasks = subtasks_map.get(task.id, []) %}
+        {% include "partials/subtask_parent_card.html" %}
+    {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if standalone_tasks %}
+<div>
+    {% if tasks_with_subtasks %}
+    <div class="flex items-center gap-2 mb-3 px-1">
+        <span class="w-1.5 h-1.5 rounded-full bg-dark-400"></span>
+        <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider">Остальные</h3>
+        <span class="text-[10px] text-gray-600">({{ standalone_tasks|length }})</span>
+    </div>
+    {% endif %}
+    <div class="space-y-3">
+    {% for task in standalone_tasks %}
+        {% include "partials/task_card.html" %}
+    {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if not tasks_with_subtasks and not standalone_tasks %}
+<div class="text-center py-10 text-gray-500">
+    <p>Нет задач на сегодня</p>
+    <a href="/backlog" class="text-purple-400 hover:text-purple-300 mt-2 inline-block text-sm">Перейти в бэклог →</a>
+</div>
+{% endif %}
