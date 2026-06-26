@@ -270,7 +270,7 @@
             <p class="text-gray-500 text-xs mt-1">Накопленные данные · {{ period_stats.cycles_history|length }} цикл(ов)</p>
         </div>
 
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5 sm:mb-6">
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-5 sm:mb-6">
             <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5 sm:px-4 sm:py-3">
                 <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Ср. цикл</p>
                 <p class="text-xl sm:text-2xl font-black text-white tabular-nums">{{ period_stats.avg_cycle }}<span class="text-xs sm:text-sm font-normal text-gray-500"> дн.</span></p>
@@ -279,11 +279,23 @@
                 <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Ср. менструация</p>
                 <p class="text-xl sm:text-2xl font-black text-white tabular-nums">{{ period_stats.avg_period }}<span class="text-xs sm:text-sm font-normal text-gray-500"> дн.</span></p>
             </div>
+            {% if period_stats.cycle_stddev is not none %}
+            <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5 sm:px-4 sm:py-3">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">σ цикла</p>
+                <p class="text-xl sm:text-2xl font-black tabular-nums {{ 'text-green-400' if period_stats.cycle_stddev <= 1.5 else 'text-amber-400' if period_stats.cycle_stddev <= 3.5 else 'text-red-400' }}">±{{ period_stats.cycle_stddev }}<span class="text-xs sm:text-sm font-normal text-gray-500"> дн.</span></p>
+            </div>
+            <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5 sm:px-4 sm:py-3 col-span-2 sm:col-span-1">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Разброс</p>
+                <p class="text-xl sm:text-2xl font-black text-white tabular-nums">{{ period_stats.cycle_min }}–{{ period_stats.cycle_max }}<span class="text-xs sm:text-sm font-normal text-gray-500"> дн.</span></p>
+                <p class="text-[9px] text-gray-600 mt-0.5">{{ period_stats.regularity }}</p>
+            </div>
+            {% else %}
             {% if lengths %}
             <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5 sm:px-4 sm:py-3 col-span-2 sm:col-span-1">
                 <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Разброс цикла</p>
                 <p class="text-xl sm:text-2xl font-black text-white tabular-nums">{{ lengths|min }}–{{ lengths|max }}<span class="text-xs sm:text-sm font-normal text-gray-500"> дн.</span></p>
             </div>
+            {% endif %}
             {% endif %}
         </div>
 
@@ -334,6 +346,7 @@
                         <th class="px-4 py-3 text-left">Цикл</th>
                         <th class="px-4 py-3 text-left">Начало</th>
                         <th class="px-4 py-3 text-center">Длина цикла</th>
+                        <th class="px-4 py-3 text-center w-10">±</th>
                         <th class="px-4 py-3 text-center">Дней крит.</th>
                         <th class="px-4 py-3 text-center">Мазня до</th>
                         <th class="px-4 py-3 text-center">Мазня после</th>
@@ -349,6 +362,9 @@
                         </td>
                         <td class="px-4 py-2.5 text-gray-400">{{ c.start }}</td>
                         <td class="px-4 py-2.5 text-center text-gray-300">{{ c.length|string + ' дн.' if c.length else '—' }}</td>
+                        <td class="px-4 py-2.5 text-center tabular-nums {{ 'text-green-400' if c.deviation is not none and c.deviation|abs <= 1.5 else 'text-amber-400' if c.deviation is not none and c.deviation|abs <= 3.5 else 'text-red-400' if c.deviation is not none and c.deviation > 3.5 else 'text-gray-600' }}">
+                            {{ ('+' + c.deviation|string) if c.deviation is not none and c.deviation > 0 else c.deviation|string if c.deviation is not none else '—' }}
+                        </td>
                         <td class="px-4 py-2.5 text-center text-gray-300">{{ c.period_days }}</td>
                         <td class="px-4 py-2.5 text-center {{ 'text-amber-400 font-bold' if c.spotting_before else 'text-gray-600' }}">
                             {{ c.spotting_before if c.spotting_before else '—' }}
@@ -375,7 +391,7 @@
         <div class="bg-dark-900/60 rounded-xl border border-dark-600 p-3 sm:p-4 overflow-hidden">
             <p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-2 sm:mb-3">Текст для врача — скопировать</p>
             <pre class="text-[11px] sm:text-xs text-gray-300 leading-relaxed whitespace-pre-wrap break-words font-mono select-all overflow-x-auto">Отслежено {{ lengths|length }} полных цикл(ов) (с {{ period_stats.cycles_history[0].start }}).
-Средняя длина цикла: {{ period_stats.avg_cycle }} дней{% if lengths|length > 1 %} (разброс {{ lengths|min }}–{{ lengths|max }}){% endif %}.
+Средняя длина цикла: {{ period_stats.avg_cycle }} дней{% if lengths|length > 1 %} (разброс {{ period_stats.cycle_min }}–{{ period_stats.cycle_max }}, σ = {{ period_stats.cycle_stddev }}){% endif %}.
 Средняя продолжительность менструации: {{ period_stats.avg_period }} дня.
 {% set spotting_before_total = period_stats.cycles_history | sum(attribute='spotting_before') %}
 {% set spotting_after_total = period_stats.cycles_history | sum(attribute='spotting_after') %}
@@ -383,7 +399,7 @@
 {% if period_stats.pending_spotting_days %}Сейчас предменструальная мазня: {{ period_stats.pending_spotting_days }} дн. (с {{ period_stats.pending_spotting_start }}), месячные ещё не начались.
 {% endif %}
 {% set pain_cycles = period_stats.cycles_history | selectattr('pain_days', 'gt', 0) | list %}{% if pain_cycles %}Боли отмечены в {{ pain_cycles|length }} из {{ period_stats.cycles_history|length }} цикл(ов).{% else %}Болей не отмечено.{% endif %}
-Нерегулярность: {% if lengths|length > 1 and (lengths|max - lengths|min) <= 3 %}низкая (±{{ ((lengths|max - lengths|min) / 2)|round(1) }} дня){% elif lengths|length > 1 %}умеренная (разброс {{ lengths|max - lengths|min }} дней){% else %}недостаточно данных для оценки{% endif %}.</pre>
+Регулярность цикла: {{ period_stats.regularity }}{% if period_stats.cycle_stddev is not none %} (σ = {{ period_stats.cycle_stddev }} дн.){% endif %}.</pre>
         </div>
     </div>
     {% endif %}

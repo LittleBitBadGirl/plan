@@ -125,6 +125,10 @@ def compute_period_data(entries, today: date) -> dict:
             "current_phase_label": "Отметь первый день",
             "avg_cycle": 28,
             "avg_period": 5,
+            "cycle_stddev": None,
+            "cycle_min": None,
+            "cycle_max": None,
+            "regularity": "недостаточно данных",
             "month_label": month_label,
             "start_weekday": start_weekday,
             "calendar_days": calendar_days,
@@ -172,6 +176,25 @@ def compute_period_data(entries, today: date) -> dict:
     ]
     avg_cycle = round(mean(cycle_lengths)) if cycle_lengths else 28
     avg_period = max(1, round(mean(period_day_counts))) if period_day_counts else 5
+
+    # Variability metrics
+    if len(cycle_lengths) >= 2:
+        from statistics import stdev
+        cycle_stddev = round(stdev(cycle_lengths), 1)
+        cycle_min = min(cycle_lengths)
+        cycle_max = max(cycle_lengths)
+        # Regularity assessment
+        if cycle_stddev <= 1.5:
+            regularity = "регулярный"
+        elif cycle_stddev <= 3.5:
+            regularity = "умеренно нерегулярный"
+        else:
+            regularity = "нерегулярный"
+    else:
+        cycle_stddev = None
+        cycle_min = cycle_lengths[0] if cycle_lengths else None
+        cycle_max = cycle_lengths[0] if cycle_lengths else None
+        regularity = "недостаточно данных"
 
     if cycle_starts:
         # Count from the last REAL period start, never from spotting.
@@ -224,6 +247,7 @@ def compute_period_data(entries, today: date) -> dict:
             "spotting_after": spotting_after,
             "total_days": len(grp),
             "is_current": cl is None,
+            "deviation": round(cl - avg_cycle, 1) if cl is not None and cycle_lengths else None,
         })
         real_idx += 1
 
@@ -244,6 +268,10 @@ def compute_period_data(entries, today: date) -> dict:
         "current_phase_label": current_phase_label,
         "avg_cycle": avg_cycle,
         "avg_period": avg_period,
+        "cycle_stddev": cycle_stddev,
+        "cycle_min": cycle_min,
+        "cycle_max": cycle_max,
+        "regularity": regularity,
         "month_label": month_label,
         "start_weekday": start_weekday,
         "calendar_days": calendar_days,
@@ -717,10 +745,15 @@ async def get_subtask_insights(db: AsyncSession) -> dict:
 
 
 async def build_daily_load_warning(
-    db: AsyncSession, completed: int, total: int
+    db: AsyncSession, completed: int, total: int, subtask_progress: dict = None
 ) -> Optional[str]:
-    """Предупреждение о перегрузке — те же цифры, что в «Прогресс сегодня»."""
-    remaining = max(total - completed, 0)
+    """Предупреждение о перегрузке — полная картина дня (standalone + подзадачи + регулярные)."""
+    # Полный тотал: standalone + родители с подзадачами
+    parent_count = subtask_progress["parent_total"] if subtask_progress else 0
+    parent_done = subtask_progress["parent_done"] if subtask_progress else 0
+    full_total = total + parent_count
+    full_completed = completed + parent_done
+    remaining = max(full_total - full_completed, 0)
     if remaining <= 8:
         return None
 
@@ -732,7 +765,7 @@ async def build_daily_load_warning(
         avg_part = "Обычно вы закрываете ~5 в день."
 
     return (
-        f"Сегодня {total} задач: {completed} готово, {remaining} осталось. {avg_part}"
+        f"Сегодня {full_total} задач: {full_completed} готово, {remaining} осталось. {avg_part}"
     )
 
 
