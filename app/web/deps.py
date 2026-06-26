@@ -499,10 +499,10 @@ def today_stats_oob_html(completed: int, total: int) -> str:
     pct = min(int(completed / total * 100), 100) if total > 0 else 0
     return (
         f'<span id="today-stats-counter" hx-swap-oob="true" '
-        f'class="font-bold text-sm text-green-400">{completed}/{total}</span>'
+        f'class="font-bold text-sm text-emerald-400">{completed}/{total}</span>'
         f'<div id="today-progress-bar" hx-swap-oob="true" '
-        f'class="bg-green-500 h-full transition-all duration-500 '
-        f'shadow-[0_0_8px_rgba(34,197,94,0.4)]" style="width: {pct}%"></div>'
+        f'class="bg-emerald-500 h-full transition-all duration-500" '
+        f'style="width: {pct}%"></div>'
     )
 
 
@@ -524,7 +524,7 @@ def today_subtask_stats_oob_html(sp: dict) -> str:
             is_done = i < sp["subtask_done"]
             segs.append(
                 f'<div class="flex-1 h-full rounded-sm transition-all duration-500 '
-                f'{"bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.3)]" if is_done else "bg-dark-600"}'
+                f'{"bg-emerald-500" if is_done else "bg-dark-600"}'
                 f'{" mx-px first:ml-0 last:mr-0" if sp["subtask_total"] > 1 else ""}'
                 f'"></div>'
             )
@@ -536,7 +536,7 @@ def today_subtask_stats_oob_html(sp: dict) -> str:
         f'<div id="today-subtask-stats-block" hx-swap-oob="true" class="w-full lg:flex-1 lg:max-w-sm">'
         f'<div class="flex justify-between items-center mb-1 px-1">'
         f'<span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Подзадачи</span>'
-        f'<span id="today-subtask-counter" class="font-bold text-sm text-purple-400">'
+        f'<span id="today-subtask-counter" class="font-bold text-sm text-rose-400">'
         f'Сделано {sp["parent_done"]}/{sp["parent_total"]}'
         f'</span>'
         f'</div>'

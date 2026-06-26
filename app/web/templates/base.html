@@ -7,7 +7,7 @@
 
     <!-- PWA -->
     <link rel="manifest" href="/web/static/manifest.json">
-    <meta name="theme-color" content="#0d0d0f">
+    <meta name="theme-color" content="#0c0c11">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
@@ -24,18 +24,19 @@
                 extend: {
                     colors: {
                         dark: {
-                            900: '#0d0d0f',
-                            800: '#1a1a2e',
-                            700: '#252540',
-                            600: '#2f2f4f',
-                            500: '#3a3a5c',
+                            950: '#0c0c11',
+                            900: '#16161d',
+                            800: '#1e1e27',
+                            700: '#2a2a36',
+                            600: '#363645',
+                            500: '#454557',
                         },
                         accent: {
-                            DEFAULT: '#3b82f6',
-                            hover: '#2563eb',
+                            DEFAULT: '#e11d48',
+                            hover: '#be123c',
                         },
-                        success: '#22c55e',
-                        warning: '#f59e0b',
+                        success: '#10b981',
+                        warning: '#d97706',
                         danger: '#ef4444',
                     }
                 }
@@ -59,7 +60,7 @@
 
     {% block extra_head %}{% endblock %}
 </head>
-<body class="bg-dark-900 text-gray-200 min-h-screen" x-data="{ sidebarOpen: false }">
+<body class="bg-dark-950 text-stone-300 min-h-screen" x-data="{ sidebarOpen: false }">
 {% from 'partials/icons_macros.html' import icon_logo, icon_nav_dashboard, icon_calendar, icon_folder, icon_repeat, icon_nav_stats, icon_nav_inbox, icon_nav_archive, icon_nav_finance, icon_nav_logout %}
     <!-- Mobile Top Bar -->
     <header class="lg:hidden bg-dark-800 border-b border-dark-600 p-4 flex justify-between items-center sticky top-0 z-50">
