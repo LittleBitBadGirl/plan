@@ -690,6 +690,11 @@ async def handle_photo(message: Message, bot: Bot):
                     # --- Фильтрация и коррекция знака ---
                     INCOME_CATEGORY_IDS = {65, 85, 66, 86, 94, 129}
 
+                    # Пропускаем строки кэшбэка
+                    if "кэшбэк" in desc.lower() or "cashback" in desc.lower():
+                        app_logger.info(f"⏭ Пропущен кэшбэк: {desc}")
+                        continue
+
                     # Пропускаем микрокэшбэк: маленькие положительные суммы,
                     # которые не являются доходом
                     if amount > 0 and amount < 50 and cat_id not in INCOME_CATEGORY_IDS:
