@@ -2,21 +2,21 @@
 
 {% if calendar_events %}
 <div id="calendar-meetings-block" class="space-y-4">
-    <h2 class="text-xl font-bold text-sky-400 px-1">Встречи</h2>
+    <h2 class="text-xl font-bold text-stone-300 px-1">Встречи</h2>
     <div class="space-y-2">
         {% for ev in calendar_events %}
-        <div class="bg-sky-900/10 rounded-xl p-3 border border-sky-700/30 group" id="calendar-event-{{ ev.id }}">
+        <div class="bg-dark-800 rounded-xl p-3 border border-dark-600 group" id="calendar-event-{{ ev.id }}">
             <div class="flex justify-between items-start gap-2">
                 <div class="flex-1 min-w-0">
-                    <p class="text-[10px] text-sky-300/80 font-mono">
+                    <p class="text-[10px] text-stone-400 font-mono">
                         {{ ev.start_at.strftime('%H:%M') }}{% if ev.end_at %}–{{ ev.end_at.strftime('%H:%M') }}{% endif %}
                     </p>
-                    <h3 class="font-semibold text-sky-100 text-sm truncate" title="{{ ev.title }}">{{ ev.title }}</h3>
+                    <h3 class="font-semibold text-stone-200 text-sm truncate" title="{{ ev.title }}">{{ ev.title }}</h3>
                     <p class="text-[8px] text-gray-500 mt-0.5 truncate">{{ ev.calendar_name }}</p>
                 </div>
                 <div class="flex flex-col items-end gap-1 shrink-0">
                     {% if ev.is_recurring %}
-                    <span class="text-sky-400/80 inline-flex" title="Повторяющаяся">{{ icon_repeat() }}</span>
+                    <span class="text-amber-400/80 inline-flex" title="Повторяющаяся">{{ icon_repeat() }}</span>
                     {% endif %}
                     <form hx-post="/api/calendar/{{ ev.id }}/decline"
                           hx-target="#calendar-column-blocks"
@@ -24,7 +24,7 @@
                           hx-confirm="{% if ev.is_recurring %}Скрыть всю повторяющуюся серию «{{ ev.title }}»?{% else %}Скрыть эту встречу?{% endif %}"
                           class="lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                         <button type="submit"
-                                class="text-[9px] text-gray-400 hover:text-rose-300 border border-gray-600 hover:border-rose-500/50 rounded px-1.5 py-0.5 whitespace-nowrap"
+                                class="text-[9px] text-gray-400 hover:text-amber-400 border border-gray-600 hover:border-amber-700/50 rounded px-1.5 py-0.5 whitespace-nowrap"
                                 title="{% if ev.is_recurring %}Не хожу на эту серию{% else %}Не пойду{% endif %}">
                             Не пойду
                         </button>
