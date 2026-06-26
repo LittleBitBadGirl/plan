@@ -24,6 +24,7 @@ from app.web.deps import (
     get_today_stats,
     get_history_data,
     get_productivity_insights,
+    get_subtask_insights,
     get_tasks_today,
     _strip_emoji,
     _render_shopping_list,
@@ -89,6 +90,7 @@ async def stats_page(request: Request, period: str = "month"):
 
         history_data = await get_history_data(db, period)
         insights = await get_productivity_insights(db)
+        subtask_insights = await get_subtask_insights(db)
         
         report_result = await db.execute(select(AIReport).order_by(AIReport.report_date.desc()))
         last_report = report_result.scalars().first()
@@ -124,6 +126,7 @@ async def stats_page(request: Request, period: str = "month"):
         "total_active": total_active,
         "category_distribution": category_distribution,
         "insights": insights,
+        "subtask_insights": subtask_insights,
         "weekly_history": history_data["history"],
         "max_hist": history_data["max_val"],
         "period": period,

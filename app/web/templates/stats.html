@@ -102,6 +102,37 @@
                 </div>
                 {% endif %}
             </div>
+
+            {% if subtask_insights.created_7d or subtask_insights.closed_7d %}
+            <div class="mt-4 pt-3 border-t border-dark-600">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-2 px-0.5">Подзадачи</p>
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                    <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
+                        <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Создано</p>
+                        <p class="text-sm font-bold text-white tabular-nums">{{ subtask_insights.created_7d }} <span class="text-gray-500 font-normal text-xs">за 7 дн.</span></p>
+                        <p class="text-[10px] text-gray-600 mt-0.5">было {{ subtask_insights.created_prev_7d }}</p>
+                    </div>
+                    <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5"
+                         title="Создано за 7 дн. vs предыдущие 7 дн.: {{ subtask_insights.created_prev_7d }}">
+                        <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Δ создано</p>
+                        <p class="text-sm font-bold tabular-nums text-gray-400">{{ subtask_insights.created_delta_label }}</p>
+                        <p class="text-[10px] text-gray-600 mt-0.5">к прошлой нед.</p>
+                    </div>
+                    <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
+                        <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Закрыто</p>
+                        <p class="text-sm font-bold text-purple-400 tabular-nums">{{ subtask_insights.closed_7d }} <span class="text-gray-500 font-normal text-xs">за 7 дн.</span></p>
+                        <p class="text-[10px] text-gray-600 mt-0.5">было {{ subtask_insights.closed_prev_7d }}</p>
+                    </div>
+                    <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5"
+                         title="Закрыто за 7 дн. vs предыдущие 7 дн.: {{ subtask_insights.closed_prev_7d }}">
+                        <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Δ закрыто</p>
+                        <p class="text-sm font-bold tabular-nums {{ subtask_insights.closed_delta_color }}">{{ subtask_insights.closed_delta_label }}</p>
+                        <p class="text-[10px] text-gray-600 mt-0.5">к прошлой нед.</p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
             <p class="text-[10px] text-gray-600 mt-4 pt-3 border-t border-dark-700">Выходные на графике подсвечены; в цифрах темпа — только пн–пт.</p>
         </div>
     </section>

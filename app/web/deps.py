@@ -642,6 +642,80 @@ async def get_productivity_insights(db: AsyncSession) -> dict:
     }
 
 
+async def get_subtask_insights(db: AsyncSession) -> dict:
+    """Аналитика подзадач: создано / закрыто за 7 рабочих дней vs прошлая неделя."""
+    today = date.today()
+    (cur_start, cur_end), (prev_start, prev_end) = rolling_week_windows(today)
+
+    # Подзадачи, созданные в периоде
+    cur_created = await db.scalar(
+        select(func.count(Task.id)).where(
+            func.date(Task.created_at) >= cur_start.isoformat(),
+            func.date(Task.created_at) <= cur_end.isoformat(),
+            Task.parent_task_id.isnot(None),
+            Task.item_kind == "task",
+        )
+    ) or 0
+
+    prev_created = await db.scalar(
+        select(func.count(Task.id)).where(
+            func.date(Task.created_at) >= prev_start.isoformat(),
+            func.date(Task.created_at) <= prev_end.isoformat(),
+            Task.parent_task_id.isnot(None),
+            Task.item_kind == "task",
+        )
+    ) or 0
+
+    # Подзадачи, закрытые в периоде
+    cur_closed = await db.scalar(
+        select(func.count(Task.id)).where(
+            Task.status == "выполнена",
+            Task.completed_at.isnot(None),
+            func.date(Task.completed_at) >= cur_start.isoformat(),
+            func.date(Task.completed_at) <= cur_end.isoformat(),
+            Task.parent_task_id.isnot(None),
+            Task.item_kind == "task",
+        )
+    ) or 0
+
+    prev_closed = await db.scalar(
+        select(func.count(Task.id)).where(
+            Task.status == "выполнена",
+            Task.completed_at.isnot(None),
+            func.date(Task.completed_at) >= prev_start.isoformat(),
+            func.date(Task.completed_at) <= prev_end.isoformat(),
+            Task.parent_task_id.isnot(None),
+            Task.item_kind == "task",
+        )
+    ) or 0
+
+    created_delta = cur_created - prev_created
+    closed_delta = cur_closed - prev_closed
+
+    def _delta_label(d: int) -> str:
+        if d > 0:
+            return f"+{d}"
+        elif d < 0:
+            return f"−{abs(d)}"
+        return "0"
+
+    def _delta_color(d: int) -> str:
+        # Зелёный — рост закрытых (хорошо), серый — рост созданных (нейтрально)
+        return "text-green-400" if d > 0 else "text-red-400/90" if d < 0 else "text-gray-400"
+
+    return {
+        "created_7d": cur_created,
+        "created_prev_7d": prev_created,
+        "created_delta": created_delta,
+        "created_delta_label": _delta_label(created_delta),
+        "closed_7d": cur_closed,
+        "closed_prev_7d": prev_closed,
+        "closed_delta": closed_delta,
+        "closed_delta_label": _delta_label(closed_delta),
+        "closed_delta_color": _delta_color(closed_delta),
+    }
+
+
 async def build_daily_load_warning(
     db: AsyncSession, completed: int, total: int
 ) -> Optional[str]:
@@ -834,6 +908,7 @@ __all__ = [
     "build_daily_load_warning",
     "get_avg_completed_per_day",
     "get_productivity_insights",
+    "get_subtask_insights",
     "get_history_data",
     "get_tasks_today",
     "dashboard_task_order_by",

@@ -89,8 +89,8 @@
         </div>
     </div>
 
-    {# Subtasks always visible for parent tasks #}
-    <div id="subtasks-{{ task.id }}" class="mt-2 pt-2 border-t border-dark-700/50">
+    {# Subtasks hidden by default, toggle via button #}
+    <div id="subtasks-{{ task.id }}" class="hidden mt-2 pt-2 border-t border-dark-700/50">
         {% if current_subtasks and current_subtasks|length > 0 %}
             <div class="space-y-1 mb-2">
                 {% for sub in current_subtasks %}
