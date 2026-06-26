@@ -13,20 +13,20 @@
 .icon-action:hover {
     background: rgba(255, 255, 255, 0.06);
 }
-.icon-action--success { color: #b45309; }
-.icon-action--success:hover { color: #d97706; background: rgba(180, 83, 9, 0.12); }
-.icon-action--info { color: #b45309; }
-.icon-action--info:hover { color: #d97706; background: rgba(180, 83, 9, 0.12); }
-.icon-action--warn { color: #b45309; }
-.icon-action--warn:hover { color: #d97706; background: rgba(180, 83, 9, 0.12); }
+.icon-action--success { color: #78716c; }
+.icon-action--success:hover { color: #a8a29e; background: rgba(255, 255, 255, 0.06); }
+.icon-action--info { color: #78716c; }
+.icon-action--info:hover { color: #a8a29e; background: rgba(255, 255, 255, 0.06); }
+.icon-action--warn { color: #78716c; }
+.icon-action--warn:hover { color: #a8a29e; background: rgba(255, 255, 255, 0.06); }
 .icon-action--muted { color: #78716c; }
 .icon-action--muted:hover { color: #d6d3d1; background: rgba(255, 255, 255, 0.08); }
 .icon-action--danger { color: #78716c; }
-.icon-action--danger:hover { color: #fca5a5; background: rgba(239, 68, 68, 0.12); }
-.icon-action--today { color: #b45309; }
-.icon-action--today:hover { color: #d97706; background: rgba(180, 83, 9, 0.12); }
-.icon-action--purple { color: #b45309; }
-.icon-action--purple:hover { color: #d97706; background: rgba(180, 83, 9, 0.12); }
+.icon-action--danger:hover { color: #a8a29e; background: rgba(239, 68, 68, 0.12); }
+.icon-action--today { color: #78716c; }
+.icon-action--today:hover { color: #a8a29e; background: rgba(255, 255, 255, 0.06); }
+.icon-action--purple { color: #78716c; }
+.icon-action--purple:hover { color: #a8a29e; background: rgba(255, 255, 255, 0.06); }
 .icon-link {
     display: inline-flex;
     align-items: center;
