@@ -692,7 +692,7 @@ async def handle_photo(message: Message, bot: Bot):
 
                     # Пропускаем микрокэшбэк: маленькие положительные суммы,
                     # которые не являются доходом
-                    if amount > 0 and amount < 100 and cat_id not in INCOME_CATEGORY_IDS:
+                    if amount > 0 and amount < 50 and cat_id not in INCOME_CATEGORY_IDS:
                         app_logger.info(f"⏭ Пропущен кэшбэк: {amount}₽ — {desc}")
                         continue
 
