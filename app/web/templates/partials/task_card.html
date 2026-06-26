@@ -1,9 +1,9 @@
 {% from 'partials/icons_macros.html' import icon_check, icon_calendar, icon_backlog, icon_edit, icon_trash, icon_subtasks, icon_clock %}
 
-<div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-purple-600 transition flex flex-col gap-3" id="task-{{ task.id }}">
+<div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-amber-700/40 transition flex flex-col gap-3" id="task-{{ task.id }}">
     <div class="flex items-center gap-2">
         {% if task.due_time %}
-            <span class="bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded text-xs font-mono border border-purple-700/50">
+            <span class="bg-amber-900/40 text-amber-300 px-1.5 py-0.5 rounded text-xs font-mono border border-amber-700/40">
                 {{ task.due_time.strftime('%H:%M') }}
             </span>
         {% endif %}
@@ -26,7 +26,7 @@
             {% endif %}
 
             {% if task.postpones and task.postpones > 0 %}
-            <span class="text-yellow-500/80 inline-flex items-center gap-1" title="Перенесена {{ task.postpones }} раз(а)">
+            <span class="text-amber-600/80 inline-flex items-center gap-1" title="Перенесена {{ task.postpones }} раз(а)">
                 {{ icon_clock() }}
                 <span>×{{ task.postpones }}</span>
             </span>
@@ -34,7 +34,7 @@
 
             <button type="button"
                     onclick="document.getElementById('subtasks-{{ task.id }}').classList.toggle('hidden')"
-                    class="text-purple-400 hover:text-purple-300 inline-flex items-center gap-1 transition-colors"
+                    class="text-amber-600 hover:text-amber-500 inline-flex items-center gap-1 transition-colors"
                     title="Подзадачи">
                 {{ icon_subtasks() }}
                 <span class="text-[10px] opacity-60 font-bold">+</span>
@@ -90,7 +90,7 @@
               hx-swap="innerHTML"
               class="mt-1">
             <input type="text" name="title" placeholder="+ Добавить подзадачу..." required
-                   class="w-full bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500/50">
+                   class="w-full bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-700/50">
         </form>
     </div>
 </div>
