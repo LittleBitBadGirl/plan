@@ -171,6 +171,7 @@
                                     editing: false,
                                     catId: '{{ tx.category_id or '' }}',
                                     catName: '{{ tx.category.name if tx.category else 'Прочее' }}',
+                                    catParent: '{{ tx.category.parent.name if tx.category and tx.category.parent else '' }}',
                                     applyAll: false,
                                     saving: false,
                                     async save() {
@@ -186,6 +187,7 @@
                                         });
                                         const data = await r.json();
                                         this.catName = data.category_name;
+                                        this.catParent = data.category_parent || '';
                                         if (data.updated > 1) {
                                             this.catName += ' \u2713\u00d7' + data.updated;
                                         }
@@ -198,14 +200,17 @@
                                 <td class="px-2 py-2 text-[11px] text-gray-500 font-mono tabular-nums w-6 align-top">{{ tx.date.strftime('%d') }}</td>
                                 <td class="px-2 py-2 text-xs text-gray-200 leading-tight break-words">
                                     <div class="text-gray-200">{{ tx.description or '—' }}</div>
-                                    <div class="text-[8px] text-gray-500 mt-0.5">{{ (tx.category.name if tx.category else '—') }}</div>
+                                    <div class="text-[8px] text-gray-500 mt-0.5">{% if tx.category and tx.category.parent %}{{ tx.category.parent.name }} → {% endif %}{{ tx.category.name if tx.category else '—' }}</div>
                                 </td>
 
                                 <td class="px-3 py-3 hidden md:table-cell">
                                     <span x-show="!editing"
                                           @click="editing = true"
-                                          x-text="catName"
                                           class="px-2 py-0.5 rounded-md bg-dark-700/50 hover:bg-dark-600/50 text-[9px] text-gray-400 cursor-pointer transition-all duration-150 border border-transparent hover:border-dark-500">
+                                        <template x-if="catParent">
+                                          <span><span x-text="catParent" class="text-gray-500"></span> → </span>
+                                        </template>
+                                        <span x-text="catName"></span>
                                     </span>
                                     <div x-show="editing" x-cloak class="space-y-1.5 min-w-[140px]">
                                         <select x-model="catId"
