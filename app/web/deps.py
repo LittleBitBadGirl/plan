@@ -499,7 +499,7 @@ def today_stats_oob_html(completed: int, total: int) -> str:
     pct = min(int(completed / total * 100), 100) if total > 0 else 0
     return (
         f'<span id="today-stats-counter" hx-swap-oob="true" '
-        f'class="font-bold text-sm text-amber-400">{completed}/{total}</span>'
+        f'class="font-bold text-sm text-amber-600">{completed}/{total}</span>'
         f'<div id="today-progress-bar" hx-swap-oob="true" '
         f'class="bg-amber-600 h-full transition-all duration-500" '
         f'style="width: {pct}%"></div>'
@@ -536,8 +536,8 @@ def today_subtask_stats_oob_html(sp: dict) -> str:
         f'<div id="today-subtask-stats-block" hx-swap-oob="true" class="w-full lg:flex-1 lg:max-w-sm">'
         f'<div class="flex justify-between items-center mb-1 px-1">'
         f'<span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Подзадачи</span>'
-        f'<span id="today-subtask-counter" class="font-bold text-sm text-amber-400">'
-        f'Сделано {sp["parent_done"]}/{sp["parent_total"]}'
+        f'<span id="today-subtask-counter" class="font-bold text-sm text-amber-600">'
+        f'{sp["parent_done"]}/{sp["parent_total"]}'
         f'</span>'
         f'</div>'
         f'<div id="today-subtask-bar" class="w-full bg-dark-800 rounded-full h-1.5 lg:h-1 border border-dark-600 overflow-hidden flex">'
