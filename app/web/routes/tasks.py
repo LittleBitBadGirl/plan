@@ -244,16 +244,21 @@ async def create_subtask_htmx(
     task_id: int,
     title: str = Form(...),
 ):
-    """HTMX: создать подзадачу"""
+    """HTMX: создать подзадачу (наследует ДЛ родителя)"""
     async with async_session() as db:
+        parent_res = await db.execute(select(Task).where(Task.id == task_id))
+        parent = parent_res.scalar_one_or_none()
+        subtask_due = parent.due_date if parent else None
         subtask = Task(
             title=title,
             parent_task_id=task_id,
             source="web",
             status="новая",
+            due_date=subtask_due,
         )
         db.add(subtask)
         await db.commit()
+        await _sync_parent(db, task_id)
 
         # Вернуть обновленный список
         result = await db.execute(
@@ -351,11 +356,38 @@ async def task_create_htmx(
         return HTMLResponse(content=await get_tasks_today(db, request))
 
 
+
+
+async def _sync_parent(db: AsyncSession, parent_id: int):
+    subs_res = await db.execute(
+        select(Task).where(Task.parent_task_id == parent_id, Task.is_archived == False)
+    )
+    subs = subs_res.scalars().all()
+    if not subs:
+        return
+    parent_res = await db.execute(select(Task).where(Task.id == parent_id))
+    parent = parent_res.scalar_one_or_none()
+    if not parent:
+        return
+    active = [s for s in subs if s.status != "выполнена"]
+    if not active:
+        parent.status = "выполнена"
+        parent.completed_at = datetime.utcnow()
+        parent.is_archived = True
+    else:
+        dates = [s.due_date for s in active if s.due_date]
+        if dates:
+            parent.due_date = min(dates)
+    await db.commit()
+
+
 async def _complete_subtask_impl(db: AsyncSession, subtask: Task) -> None:
     """Закрыть подзадачу — остаётся в списке зачёркнутой."""
     subtask.status = "выполнена"
     subtask.completed_at = datetime.utcnow()
     subtask.is_archived = False
+    if subtask.parent_task_id:
+        await _sync_parent(db, subtask.parent_task_id)
 
 
 @router.post("/tasks/{task_id}/complete-subtask", response_class=HTMLResponse)

@@ -87,25 +87,25 @@
             </a>
         </div>
 
-        <div class="w-full lg:flex-1 lg:max-w-sm lg:order-none flex flex-row lg:flex-col gap-3 lg:gap-0">
-            <div class="flex-1 lg:flex-none">
+        <div class="w-full lg:flex-1 lg:order-none flex flex-row gap-3 items-start">
+            <div class="flex-1">
                 <div class="flex justify-between items-center mb-1 px-1">
-                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Прогресс сегодня</span>
+                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Прогресс</span>
                     <span id="today-stats-counter" class="font-bold text-sm text-amber-600">{{ completed }}/{{ total }}</span>
                 </div>
-                <div class="w-full bg-dark-800 rounded-full h-1.5 lg:h-1 border border-dark-600 overflow-hidden">
+                <div class="w-full bg-dark-800 rounded-full h-1.5 border border-dark-600 overflow-hidden">
                     {% set progress = ([completed / total * 100, 100] | min) if total > 0 else 0 %}
                     <div id="today-progress-bar" class="bg-amber-600 h-full transition-all duration-500" style="width: {{ progress }}%"></div>
                 </div>
             </div>
 
             {% if subtask_progress.parent_total > 0 %}
-            <div class="flex-1 lg:flex-none lg:mt-3">
+            <div class="flex-1">
                 <div class="flex justify-between items-center mb-1 px-1">
                     <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Подзадачи</span>
                     <span id="today-subtask-counter" class="font-bold text-sm text-amber-600">{{ subtask_progress.parent_done }}/{{ subtask_progress.parent_total }}</span>
                 </div>
-                <div id="today-subtask-bar" class="w-full bg-dark-800 rounded-full h-1.5 lg:h-1 border border-dark-600 overflow-hidden flex">
+                <div id="today-subtask-bar" class="w-full bg-dark-800 rounded-full h-1.5 border border-dark-600 overflow-hidden flex">
                     {% if subtask_progress.subtask_total > 0 %}
                     {% for i in range(subtask_progress.subtask_total) %}
                     <div class="flex-1 h-full transition-all duration-500 {{ 'bg-amber-600' if i < subtask_progress.subtask_done else 'bg-dark-600' }}{{ ' mx-px first:ml-0 last:mr-0' if subtask_progress.subtask_total > 1 else '' }}"></div>
