@@ -12,12 +12,15 @@ from app.services.shopping_service import archive_purchased_item
 
 
 @router.post("/api/reading/create", response_class=HTMLResponse)
-async def create_reading_item(request: Request, title: str = Form(...)):
-    """Добавить пункт в список «Читать» (ссылка или название книги)."""
+async def create_reading_item(request: Request, title: str = Form(...), content: str = Form("")):
+    """Добавить пункт в список «Читать» (ссылка, книга или пост с заметками)."""
     clean = (title or "").strip()
     async with async_session() as db:
         if clean:
-            db.add(ShoppingItem(title=clean, item_kind="reading"))
+            item = ShoppingItem(title=clean, item_kind="reading")
+            if content.strip():
+                item.content = content.strip()
+            db.add(item)
             await db.commit()
         return await _reading_list_response(request, db)
 

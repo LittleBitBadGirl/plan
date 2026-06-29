@@ -1,28 +1,19 @@
 <div id="finance-chart-panel" class="bg-dark-800/80 rounded-2xl border border-dark-600/50 shadow-sm overflow-hidden">
-    <div class="bg-dark-700/30 p-4 border-b border-dark-600/50 flex justify-between items-center">
+    <div class="bg-dark-700/30 p-4 border-b border-dark-600/50">
         <h2 class="text-[10px] font-semibold text-gray-400 tracking-wide flex items-center gap-2">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/></svg>
             Расходы по категориям
         </h2>
-        <button id="chart-back-btn" onclick="drillUp()"
-                class="hidden px-2 py-0.5 bg-dark-700 hover:bg-dark-600 text-gray-300 hover:text-white text-[9px] rounded-md border border-dark-500/50 transition-all duration-150 flex items-center gap-1">
-            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-            Назад
-        </button>
     </div>
     <div class="p-4">
         {% if category_summary %}
         <div class="relative mx-auto" style="max-width: 220px;">
-            <div id="chart-drill-label" class="text-center mb-2 hidden">
-                <span class="text-[10px] text-gray-400"></span>
-            </div>
             <canvas id="finance-expense-chart"
                     role="img"
                     aria-label="Круговая диаграмма расходов за месяц"
                     data-chart-labels='{{ category_summary | map(attribute="name") | list | tojson }}'
                     data-chart-amounts='{{ category_summary | map(attribute="amount") | list | tojson }}'
-                    data-chart-total="{{ chart_expense_total }}"
-                    data-drill='{{ grouped_summary | tojson }}'></canvas>
+                    data-chart-total="{{ chart_expense_total }}"></canvas>
         </div>
         <ul id="finance-chart-legend" class="mt-4 space-y-2 max-h-48 overflow-y-auto"></ul>
         {% else %}

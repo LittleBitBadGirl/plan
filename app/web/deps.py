@@ -823,8 +823,8 @@ def _reading_url(title: str):
 
 
 def reading_items_view(items: list) -> list:
-    """ShoppingItem(reading) → dict {id, title, url} для шаблона."""
-    return [{"id": it.id, "title": it.title, "url": _reading_url(it.title)} for it in items]
+    """ShoppingItem(reading) → dict {id, title, url, content} для шаблона."""
+    return [{"id": it.id, "title": it.title, "url": _reading_url(it.title), "content": it.content} for it in items]
 
 
 def _render_reading_list(request: Request, reading_items: list) -> str:

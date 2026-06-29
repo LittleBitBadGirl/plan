@@ -2,7 +2,7 @@
 
 {% if reading_items %}
     {% for item in reading_items %}
-    <div class="reading-item bg-dark-800 rounded-lg p-2 px-3 border border-dark-700 hover:border-sky-600/50 transition flex items-center gap-2"
+    <div class="reading-item bg-dark-800 rounded-lg p-2 px-3 border border-dark-700 hover:border-amber-600/30 transition flex items-center gap-2"
          id="reading-{{ item.id }}">
         <button type="button"
                 hx-post="/api/reading/{{ item.id }}/toggle"
@@ -15,15 +15,26 @@
         <div class="flex-1 min-w-0">
             {% if item.url %}
             <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer"
-               class="font-medium text-sm text-sky-300 hover:text-sky-200 hover:underline flex items-center gap-1 min-w-0"
+               class="font-medium text-sm text-amber-200 hover:text-amber-100 hover:underline flex items-center gap-1 min-w-0"
                title="{{ item.title }}">
                 <span class="truncate">{{ item.title }}</span>
+                {% if '.pdf' in item.url.lower() %}
+                <span class="text-[10px] text-amber-500/70 shrink-0">PDF</span>
+                {% endif %}
                 <svg class="w-3 h-3 shrink-0 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
             </a>
             {% else %}
-            <span class="font-medium text-sm text-white truncate block" title="{{ item.title }}">{{ item.title }}</span>
+            <span class="font-medium text-sm text-stone-200 truncate block" title="{{ item.title }}">{{ item.title }}</span>
             {% endif %}
         </div>
+        {% if item.content %}
+        <button type="button"
+                onclick="showReadingPopup({{ item.id }})"
+                class="icon-action flex-shrink-0 text-stone-500 hover:text-amber-400 transition"
+                title="Подробнее">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        </button>
+        {% endif %}
         <form hx-delete="/api/reading/{{ item.id }}" hx-target="#reading-list" hx-swap="innerHTML" class="flex-shrink-0">
             <button type="submit" class="icon-action icon-action--danger" title="Удалить">
                 {{ icon_trash() }}
@@ -31,6 +42,50 @@
         </form>
     </div>
     {% endfor %}
+
+    {# --- Popup overlay --- #}
+    <div id="reading-popup-overlay" class="fixed inset-0 bg-black/70 z-50 hidden flex items-center justify-center p-4"
+         onclick="if(event.target===this)closeReadingPopup()">
+        <div class="bg-dark-900 border border-dark-600 rounded-xl max-w-lg w-full max-h-[80vh] overflow-y-auto shadow-2xl"
+             onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between p-4 border-b border-dark-700">
+                <h3 id="reading-popup-title" class="text-stone-200 font-semibold text-sm"></h3>
+                <button onclick="closeReadingPopup()" class="text-stone-500 hover:text-stone-300 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div id="reading-popup-body" class="p-4 text-sm text-stone-300 whitespace-pre-wrap leading-relaxed"></div>
+        </div>
+    </div>
+
+    <script>
+    const _readingContents = {
+        {% for item in reading_items %}
+        {% if item.content %}
+        {{ item.id }}: {{ item.content | tojson }}{% if not loop.last %},{% endif %}
+        {% endif %}
+        {% endfor %}
+    };
+    function showReadingPopup(id) {
+        const overlay = document.getElementById('reading-popup-overlay');
+        const titleEl = document.getElementById('reading-popup-title');
+        const bodyEl = document.getElementById('reading-popup-body');
+        const row = document.getElementById('reading-' + id);
+        const titleText = row ? row.querySelector('a span, span')?.textContent?.trim() || '' : '';
+        titleEl.textContent = titleText;
+        bodyEl.textContent = _readingContents[id] || '';
+        overlay.classList.remove('hidden');
+        overlay.classList.add('flex');
+    }
+    function closeReadingPopup() {
+        const overlay = document.getElementById('reading-popup-overlay');
+        overlay.classList.add('hidden');
+        overlay.classList.remove('flex');
+    }
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeReadingPopup();
+    });
+    </script>
 {% else %}
     <div class="text-center py-8 text-gray-500">
         <p class="text-sm">Список пуст</p>
