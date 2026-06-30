@@ -708,6 +708,19 @@ async def handle_photo(message: Message, bot: Bot):
                     if amount > 0 and not is_income:
                         amount = -amount
 
+                    # Проверка на дубликат: НЕ вставляем, если такая транзакция уже есть
+                    dup_check = await db.execute(
+                        select(Transaction).where(
+                            Transaction.date == tx_date,
+                            Transaction.description == desc,
+                            Transaction.amount == amount,
+                            Transaction.source == "vision_screenshot",
+                        ).limit(1)
+                    )
+                    if dup_check.scalar_one_or_none() is not None:
+                        app_logger.info(f"⏭ Дубликат пропущен: {tx_date} {desc} {amount}₽")
+                        continue
+
                     db.add(Transaction(
                         date=tx_date,
                         amount=amount,
