@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     gemini_api_key: str = ""
     groq_api_key: str = ""
+    openrouter_api_key: str = ""
 
     # OCR
     ocr_lang: str = "rus+eng"

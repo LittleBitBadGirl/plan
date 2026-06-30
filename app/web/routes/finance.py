@@ -15,6 +15,7 @@ from app.models.recurring import RecurringTask
 from app.models.shopping import ShoppingItem
 from app.models.report import AIReport
 from app.models.finance import Transaction
+from app.models.goal_history import GoalHistory
 from app.config import settings
 
 from app.web.deps import (
@@ -29,6 +30,24 @@ from app.web.deps import (
     _shopping_stats_oob,
     _shopping_list_response,
 )
+
+
+# Sparkline helper for Jinja2
+def sparkline(history):
+    if not history or len(history) < 2:
+        return ""
+    vals = [h["amount"] for h in history]
+    mn = min(vals) * 0.98
+    mx = max(vals) * 1.02
+    rng = mx - mn or 1
+    h, w = 24, 100
+    step = w / (len(vals) - 1)
+    pts = []
+    for i, v in enumerate(vals):
+        x = i * step
+        y = h - ((v - mn) / rng) * h
+        pts.append(f"{x:.1f},{y:.1f}")
+    return " ".join(pts)
 
 router = APIRouter()
 
@@ -194,6 +213,22 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         total_savings = sum(abs(tx.amount) for tx in transactions if tx.amount < 0 and tx.category_id in SAVINGS_CATEGORY_IDS)
         
         # Список категорий для модалки (иерархия)
+        goal_ids = [g.id for g in goals]
+        goal_history = {}
+        if goal_ids:
+            hist_res = await db.execute(
+                select(GoalHistory)
+                .where(GoalHistory.goal_id.in_(goal_ids))
+                .order_by(GoalHistory.created_at.asc())
+            )
+            for h in hist_res.scalars().all():
+                goal_history.setdefault(h.goal_id, []).append({
+                    "date": h.created_at.strftime("%Y-%m-%d") if h.created_at else "",
+                    "amount": h.new_amount,
+                    "delta": h.delta,
+                    "note": h.note
+                })
+
         fin_cats_res = await db.execute(select(Category).where(Category.type == 'finance').order_by(Category.name))
         fin_categories_all = fin_cats_res.scalars().all()
         fin_categories = fin_categories_all
@@ -209,6 +244,8 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         "grouped_summary": grouped_summary,
         "category_summary": category_summary,
         "chart_expense_total": chart_expense_total,
+        "goal_history": goal_history,
+        "sparkline": sparkline,
         "goals": goals,
         "investment_goals": investment_goals,
         "other_goals": other_goals,
@@ -304,3 +341,36 @@ async def update_transaction_category(
                 cat_name = cat.name
 
     return JSONResponse({"category_name": cat_name, "updated": updated_count})
+
+
+# Goal History API
+@router.post("/api/goals/{goal_id}/update")
+async def update_goal_amount(goal_id: int, new_amount: float = Form(...), note: str = Form("")):
+    async with async_session() as db:
+        res = await db.execute(select(FinancialGoal).where(FinancialGoal.id == goal_id))
+        goal = res.scalar_one_or_none()
+        if not goal:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        delta = new_amount - goal.current_amount
+        goal.current_amount = new_amount
+        hist = GoalHistory(goal_id=goal_id, new_amount=new_amount, delta=delta, note=note or None)
+        db.add(hist)
+        await db.commit()
+    return JSONResponse({"ok": True, "new_amount": new_amount, "delta": delta})
+
+@router.get("/api/goals/{goal_id}/history")
+async def get_goal_history(goal_id: int):
+    async with async_session() as db:
+        res = await db.execute(
+            select(GoalHistory)
+            .where(GoalHistory.goal_id == goal_id)
+            .order_by(GoalHistory.created_at.asc())
+            .limit(52)
+        )
+        rows = res.scalars().all()
+        return JSONResponse([{
+            "date": r.created_at.strftime("%Y-%m-%d"),
+            "amount": r.new_amount,
+            "delta": r.delta,
+            "note": r.note
+        } for r in rows])

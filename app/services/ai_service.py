@@ -1,4 +1,4 @@
-"""AI-сервис: DeepSeek (категоризация) + Gemini (vision) + Groq (fallback)."""
+"""AI-сервис: DeepSeek (категоризация) + OpenRouter (vision) + Gemini + Groq (fallback)."""
 
 import json
 import re
@@ -118,6 +118,57 @@ async def _groq_categorize(task_text: str, categories_list: List[Dict]) -> Dict:
     
     return {"category_id": None}
 
+
+
+# ─── OpenRouter Vision (primary) ─────────────────────────────────────────────
+
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_VISION_MODEL = "google/gemini-2.5-flash"
+
+async def _openrouter_vision(image_path: str) -> Dict:
+    """Анализ скриншота через OpenRouter Vision."""
+    if not settings.openrouter_api_key:
+        app_logger.warning("OPENROUTER_API_KEY not set, falling back to Gemini Vision")
+        return await _openrouter_vision(image_path)
+
+    b64 = await _prepare_image(image_path)
+    if b64 is None:
+        return {"type": "other"}
+
+    try:
+        today = date.today()
+        prompt = FINANCE_PROMPT.format(today=today.isoformat(), year=today.year)
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                OPENROUTER_URL,
+                headers={
+                    "Authorization": f"Bearer {settings.openrouter_api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://planner.local",
+                    "X-Title": "Planner Bot",
+                },
+                json={
+                    "model": OPENROUTER_VISION_MODEL,
+                    "messages": [{"role": "user", "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                    ]}],
+                    "temperature": 0.0,
+                },
+                timeout=30.0,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                text = data["choices"][0]["message"]["content"]
+                text = text.strip().removeprefix("```json").removesuffix("```").strip()
+                return json.loads(text)
+            else:
+                app_logger.error(f"OpenRouter Vision error: {resp.status_code} {resp.text[:200]}")
+    except Exception as e:
+        app_logger.error(f"OpenRouter Vision exception: {e}")
+
+    return await _openrouter_vision(image_path)
 
 # ─── Gemini Vision (финансы) ─────────────────────────────────────────────────
 
@@ -255,7 +306,7 @@ async def _groq_vision(image_path: str) -> Dict:
 # ─── Публичный API (совместимость) ────────────────────────────────────────────
 
 class AIService:
-    """AI-сервис: DeepSeek (категоризация) + Gemini (vision) + Groq (fallback)."""
+    """AI-сервис: DeepSeek (категоризация) + OpenRouter (vision) + Gemini + Groq (fallback)."""
 
     def __init__(self):
         self.model = None
@@ -375,7 +426,7 @@ class AIService:
 
     async def vision_analyze_screenshot(self, image_path: str) -> Dict:
         """Анализ скриншота: Gemini → Groq Vision fallback."""
-        return await _gemini_vision(image_path)
+        return await _openrouter_vision(image_path)
 
 
 # ─── Stop-Slop: очистка AI-текста от штампов ────────────────────────────────

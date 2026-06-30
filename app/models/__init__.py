@@ -10,6 +10,7 @@ from .impact import CareerImpact
 from .shopping import ShoppingItem
 from .finance import Transaction
 from .goal import FinancialGoal
+from .goal_history import GoalHistory
 from .period_entry import PeriodEntry
 from .calendar_event import CalendarEvent
 from .calendar_ignore_rule import CalendarIgnoreRule
