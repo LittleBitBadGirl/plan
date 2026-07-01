@@ -46,9 +46,9 @@ async def recurring_page(request: Request):
         )
         recurring_tasks = result.scalars().all()
 
-        # Категории для формы (загружаем все)
+        # Категории для формы (только task)
         cats_result = await db.execute(
-            select(Category).order_by(Category.is_global.desc(), Category.name)
+            select(Category).where(Category.type == 'task').order_by(Category.is_global.desc(), Category.name)
         )
         categories = cats_result.scalars().all()
 
