@@ -403,6 +403,27 @@
         </div>
     </div>
     {% endif %}
+
+    <!-- Аналитика переносов -->
+    {% if postpones_stats %}
+    <div class="mt-6 bg-dark-800/60 rounded-2xl border border-dark-600/50 shadow-sm p-4 sm:p-6">
+        <h2 class="text-sm font-bold text-gray-300 tracking-wide mb-4">Переносы по категориям</h2>
+        <div class="space-y-2">
+            {% for row in postpones_stats %}
+            {% set cat_name = row[0] %}
+            {% set cnt = row[1] %}
+            {% set total = row[2] or 0 %}
+            {% set avg = (row[3] or 0)|round(1) %}
+            <div class="flex items-center justify-between text-[11px]">
+                <span class="text-gray-400 w-36 truncate">{{ cat_name }}</span>
+                <span class="text-yellow-500/80 tabular-nums w-12 text-right">{{ total }}×</span>
+                <span class="text-gray-500 tabular-nums w-16 text-right">{{ cnt }} задач</span>
+                <span class="text-gray-600 tabular-nums w-16 text-right">~{{ avg }}/задачу</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 
 <style>

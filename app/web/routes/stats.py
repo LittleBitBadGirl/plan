@@ -120,6 +120,19 @@ async def stats_page(request: Request, period: str = "month"):
         period_entries_for_stats = period_res.scalars().all()
         period_stats = compute_period_data(list(period_entries_for_stats), date.today())
 
+        # Аналитика переносов по категориям
+        postpones_query = await db.execute(
+            select(Category.name, 
+                   func.count(Task.id).label("cnt"),
+                   func.sum(Task.postpones).label("total_postpones"),
+                   func.avg(Task.postpones).label("avg_postpones"))
+            .join(Task, Task.category_id == Category.id)
+            .where(Task.postpones > 0, Task.status != "выполнена", Task.is_archived == False)
+            .group_by(Category.name)
+            .order_by(func.sum(Task.postpones).desc())
+        )
+        postpones_stats = postpones_query.all()
+
     return templates.TemplateResponse(request, "stats.html", {
         "request": request,
         "total_completed": total_completed,
@@ -134,6 +147,7 @@ async def stats_page(request: Request, period: str = "month"):
         "career_impacts": impacts,
         "impact_score": impact_score,
         "period_stats": period_stats,
+        "postpones_stats": postpones_stats,
     })
 
 @router.get("/api/stats/chart", response_class=HTMLResponse)
