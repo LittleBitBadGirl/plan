@@ -109,52 +109,53 @@
                     </div>
                 </div>
 
+                <!-- Size -->
                 <div>
-                    <label for="due_date" class="block text-sm font-medium text-gray-300 mb-2">
-                        Дата выполнения
+                    <label for="size" class="block text-sm font-medium text-gray-300 mb-2">
+                        Размер задачи
                     </label>
-                    <div class="flex flex-wrap gap-2 mb-2">
-                        <button type="button" data-date-chip="today"
-                                class="date-chip px-3 py-1.5 text-xs font-bold rounded-lg border border-dark-500 bg-dark-700 text-gray-300 hover:border-accent hover:text-accent transition-colors min-h-[36px]">
-                            Сегодня
-                        </button>
-                        <button type="button" data-date-chip="tomorrow"
-                                class="date-chip px-3 py-1.5 text-xs font-bold rounded-lg border border-dark-500 bg-dark-700 text-gray-300 hover:border-accent hover:text-accent transition-colors min-h-[36px]">
-                            Завтра
-                        </button>
-                        <button type="button" data-date-chip="clear"
-                                class="date-chip px-3 py-1.5 text-xs font-bold rounded-lg border border-dark-500 bg-dark-700 text-gray-400 hover:border-gray-400 transition-colors min-h-[36px]">
-                            Без даты
-                        </button>
-                    </div>
-                    <input type="text" id="due_date" name="due_date"
-                           inputmode="numeric"
-                           autocomplete="off"
-                           maxlength="5"
-                           placeholder="ДД.ММ"
-                           value="{% if task and task.due_date %}{{ task.due_date.strftime('%d.%m') }}{% elif not task %}{{ today.strftime('%d.%m') }}{% endif %}"
-                           class="date-mask-ddmm w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white text-base
-                                  placeholder-gray-500 focus:outline-none focus:border-accent min-h-[48px] font-mono tracking-wide">
-                    <p class="text-[11px] text-gray-500 mt-1.5">Введите 4 цифры, например 1206 → 12.06</p>
+                    <select id="size" name="size"
+                            class="w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white text-base
+                                   focus:outline-none focus:border-accent appearance-none min-h-[48px]">
+                        <option value="" {% if not task or not task.size %}selected{% endif %}>Обычная</option>
+                        <option value="L" {% if task and task.size == 'L' %}selected{% endif %}>L — Крупная</option>
+                        <option value="XL" {% if task and task.size == 'XL' %}selected{% endif %}>XL — Очень крупная</option>
+                    </select>
                 </div>
             </div>
 
-            <!-- Size -->
+            <!-- Due Date -->
             <div>
-                <label for="size" class="block text-sm font-medium text-gray-300 mb-2">
-                    Размер задачи
+                <label for="due_date" class="block text-sm font-medium text-gray-300 mb-2">
+                    Дата выполнения
                 </label>
-                <select id="size" name="size"
-                        class="w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white text-base
-                               focus:outline-none focus:border-accent appearance-none min-h-[48px]">
-                    <option value="" {% if not task or not task.size %}selected{% endif %}>Обычная</option>
-                    <option value="L" {% if task and task.size == 'L' %}selected{% endif %}>L — Крупная</option>
-                    <option value="XL" {% if task and task.size == 'XL' %}selected{% endif %}>XL — Очень крупная</option>
-                </select>
+                <div class="flex flex-wrap gap-2 mb-2">
+                    <button type="button" data-date-chip="today"
+                            class="date-chip px-3 py-1.5 text-xs font-bold rounded-lg border border-dark-500 bg-dark-700 text-gray-300 hover:border-accent hover:text-accent transition-colors min-h-[36px]">
+                        Сегодня
+                    </button>
+                    <button type="button" data-date-chip="tomorrow"
+                            class="date-chip px-3 py-1.5 text-xs font-bold rounded-lg border border-dark-500 bg-dark-700 text-gray-300 hover:border-accent hover:text-accent transition-colors min-h-[36px]">
+                        Завтра
+                    </button>
+                    <button type="button" data-date-chip="clear"
+                            class="date-chip px-3 py-1.5 text-xs font-bold rounded-lg border border-dark-500 bg-dark-700 text-gray-400 hover:border-gray-400 transition-colors min-h-[36px]">
+                        Без даты
+                    </button>
+                </div>
+                <input type="text" id="due_date" name="due_date"
+                       inputmode="numeric"
+                       autocomplete="off"
+                       maxlength="5"
+                       placeholder="ДД.ММ"
+                       value="{% if task and task.due_date %}{{ task.due_date.strftime('%d.%m') }}{% elif not task %}{{ today.strftime('%d.%m') }}{% endif %}"
+                       class="date-mask-ddmm w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white text-base
+                              placeholder-gray-500 focus:outline-none focus:border-accent min-h-[48px] font-mono tracking-wide">
+                <p class="text-[11px] text-gray-500 mt-1.5">Введите 4 цифры, например 1206 → 12.06</p>
             </div>
 
             <!-- Footer -->
-            <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center pt-4 border-t border-dark-600 mt-2">
+            <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center pt-4 border-t border-dark-600">
                 <button type="submit"
                         class="w-full sm:w-auto px-6 py-3.5 sm:px-8 sm:py-3 bg-accent hover:bg-blue-600 active:scale-[0.98] text-white font-bold rounded-xl sm:rounded-lg transition-all shadow-lg hover:shadow-accent/20 text-base sm:text-sm order-1 sm:order-none">
                     {% if task %}Сохранить изменения{% else %}Создать задачу{% endif %}
