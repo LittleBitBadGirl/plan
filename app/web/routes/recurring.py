@@ -46,9 +46,16 @@ async def recurring_page(request: Request):
         )
         recurring_tasks = result.scalars().all()
 
-        # Категории для формы (только task)
+        # Категории для формы (только task, приоритет: Работа → Личное → Бренд)
+        from sqlalchemy import case
+        order_priority = case(
+            (Category.name == "🏢 Работа", 1),
+            (Category.name == "🏠 Личное", 2),
+            (Category.name == "Личный бренд", 3),
+            else_=4,
+        )
         cats_result = await db.execute(
-            select(Category).where(Category.type == 'task').order_by(Category.is_global.desc(), Category.name)
+            select(Category).where(Category.type == 'task').order_by(order_priority, Category.name)
         )
         categories = cats_result.scalars().all()
 

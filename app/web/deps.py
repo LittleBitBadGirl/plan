@@ -310,10 +310,19 @@ def _render_shopping_list(request: Request, items: list) -> str:
 
 
 async def get_categories_list():
-    """Получить список категорий только для задач"""
+    """Получить список категорий только для задач, с приоритетом: Работа → Личное → Бренд"""
+    from sqlalchemy import case
+    order_priority = case(
+        (Category.name == "🏢 Работа", 1),
+        (Category.name == "🏠 Личное", 2),
+        (Category.name == "Личный бренд", 3),
+        else_=4,
+    )
     async with async_session() as db:
         result = await db.execute(
-            select(Category).where(Category.type == 'task').order_by(Category.is_global.desc(), Category.name)
+            select(Category)
+            .where(Category.type == 'task')
+            .order_by(order_priority, Category.name)
         )
         return result.scalars().all()
 
