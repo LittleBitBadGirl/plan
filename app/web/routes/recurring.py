@@ -49,8 +49,8 @@ async def recurring_page(request: Request):
         # Категории для формы (только task, приоритет: Работа → Личное → Бренд)
         from sqlalchemy import case
         order_priority = case(
-            (Category.name == "🏢 Работа", 1),
-            (Category.name == "🏠 Личное", 2),
+            (Category.name == "Работа", 1),
+            (Category.name == "Личное", 2),
             (Category.name == "Личный бренд", 3),
             else_=4,
         )

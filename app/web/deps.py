@@ -313,8 +313,8 @@ async def get_categories_list():
     """Получить список категорий только для задач, с приоритетом: Работа → Личное → Бренд"""
     from sqlalchemy import case
     order_priority = case(
-        (Category.name == "🏢 Работа", 1),
-        (Category.name == "🏠 Личное", 2),
+        (Category.name == "Работа", 1),
+        (Category.name == "Личное", 2),
         (Category.name == "Личный бренд", 3),
         else_=4,
     )
