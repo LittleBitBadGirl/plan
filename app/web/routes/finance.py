@@ -56,7 +56,7 @@ from sqlalchemy import desc, case
 from app.models.goal import FinancialGoal
 
 # ID категорий-сбережений (не считаются расходами)
-SAVINGS_CATEGORY_IDS = [37, 61]  # ИИС, Подушка
+SAVINGS_CATEGORY_IDS = [37, 61, 157]  # ИИС, Подушка, Переводы между счетами
 
 @router.get("/finance", response_class=HTMLResponse)
 async def finance_page(request: Request, month: Optional[int] = None, year: Optional[int] = None):
@@ -97,14 +97,22 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         else:
             end_date = dt.date(view_year, view_month + 1, 1)
 
-        # Транзакции за месяц
+        # Транзакции за месяц (исключая переводы между своими счетами)
         result = await db.execute(
             select(Transaction)
             .options(selectinload(Transaction.category).selectinload(Category.parent))
             .where(Transaction.date >= start_date, Transaction.date < end_date)
+            .where(Transaction.category_id != 157)
             .order_by(Transaction.date.desc())
         )
         transactions = result.scalars().all()
+        
+        # Вычисляем parent-строку пока сессия жива (для Jinja2)
+        for tx in transactions:
+            if tx.category and tx.category.parent:
+                tx._cat_parent = tx.category.parent.name
+            else:
+                tx._cat_parent = ''
         
         # СВОДКА (Трехуровневая группировка: Месяц -> Глобальная Кат -> Подкат)
         # Исключаем сбережения из сводки расходов
@@ -260,6 +268,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         "fin_categories": fin_categories,
         "fin_parent_cats": fin_parent_cats,
         "fin_sub_cats_by_parent": fin_sub_cats_by_parent,
+        "monthly_savings": total_savings,
         "stats": {
             "income": total_income, 
             "expense": total_expense, 

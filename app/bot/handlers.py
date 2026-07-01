@@ -652,88 +652,18 @@ async def handle_photo(message: Message, bot: Bot):
         app_logger.info(f"👁 Vision Verdict: {verdict}")
 
         if verdict == "finance":
-            items = data.get("items", [])
-            if not items:
-                await msg.edit_text("💰 Похоже на финансы, но я не смог разобрать детали. Сохранил для ручного ввода.")
-                await _save_screenshot_to_db(file_path, "vision_finance_empty", message)
-                return
-
-            async with async_session() as db:
-                count = 0
-                for item in items:
-                    amount = float(item.get("amount", 0))
-                    if amount == 0:
-                        continue
-
-                    tx_date_str = item.get("date")
-                    try:
-                        tx_date = date.fromisoformat(tx_date_str) if tx_date_str else date.today()
-                    except Exception:
-                        tx_date = date.today()
-
-                    desc = item.get("desc", "Операция из Vision")
-                    cat_id = await _get_merchant_category(desc, db)
-
-                    if cat_id is None:
-                        cat_hint = item.get("category_hint")
-                        if cat_hint:
-                            cat_res = await db.execute(
-                                select(Category).where(
-                                    Category.name.ilike(f"%{cat_hint}%"),
-                                    Category.type == "finance",
-                                )
-                            )
-                            cat_obj = cat_res.scalar_one_or_none()
-                            if cat_obj:
-                                cat_id = cat_obj.id
-
-                    # --- Фильтрация и коррекция знака ---
-                    INCOME_CATEGORY_IDS = {65, 85, 66, 86, 94, 129}
-
-                    # Пропускаем строки кэшбэка
-                    if "кэшбэк" in desc.lower() or "cashback" in desc.lower():
-                        app_logger.info(f"⏭ Пропущен кэшбэк: {desc}")
-                        continue
-
-                    # Пропускаем микрокэшбэк: маленькие положительные суммы,
-                    # которые не являются доходом
-                    if amount > 0 and amount < 50 and cat_id not in INCOME_CATEGORY_IDS:
-                        app_logger.info(f"⏭ Пропущен кэшбэк: {amount}₽ — {desc}")
-                        continue
-
-                    # Расходы должны быть отрицательными.
-                    # Если категория известна и это НЕ доход → инвертируем знак.
-                    # Если категория неизвестна — предполагаем расход (тоже инвертируем).
-                    is_income = cat_id in INCOME_CATEGORY_IDS if cat_id else False
-                    if amount > 0 and not is_income:
-                        amount = -amount
-
-                    # Проверка на дубликат: НЕ вставляем, если такая транзакция уже есть
-                    dup_check = await db.execute(
-                        select(Transaction).where(
-                            Transaction.date == tx_date,
-                            Transaction.description == desc,
-                            Transaction.amount == amount,
-                            Transaction.source == "vision_screenshot",
-                        ).limit(1)
-                    )
-                    if dup_check.scalar_one_or_none() is not None:
-                        app_logger.info(f"⏭ Дубликат пропущен: {tx_date} {desc} {amount}₽")
-                        continue
-
-                    db.add(Transaction(
-                        date=tx_date,
-                        amount=amount,
-                        description=desc,
-                        category_id=cat_id,
-                        source="vision_screenshot",
-                    ))
-                    count += 1
-                await db.commit()
-
-            await msg.edit_text(f"✅ Успешно «увидел» операций: {count}\n💰 Все данные внесены в Финансы. Скриншот удален.")
-            if file_path and file_path.exists():
-                os.remove(file_path)
+            # НЕ импортируем автоматически — сохраняем в папку для ручной обработки Гермесом
+            inbox_dir = settings.uploads_dir / "finance_inbox"
+            inbox_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            dest = inbox_dir / f"finance_{ts}.jpg"
+            file_path.rename(dest)
+            app_logger.info(f"💰 Finance-скриншот сохранён: {dest}")
+            await msg.edit_text(
+                "💰 Скриншот финансов сохранён для обработки Гермесом.\n"
+                "Я сообщу Вере, когда транзакции будут добавлены."
+            )
+            return
 
         elif verdict == "calendar":
             events = data.get("events", [])

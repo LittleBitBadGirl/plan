@@ -197,10 +197,10 @@
         {% endfor %}
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-5">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-5 lg:items-stretch">
         <!-- Transactions -->
         <div class="lg:col-span-3 space-y-3">
-            <div class="bg-dark-800/80 rounded-xl border border-dark-600/50 shadow-sm overflow-hidden flex flex-col" x-data="{ search: '' }" style="max-height: calc(100vh - 280px)">
+            <div class="bg-dark-800/80 rounded-xl border border-dark-600/50 shadow-sm overflow-hidden flex flex-col lg:h-full" x-data="{ search: '' }" style="max-height: calc(100vh - 280px)">
                 <div class="bg-dark-700/30 p-2.5 border-b border-dark-600/50 flex justify-between items-center shrink-0">
                     <h2 class="text-[9px] font-semibold text-gray-400 tracking-wide">Все операции</h2>
                     <input type="text" x-model="search" placeholder="Поиск..."
@@ -210,10 +210,10 @@
                     <table class="w-full text-left border-collapse">
                         <thead class="sticky top-0 z-10">
                             <tr class="bg-dark-800/95 backdrop-blur-sm border-b border-dark-600/50 text-[8px] font-medium text-gray-500 tracking-wide">
-                                <th class="px-3 py-2.5">Дата</th>
-                                <th class="px-3 py-2.5">Описание</th>
-                                <th class="px-3 py-2.5">Категория</th>
-                                <th class="px-3 py-2.5 text-right">Сумма</th>
+                                <th class="px-2 py-1.5 whitespace-nowrap">Дата</th>
+                                <th class="px-2 py-1.5">Описание</th>
+                                <th class="px-2 py-1.5 whitespace-nowrap">Категория</th>
+                                <th class="px-2 py-1.5 whitespace-nowrap text-right">Сумма</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-dark-700/30">
@@ -222,6 +222,7 @@
                                     editing: false,
                                     catId: '{{ tx.category_id or '' }}',
                                     catName: '{{ tx.category.name if tx.category else 'Прочее' }}',
+                                    catParent: '{{ tx._cat_parent }}',
                                     applyAll: false,
                                     saving: false,
                                     async save() {
@@ -237,6 +238,7 @@
                                         });
                                         const data = await r.json();
                                         this.catName = data.category_name;
+                                        this.catParent = data.category_parent || '';
                                         if (data.updated > 1) this.catName += ' \u2713\u00d7' + data.updated;
                                         this.editing = false;
                                         this.saving = false;
@@ -244,11 +246,19 @@
                                 }"
                                 class="hover:bg-dark-700/20 transition-colors duration-150 group"
                                 x-show="('{{ tx.date.strftime('%d.%m.%y') }} {{ tx.description|lower }} {{ (tx.category.name)|lower if tx.category else '' }}').includes(search.toLowerCase())">
-                                <td class="px-3 py-2.5 text-[10px] text-gray-500 font-mono tabular-nums">{{ tx.date.strftime('%d.%m.%y') }}</td>
-                                <td class="px-3 py-2.5 text-[11px] text-gray-200">{{ tx.description or '—' }}</td>
-                                <td class="px-3 py-2.5">
-                                    <span x-show="!editing" @click="editing = true" x-text="catName"
-                                          class="px-1.5 py-0.5 rounded-md bg-dark-700/50 hover:bg-dark-600/50 text-[8px] text-gray-400 cursor-pointer transition-all duration-150 border border-transparent hover:border-dark-500"></span>
+                                <td class="px-2 py-1.5 text-[10px] text-gray-500 font-mono tabular-nums">{{ tx.date.strftime('%d.%m.%y') }}</td>
+                                <td class="px-2 py-1.5 text-[11px] text-gray-200">{{ tx.description or '—' }}</td>
+                                <td class="px-2 py-1.5">
+                                    <span x-show="!editing"
+                                          @click="editing = true"
+                                          class="px-1.5 py-0.5 rounded-md bg-dark-700/50 hover:bg-dark-600/50 text-[8px] text-gray-400 cursor-pointer transition-all duration-150 border border-transparent hover:border-dark-500 inline-flex items-center gap-1">
+                                        <template x-if="catParent">
+                                            <span><span x-text="catParent" class="text-gray-500"></span> <span class="text-gray-600">→</span> <span x-text="catName" class="text-gray-300"></span></span>
+                                        </template>
+                                        <template x-if="!catParent">
+                                            <span x-text="catName"></span>
+                                        </template>
+                                    </span>
                                     <div x-show="editing" x-cloak class="space-y-1 min-w-[130px]">
                                         <select x-model="catId" class="w-full bg-dark-900 border border-accent/40 rounded-md px-1.5 py-0.5 text-[9px] text-white focus:outline-none focus:border-accent">
                                             <option value="">— Без категории —</option>
@@ -280,7 +290,7 @@
                                         </div>
                                     </div>
                                 </td>
-                                <td class="px-3 py-2.5 text-[11px] font-semibold text-right tabular-nums {{ 'text-green-400' if tx.amount > 0 else 'text-red-400' }}">{{ "{:,.0f}".format(tx.amount).replace(',', ' ') }}</td>
+                                <td class="px-2 py-1.5 text-[11px] font-semibold text-right tabular-nums whitespace-nowrap {{ 'text-green-400' if tx.amount > 0 else 'text-red-400' }}">{{ "{:,.0f}".format(tx.amount).replace(',', ' ') }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>

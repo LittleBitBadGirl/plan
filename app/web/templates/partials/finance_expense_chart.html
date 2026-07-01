@@ -15,7 +15,18 @@
                     data-chart-amounts='{{ category_summary | map(attribute="amount") | list | tojson }}'
                     data-chart-total="{{ chart_expense_total }}"></canvas>
         </div>
-        <ul id="finance-chart-legend" class="mt-4 space-y-2 max-h-48 overflow-y-auto"></ul>
+        <ul id="finance-chart-legend" class="mt-4 space-y-1.5"></ul>
+        {% if monthly_savings > 0 %}
+        <div class="mt-3 pt-3 border-t border-dark-700/50 px-1">
+            <div class="flex items-center justify-between text-[10px]">
+                <span class="text-purple-400 flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full shrink-0" style="background:#a855f7"></span>
+                    Сбережения (ИИС + Подушка)
+                </span>
+                <span class="text-purple-300 tabular-nums font-medium">{{ "{:,.0f}".format(monthly_savings).replace(',', ' ') }} ₽</span>
+            </div>
+        </div>
+        {% endif %}
         {% else %}
         <div id="finance-chart-empty" class="py-10 text-center">
             <p class="text-sm text-gray-500">Нет расходов</p>
