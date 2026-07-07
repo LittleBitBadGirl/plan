@@ -15,6 +15,7 @@ from app.models.recurring import RecurringTask
 from app.models.shopping import ShoppingItem
 from app.models.report import AIReport
 from app.models.finance import Transaction
+from app.models.goal import FinancialGoal
 from app.config import settings
 
 from app.web.deps import (
@@ -128,8 +129,13 @@ async def archive_page(
         for it in reading_archived_raw
     ]
 
+    # Completed goals
+    goals_res = await db.execute(select(FinancialGoal).where(FinancialGoal.target_amount > 0, FinancialGoal.current_amount >= FinancialGoal.target_amount))
+    completed_goals = goals_res.scalars().all()
+
     return templates.TemplateResponse(request, "archive.html", {
         "request": request,
+        "completed_goals": completed_goals,
         "tasks": tasks,
         "total": total,
         "page": page,

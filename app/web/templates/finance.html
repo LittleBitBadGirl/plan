@@ -11,6 +11,11 @@
             <p class="text-[9px] text-gray-500 mt-0.5">доходы, расходы, сбережения</p>
         </div>
         <div class="flex gap-2">
+            <button onclick="var f=document.getElementById('add-goal-form');f.style.display=f.style.display==='none'?'flex':'none'"
+                    class="px-2.5 py-1 bg-dark-700 hover:bg-dark-600 text-gray-300 text-[10px] rounded-lg border border-dark-500/50 transition-all duration-200 hover:border-dark-400 flex items-center gap-1">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Цель
+            </button>
             <button @click="document.getElementById('import-file').click()"
                     class="px-2.5 py-1 bg-dark-700 hover:bg-dark-600 text-gray-300 text-[10px] rounded-lg border border-dark-500/50 transition-all duration-200 hover:border-dark-400 flex items-center gap-1">
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
@@ -22,15 +27,165 @@
                 Запись
             </button>
         </div>
+        <form id="add-goal-form" style="display:none" onsubmit="event.preventDefault();createGoalForm(this)" class="mt-2 flex gap-2 items-end bg-dark-800/60 rounded-lg p-2 border border-dark-600/50">
+            <div>
+                <label class="text-[8px] text-gray-500 block mb-0.5">Название</label>
+                <input type="text" name="name" required class="w-32 bg-dark-900 border border-dark-600 rounded-md px-2 py-1 text-[9px] text-white focus:outline-none focus:border-accent">
+            </div>
+            <div>
+                <label class="text-[8px] text-gray-500 block mb-0.5">Цель</label>
+                <input type="number" name="target" required step="1" class="w-24 bg-dark-900 border border-dark-600 rounded-md px-2 py-1 text-[9px] text-white focus:outline-none focus:border-accent">
+            </div>
+            <div>
+                <label class="text-[8px] text-gray-500 block mb-0.5">Сейчас</label>
+                <input type="number" name="current" step="1" value="0" class="w-24 bg-dark-900 border border-dark-600 rounded-md px-2 py-1 text-[9px] text-white focus:outline-none focus:border-accent">
+            </div>
+            <button type="submit" class="px-3 py-1 bg-accent hover:bg-blue-600 text-white text-[9px] rounded-md transition-all active:scale-[0.98]">OK</button>
+        </form>
     </div>
 
-    <!-- Investments + Goals -->
-    <div class="flex flex-col md:flex-row gap-2.5 mb-4" x-data="financePage()">
-        <!-- Investments -->
-        <div class="md:flex-1 bg-dark-800/60 rounded-xl border border-dark-600/50 p-3">
-            <p class="text-[8px] text-gray-500 tracking-wide mb-2.5">Инвестиции</p>
-            <div class="grid grid-cols-3 gap-2">
-                {% for goal in investment_goals %}
+    <!-- Balance + Goals — two columns -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-4">
+        <!-- Left: Balance -->
+        <div class="bg-dark-800/60 rounded-xl border border-dark-600/50 shadow-sm overflow-hidden">
+            <div class="grid grid-cols-2 divide-x divide-dark-700/50">
+                <div class="p-3">
+                    <p class="text-[8px] text-gray-500 tracking-wide mb-2.5">{{ month_name }}</p>
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between text-[10px]">
+                            <span class="text-gray-400">Доход</span>
+                            <span class="font-semibold text-green-400 tabular-nums">{{ "{:,.0f}".format(stats.income).replace(',', ' ') }}</span>
+                        </div>
+                        <div class="flex justify-between text-[10px]">
+                            <span class="text-gray-400">Расход</span>
+                            <span class="font-semibold text-red-400 tabular-nums">{{ "{:,.0f}".format(stats.expense).replace(',', ' ') }}</span>
+                        </div>
+                        {% if stats.savings > 0 %}
+                        <div class="flex justify-between text-[10px]">
+                            <span class="text-gray-400">Сбережения</span>
+                            <span class="font-semibold text-purple-400 tabular-nums">{{ "{:,.0f}".format(stats.savings).replace(',', ' ') }}</span>
+                        </div>
+                        {% endif %}
+                        <div class="flex justify-between text-[11px] pt-1.5 border-t border-dark-700/50">
+                            <span class="text-gray-300 font-semibold">Остаток</span>
+                            <span class="font-bold tabular-nums {{ 'text-green-400' if stats.balance >= 0 else 'text-red-400' }}">
+                                {{ "{:,.0f}".format(stats.balance).replace(',', ' ') }} ₽
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-3">
+                    <p class="text-[8px] text-gray-500 tracking-wide mb-2.5">{{ current_year }}</p>
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between text-[10px]">
+                            <span class="text-gray-400">Доход</span>
+                            <span class="font-semibold text-green-400/80 tabular-nums">{{ "{:,.0f}".format(yearly_stats.income).replace(',', ' ') }}</span>
+                        </div>
+                        <div class="flex justify-between text-[10px]">
+                            <span class="text-gray-400">Расход</span>
+                            <span class="font-semibold text-red-400/80 tabular-nums">{{ "{:,.0f}".format(yearly_stats.expense).replace(',', ' ') }}</span>
+                        </div>
+                        {% if yearly_stats.savings > 0 %}
+                        <div class="flex justify-between text-[10px]">
+                            <span class="text-gray-400">Сбережения</span>
+                            <span class="font-semibold text-purple-400/80 tabular-nums">{{ "{:,.0f}".format(yearly_stats.savings).replace(',', ' ') }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <!-- Previous years — month + full year -->
+            {% for fy in full_years %}
+            {% set py = prev_years[loop.index0] if loop.index0 < prev_years|length else None %}
+            <div class="border-t border-dark-700/30">
+                <p class="px-3 pt-2 text-[8px] text-gray-500 tracking-wide">{{ fy.year }}</p>
+                <div class="grid grid-cols-2 divide-x divide-dark-700/50">
+                    <div class="p-3">
+                        <p class="text-[7px] text-gray-600 mb-1.5">{{ month_short }}</p>
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-[9px]">
+                                <span class="text-gray-500">Доход</span>
+                                <span class="font-semibold text-green-400/50 tabular-nums">{{ "{:,.0f}".format(py.income).replace(',', ' ') if py else '—' }}</span>
+                            </div>
+                            <div class="flex justify-between text-[9px]">
+                                <span class="text-gray-500">Расход</span>
+                                <span class="font-semibold text-red-400/50 tabular-nums">{{ "{:,.0f}".format(py.expense).replace(',', ' ') if py else '—' }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-3">
+                        <p class="text-[7px] text-gray-600 mb-1.5">Год</p>
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-[9px]">
+                                <span class="text-gray-500">Доход</span>
+                                <span class="font-semibold text-green-400/50 tabular-nums">{{ "{:,.0f}".format(fy.income).replace(',', ' ') }}</span>
+                            </div>
+                            <div class="flex justify-between text-[9px]">
+                                <span class="text-gray-500">Расход</span>
+                                <span class="font-semibold text-red-400/50 tabular-nums">{{ "{:,.0f}".format(fy.expense).replace(',', ' ') }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+
+        </div>
+
+        <!-- Right: Goals -->
+        <div x-data="financePage()">
+            <!-- Investments -->
+            <div class="bg-dark-800/60 rounded-xl border border-dark-600/50 p-3 mb-2">
+                <p class="text-[8px] text-gray-500 tracking-wide mb-2.5">Инвестиции</p>
+                <div class="grid grid-cols-3 gap-2">
+                    {% for goal in investment_goals %}
+                    {% set history = goal_history.get(goal.id, []) %}
+                    {% set pct = (goal.current_amount / goal.target_amount * 100) if goal.target_amount > 0 else 0 %}
+                    <div class="bg-dark-800/80 rounded-lg px-2.5 py-2 border border-dark-600/50 hover:border-dark-500/80 hover:bg-dark-800 transition-all duration-200">
+                        <div class="flex items-center justify-between mb-0.5">
+                            <p class="text-[8px] text-gray-500 tracking-wide truncate">{{ goal.name }}</p>
+                            <button @click="editGoal({{ goal.id }}, '{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}')"
+                                    x-show="editingGoal !== {{ goal.id }}"
+                                    class="text-[8px] text-gray-600 hover:text-gray-400 transition-colors">✎</button>
+                            <button @click="editingGoal = null"
+                                    x-show="editingGoal === {{ goal.id }}"
+                                    class="text-[8px] text-gray-400 hover:text-gray-300 transition-colors">✕</button>
+                        </div>
+                        <div x-show="editingGoal !== {{ goal.id }}" class="mb-1.5">
+                            <p class="text-base font-bold text-white tracking-tight">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</p>
+                        </div>
+                        <div x-show="editingGoal === {{ goal.id }}" x-cloak class="mb-1.5 space-y-1">
+                            <input type="number" x-model="editAmount" @keydown.enter="saveGoal({{ goal.id }})"
+                                   class="w-full bg-dark-900 border border-accent/40 rounded-md px-2 py-0.5 text-xs text-white focus:outline-none focus:border-accent" step="1">
+                            <div class="flex gap-1">
+                                <button @click="saveGoal({{ goal.id }})" :disabled="saving"
+                                        class="flex-1 py-0.5 bg-accent hover:bg-blue-600 text-white text-[8px] rounded-md transition-all active:scale-[0.98]">OK</button>
+                            </div>
+                        </div>
+                        {% if history|length > 1 %}
+                        <svg class="w-full h-6 mb-1.5" viewBox="0 0 100 24" preserveAspectRatio="none">
+                            <polyline fill="none" stroke="#22c55e" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points="{{ sparkline(history) }}" />
+                        </svg>
+                        {% else %}
+                        <div class="h-6 mb-1.5"></div>
+                        {% endif %}
+                        {% if goal.target_amount > 0 %}
+                        <div class="w-full bg-dark-700/50 rounded-full h-1 mb-1.5 overflow-hidden">
+                            <div class="bg-emerald-500 h-full rounded-full transition-all duration-500" style="width: {{ pct }}%"></div>
+                        </div>
+                        <div class="flex justify-between items-baseline">
+                            <span class="text-[9px] font-semibold text-emerald-400">{{ pct|round(1) }}%</span>
+                            <span class="text-[8px] text-gray-600">цель {{ "{:,.1f}".format(goal.target_amount / 1000000) }}M</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Other goals -->
+            <div class="grid grid-cols-2 gap-2">
+                {% for goal in other_goals %}
                 {% set history = goal_history.get(goal.id, []) %}
                 {% set pct = (goal.current_amount / goal.target_amount * 100) if goal.target_amount > 0 else 0 %}
                 <div class="bg-dark-800/80 rounded-lg px-2.5 py-2 border border-dark-600/50 hover:border-dark-500/80 hover:bg-dark-800 transition-all duration-200">
@@ -43,157 +198,59 @@
                                 x-show="editingGoal === {{ goal.id }}"
                                 class="text-[8px] text-gray-400 hover:text-gray-300 transition-colors">✕</button>
                     </div>
-
                     <div x-show="editingGoal !== {{ goal.id }}" class="mb-1.5">
                         <p class="text-base font-bold text-white tracking-tight">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</p>
                     </div>
                     <div x-show="editingGoal === {{ goal.id }}" x-cloak class="mb-1.5 space-y-1">
                         <input type="number" x-model="editAmount" @keydown.enter="saveGoal({{ goal.id }})"
                                class="w-full bg-dark-900 border border-accent/40 rounded-md px-2 py-0.5 text-xs text-white focus:outline-none focus:border-accent" step="1">
-                        <input type="text" x-model="editNote" placeholder="пополнение / проценты"
-                               class="w-full bg-dark-900 border border-dark-600 rounded-md px-2 py-0.5 text-[9px] text-gray-400 focus:outline-none focus:border-dark-500" maxlength="50">
                         <div class="flex gap-1">
-                            <button @click="saveGoal({{ goal.id }})" :disabled="saving"
-                                    class="flex-1 py-0.5 bg-accent hover:bg-blue-600 text-white text-[8px] rounded-md transition-all active:scale-[0.98]">
-                                OK
-                            </button>
+                            <button @click="saveGoal({{ goal.id }})\" :disabled="saving"
+                                    class="flex-1 py-0.5 bg-accent hover:bg-blue-600 text-white text-[8px] rounded-md transition-all active:scale-[0.98]">OK</button>
                         </div>
                     </div>
-
                     {% if history|length > 1 %}
                     <svg class="w-full h-6 mb-1.5" viewBox="0 0 100 24" preserveAspectRatio="none">
-                        <polyline fill="none" stroke="#22c55e" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"
-                                  points="{{ sparkline(history) }}" />
+                        <polyline fill="none" stroke="#3b82f6" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points="{{ sparkline(history) }}" />
                     </svg>
                     {% else %}
                     <div class="h-6 mb-1.5"></div>
                     {% endif %}
-
-                    {% if goal.target_amount > 0 %}
                     <div class="w-full bg-dark-700/50 rounded-full h-1 mb-1.5 overflow-hidden">
-                        <div class="bg-emerald-500 h-full rounded-full transition-all duration-500" style="width: {{ pct }}%"></div>
+                        <div class="bg-blue-500 h-full rounded-full transition-all duration-500" style="width: {{ pct }}%"></div>
                     </div>
                     <div class="flex justify-between items-baseline">
-                        <span class="text-[9px] font-semibold text-emerald-400">{{ pct|round(1) }}%</span>
-                        <span class="text-[8px] text-gray-600">цель {{ "{:,.1f}".format(goal.target_amount / 1000000) }}M</span>
+                        <span class="text-[9px] font-semibold text-blue-400">{{ pct|round(1) }}%</span>
+                        <span class="text-[8px] text-gray-600">
+                            цель {% if goal.target_amount >= 1000000 %}{{ "{:,.1f}".format(goal.target_amount / 1000000) }}M
+                            {% else %}{{ "{:,.0f}".format(goal.target_amount / 1000) }}k{% endif %}
+                        </span>
                     </div>
-                    {% endif %}
                 </div>
                 {% endfor %}
             </div>
         </div>
-
-        <!-- Other goals -->
-        <div class="grid grid-cols-2 gap-2 md:w-[340px]">
-            {% for goal in other_goals %}
-            {% set history = goal_history.get(goal.id, []) %}
-            {% set pct = (goal.current_amount / goal.target_amount * 100) if goal.target_amount > 0 else 0 %}
-            <div class="bg-dark-800/80 rounded-lg px-2.5 py-2 border border-dark-600/50 hover:border-dark-500/80 hover:bg-dark-800 transition-all duration-200">
-                <div class="flex items-center justify-between mb-0.5">
-                    <p class="text-[8px] text-gray-500 tracking-wide truncate">{{ goal.name }}</p>
-                    <button @click="editGoal({{ goal.id }}, '{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}')"
-                            x-show="editingGoal !== {{ goal.id }}"
-                            class="text-[8px] text-gray-600 hover:text-gray-400 transition-colors">✎</button>
-                    <button @click="editingGoal = null"
-                            x-show="editingGoal === {{ goal.id }}"
-                            class="text-[8px] text-gray-400 hover:text-gray-300 transition-colors">✕</button>
-                </div>
-                <div x-show="editingGoal !== {{ goal.id }}" class="mb-1.5">
-                    <p class="text-base font-bold text-white tracking-tight">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</p>
-                </div>
-                <div x-show="editingGoal === {{ goal.id }}" x-cloak class="mb-1.5 space-y-1">
-                    <input type="number" x-model="editAmount" @keydown.enter="saveGoal({{ goal.id }})"
-                           class="w-full bg-dark-900 border border-accent/40 rounded-md px-2 py-0.5 text-xs text-white focus:outline-none focus:border-accent" step="1">
-                    <input type="text" x-model="editNote" placeholder="пополнение / проценты"
-                           class="w-full bg-dark-900 border border-dark-600 rounded-md px-2 py-0.5 text-[9px] text-gray-400 focus:outline-none focus:border-dark-500" maxlength="50">
-                    <div class="flex gap-1">
-                        <button @click="saveGoal({{ goal.id }})" :disabled="saving"
-                                class="flex-1 py-0.5 bg-accent hover:bg-blue-600 text-white text-[8px] rounded-md transition-all active:scale-[0.98]">
-                            OK
-                        </button>
-                    </div>
-                </div>
-                {% if history|length > 1 %}
-                <svg class="w-full h-6 mb-1.5" viewBox="0 0 100 24" preserveAspectRatio="none">
-                    <polyline fill="none" stroke="#3b82f6" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"
-                              points="{{ sparkline(history) }}" />
-                </svg>
-                {% else %}
-                <div class="h-6 mb-1.5"></div>
-                {% endif %}
-                <div class="w-full bg-dark-700/50 rounded-full h-1 mb-1.5 overflow-hidden">
-                    <div class="bg-blue-500 h-full rounded-full transition-all duration-500" style="width: {{ pct }}%"></div>
-                </div>
-                <div class="flex justify-between items-baseline">
-                    <span class="text-[9px] font-semibold text-blue-400">{{ pct|round(1) }}%</span>
-                    <span class="text-[8px] text-gray-600">
-                        цель {% if goal.target_amount >= 1000000 %}{{ "{:,.1f}".format(goal.target_amount / 1000000) }}M
-                        {% else %}{{ "{:,.0f}".format(goal.target_amount / 1000) }}k{% endif %}
-                    </span>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
     </div>
 
-    <!-- Balance -->
-    <div class="bg-dark-800/60 rounded-xl border border-dark-600/50 shadow-sm mb-5 overflow-hidden">
-        <div class="grid grid-cols-2 divide-x divide-dark-700/50">
-            <div class="p-3">
-                <p class="text-[8px] text-gray-500 tracking-wide mb-2.5">{{ month_name }}</p>
-                <div class="space-y-1.5">
-                    <div class="flex justify-between text-[10px]">
-                        <span class="text-gray-400">Доход</span>
-                        <span class="font-semibold text-green-400 tabular-nums">{{ "{:,.0f}".format(stats.income).replace(',', ' ') }}</span>
-                    </div>
-                    <div class="flex justify-between text-[10px]">
-                        <span class="text-gray-400">Расход</span>
-                        <span class="font-semibold text-red-400 tabular-nums">{{ "{:,.0f}".format(stats.expense).replace(',', ' ') }}</span>
-                    </div>
-                    {% if stats.savings > 0 %}
-                    <div class="flex justify-between text-[10px]">
-                        <span class="text-gray-400">Сбережения</span>
-                        <span class="font-semibold text-purple-400 tabular-nums">{{ "{:,.0f}".format(stats.savings).replace(',', ' ') }}</span>
-                    </div>
-                    {% endif %}
-                    <div class="flex justify-between text-[11px] pt-1.5 border-t border-dark-700/50">
-                        <span class="text-gray-300 font-semibold">Остаток</span>
-                        <span class="font-bold tabular-nums {{ 'text-green-400' if stats.balance >= 0 else 'text-red-400' }}">
-                            {{ "{:,.0f}".format(stats.balance).replace(',', ' ') }} ₽
-                        </span>
-                    </div>
-                </div>
-            </div>
-            <div class="p-3">
-                <p class="text-[8px] text-gray-500 tracking-wide mb-2.5">{{ current_year }}</p>
-                <div class="space-y-1.5">
-                    <div class="flex justify-between text-[10px]">
-                        <span class="text-gray-400">Доход</span>
-                        <span class="font-semibold text-green-400/80 tabular-nums">{{ "{:,.0f}".format(yearly_stats.income).replace(',', ' ') }}</span>
-                    </div>
-                    <div class="flex justify-between text-[10px]">
-                        <span class="text-gray-400">Расход</span>
-                        <span class="font-semibold text-red-400/80 tabular-nums">{{ "{:,.0f}".format(yearly_stats.expense).replace(',', ' ') }}</span>
-                    </div>
-                    {% if yearly_stats.savings > 0 %}
-                    <div class="flex justify-between text-[10px]">
-                        <span class="text-gray-400">Сбережения</span>
-                        <span class="font-semibold text-purple-400/80 tabular-nums">{{ "{:,.0f}".format(yearly_stats.savings).replace(',', ' ') }}</span>
-                    </div>
-                    {% endif %}
-                </div>
+    <!-- Month Tabs — grouped by year -->
+    <div class="mb-5 flex gap-2 overflow-x-auto pb-2 scrollbar-hide" x-data="{ openYears: { {{ current_year }}: true } }">
+        {% for yr, tabs in year_groups.items() %}
+        <div class="flex-shrink-0">
+            <button @click="openYears[{{ yr }}] = !openYears[{{ yr }}]"
+               class="px-3 py-1.5 rounded-lg text-[9px] font-bold whitespace-nowrap border transition-all duration-200
+                      {{ 'bg-accent/10 border-accent/30 text-accent' if yr == current_year else 'bg-dark-800 border-dark-600/50 text-gray-400 hover:border-dark-500 hover:text-gray-300' }}">
+                {{ yr }} <span x-text="openYears[{{ yr }}] ? '▾' : '▸'"></span>
+            </button>
+            <div x-show="openYears[{{ yr }}]" class="flex gap-1 mt-1.5 ml-1 flex-wrap">
+                {% for tab in tabs %}
+                <a href="/finance?month={{ tab.month }}&year={{ tab.year }}"
+                   class="px-2.5 py-1 rounded-md text-[8px] font-medium whitespace-nowrap border transition-all duration-200
+                          {{ 'bg-accent/20 border-accent/40 text-accent' if tab.month == current_month and tab.year == current_year else 'bg-dark-700/50 border-dark-600/30 text-gray-500 hover:border-dark-500 hover:text-gray-300' }}">
+                    {{ tab.name }}
+                </a>
+                {% endfor %}
             </div>
         </div>
-    </div>
-
-    <!-- Month Tabs -->
-    <div class="flex gap-1 mb-5 overflow-x-auto pb-2 scrollbar-hide">
-        {% for tab in month_tabs|reverse %}
-        <a href="/finance?month={{ tab.month }}&year={{ tab.year }}"
-           class="px-3 py-1.5 rounded-lg text-[9px] font-medium whitespace-nowrap transition-all duration-200 border
-                  {{ 'bg-accent/10 border-accent/30 text-accent' if tab.month == current_month and tab.year == current_year else 'bg-dark-800 border-dark-600/50 text-gray-400 hover:border-dark-500 hover:text-gray-300' }}">
-            {{ tab.name }}
-        </a>
         {% endfor %}
     </div>
 
@@ -239,7 +296,7 @@
                                         const data = await r.json();
                                         this.catName = data.category_name;
                                         this.catParent = data.category_parent || '';
-                                        if (data.updated > 1) this.catName += ' \u2713\u00d7' + data.updated;
+                                        if (data.updated > 1) this.catName += ' ✓×' + data.updated;
                                         this.editing = false;
                                         this.saving = false;
                                     }
@@ -309,16 +366,23 @@
 
 {% block extra_scripts %}
 <script>
+function createGoalForm(form) {
+    const fd = new FormData(form);
+    const body = new URLSearchParams();
+    body.set('name', fd.get('name'));
+    body.set('target_amount', fd.get('target'));
+    body.set('current_amount', fd.get('current') || '0');
+    fetch('/api/goals/create', { method: 'POST', body })
+        .then(r => r.json())
+        .then(d => { if (d.ok) location.reload(); });
+}
 document.addEventListener('alpine:init', () => {
     Alpine.data('financePage', () => ({
         editingGoal: null,
         editAmount: 0,
-        editNote: '',
         saving: false,
-
         editGoal(id, currentStr) {
             this.editingGoal = null;
-            this.editNote = '';
             this.editAmount = parseFloat(currentStr.replace(/\s/g, '')) || 0;
             this.$nextTick(() => {
                 this.editingGoal = id;
@@ -328,12 +392,11 @@ document.addEventListener('alpine:init', () => {
                 });
             });
         },
-
         async saveGoal(goalId) {
             if (this.saving) return;
             const amt = this.editAmount;
             this.saving = true;
-            const body = new URLSearchParams({ new_amount: amt, note: this.editNote || '' });
+            const body = new URLSearchParams({ new_amount: amt });
             try {
                 const r = await fetch('/api/goals/' + goalId + '/update', {
                     method: 'POST',

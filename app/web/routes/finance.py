@@ -81,12 +81,20 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         available_months = available_months_res.all()
         
         month_tabs = []
+        year_groups = {}
         for row in available_months:
             y, m = int(row.year), int(row.month)
-            month_tabs.append({"month": m, "year": y, "name": f"{MONTH_NAMES[m]} {y}"})
+            tab = {"month": m, "year": y, "name": f"{MONTH_NAMES[m]}"}
+            month_tabs.append(tab)
+            year_groups.setdefault(y, []).append(tab)
+        # Sort months within each year chronologically (Jan left, Dec right)
+        for y in year_groups:
+            year_groups[y].sort(key=lambda t: t["month"])
+        year_groups = dict(sorted(year_groups.items(), reverse=True))
             
         if not month_tabs:
-            month_tabs.append({"month": today.month, "year": today.year, "name": f"{MONTH_NAMES[today.month]} {today.year}"})
+            month_tabs.append({"month": today.month, "year": today.year, "name": f"{MONTH_NAMES[today.month]}"})
+            year_groups = {today.year: month_tabs}
 
         view_month = month or month_tabs[0]["month"]
         view_year = year or month_tabs[0]["year"]
@@ -102,7 +110,6 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
             select(Transaction)
             .options(selectinload(Transaction.category).selectinload(Category.parent))
             .where(Transaction.date >= start_date, Transaction.date < end_date)
-            .where(Transaction.category_id != 157)
             .order_by(Transaction.date.desc())
         )
         transactions = result.scalars().all()
@@ -186,6 +193,20 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         INVESTMENT_GOAL_IDS = [1, 6, 7]  # ИИС, Брокерский 1, Брокерский 2
         investment_goals = [g for g in goals if g.id in INVESTMENT_GOAL_IDS]
         other_goals = [g for g in goals if g.id not in INVESTMENT_GOAL_IDS]
+
+        # Split into active vs completed
+        def is_completed(g):
+            return g.target_amount > 0 and g.current_amount >= g.target_amount
+
+        active_investment = [g for g in investment_goals if not is_completed(g)]
+        completed_investment = [g for g in investment_goals if is_completed(g)]
+        active_other = [g for g in other_goals if not is_completed(g)]
+        completed_other = [g for g in other_goals if is_completed(g)]
+        completed_count = len(completed_investment) + len(completed_other)
+        
+        # Reassign to active-only for template context
+        investment_goals = active_investment
+        other_goals = active_other
         
         # ИТОГИ ГОДА (для view_year)
         year_start = dt.date(view_year, 1, 1)
@@ -214,7 +235,67 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         )
         yearly_savings = yearly_savings_res.scalar() or 0
         yearly_expense = yearly_expense_gross - yearly_savings
-        
+
+        # Month stats for previous years (same month, different year)
+        prev_years = []
+        for py in [view_year - 1, view_year - 2]:
+            py_start = dt.date(py, view_month, 1)
+            if view_month == 12:
+                py_end = dt.date(py + 1, 1, 1)
+            else:
+                py_end = dt.date(py, view_month + 1, 1)
+            py_res = await db.execute(
+                select(
+                    func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0)).label('income'),
+                    func.sum(case((Transaction.amount < 0, func.abs(Transaction.amount)), else_=0)).label('expense')
+                )
+                .where(Transaction.date >= py_start, Transaction.date < py_end)
+            )
+            py_row = py_res.first()
+            py_income = py_row.income or 0
+            py_expense_gross = py_row.expense or 0
+            py_savings_res = await db.execute(
+                select(func.sum(func.abs(Transaction.amount)))
+                .where(Transaction.date >= py_start, Transaction.date < py_end,
+                       Transaction.amount < 0, Transaction.category_id.in_(SAVINGS_CATEGORY_IDS))
+            )
+            py_savings = py_savings_res.scalar() or 0
+            if py_income > 0 or py_expense_gross > 0:
+                prev_years.append({
+                    'year': py,
+                    'income': py_income,
+                    'expense': py_expense_gross - py_savings,
+                    'savings': py_savings
+                })
+
+        # Full-year stats for previous years
+        full_years = []
+        for fy in [view_year - 1, view_year - 2]:
+            fy_start = dt.date(fy, 1, 1)
+            fy_end = dt.date(fy + 1, 1, 1)
+            fy_res = await db.execute(
+                select(
+                    func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0)).label('income'),
+                    func.sum(case((Transaction.amount < 0, func.abs(Transaction.amount)), else_=0)).label('expense')
+                ).where(Transaction.date >= fy_start, Transaction.date < fy_end)
+            )
+            fy_row = fy_res.first()
+            fy_income = fy_row.income or 0
+            fy_expense_gross = fy_row.expense or 0
+            fy_savings_res = await db.execute(
+                select(func.sum(func.abs(Transaction.amount)))
+                .where(Transaction.date >= fy_start, Transaction.date < fy_end,
+                       Transaction.amount < 0, Transaction.category_id.in_(SAVINGS_CATEGORY_IDS))
+            )
+            fy_savings = fy_savings_res.scalar() or 0
+            if fy_income > 0 or fy_expense_gross > 0:
+                full_years.append({
+                    'year': fy,
+                    'income': fy_income,
+                    'expense': fy_expense_gross - fy_savings,
+                    'savings': fy_savings
+                })
+
         # Расчет итогов за месяц
         total_income = sum(tx.amount for tx in transactions if tx.amount > 0)
         total_expense = sum(abs(tx.amount) for tx in transactions if tx.amount < 0 and tx.category_id not in SAVINGS_CATEGORY_IDS)
@@ -257,12 +338,18 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         "goals": goals,
         "investment_goals": investment_goals,
         "other_goals": other_goals,
+        "completed_investment": completed_investment,
+        "completed_other": completed_other,
+        "completed_count": completed_count,
+        "prev_years": prev_years,
+        "full_years": full_years,
         "yearly_stats": {
             "income": yearly_income, 
             "expense": yearly_expense, 
             "savings": yearly_savings
         },
         "month_tabs": month_tabs,
+        "year_groups": year_groups,
         "current_month": view_month,
         "current_year": view_year,
         "fin_categories": fin_categories,
@@ -276,6 +363,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
             "balance": total_income - total_expense - total_savings
         },
         "month_name": f"{MONTH_NAMES[view_month]} {view_year}",
+        "month_short": MONTH_NAMES[view_month],
         "today": today
     })
 
@@ -354,7 +442,7 @@ async def update_transaction_category(
 
 # Goal History API
 @router.post("/api/goals/{goal_id}/update")
-async def update_goal_amount(goal_id: int, new_amount: float = Form(...), note: str = Form("")):
+async def update_goal_amount(goal_id: int, new_amount: float = Form(...)):
     async with async_session() as db:
         res = await db.execute(select(FinancialGoal).where(FinancialGoal.id == goal_id))
         goal = res.scalar_one_or_none()
@@ -362,10 +450,23 @@ async def update_goal_amount(goal_id: int, new_amount: float = Form(...), note: 
             return JSONResponse({"error": "not found"}, status_code=404)
         delta = new_amount - goal.current_amount
         goal.current_amount = new_amount
-        hist = GoalHistory(goal_id=goal_id, new_amount=new_amount, delta=delta, note=note or None)
+        hist = GoalHistory(goal_id=goal_id, new_amount=new_amount, delta=delta)
         db.add(hist)
         await db.commit()
     return JSONResponse({"ok": True, "new_amount": new_amount, "delta": delta})
+
+@router.post("/api/goals/create")
+async def create_goal(name: str = Form(...), target_amount: float = Form(...), current_amount: float = Form(0)):
+    async with async_session() as db:
+        goal = FinancialGoal(name=name, target_amount=target_amount, current_amount=current_amount)
+        db.add(goal)
+        await db.commit()
+        await db.refresh(goal)
+        if current_amount > 0:
+            hist = GoalHistory(goal_id=goal.id, new_amount=current_amount, delta=current_amount)
+            db.add(hist)
+            await db.commit()
+    return JSONResponse({"ok": True, "id": goal.id, "name": goal.name})
 
 @router.get("/api/goals/{goal_id}/history")
 async def get_goal_history(goal_id: int):

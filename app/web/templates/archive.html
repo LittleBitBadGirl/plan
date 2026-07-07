@@ -10,7 +10,7 @@
         <p class="text-gray-500 text-sm mt-0.5">Задачи, покупки и «Читать» — отдельные колонки, каждая прокручивается сама</p>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 items-start">
         <!-- Покупки -->
         <section id="archive-shopping"
                  class="order-1 lg:order-2 flex flex-col min-h-0 rounded-xl border border-yellow-500/20 bg-dark-800/80 overflow-hidden max-h-[min(42vh,22rem)] lg:max-h-[calc(100vh-10rem)] lg:sticky lg:top-4">
@@ -119,17 +119,21 @@
         </section>
 
         <!-- Задачи -->
-        <section class="order-3 lg:order-1 flex flex-col min-h-0 rounded-xl border border-dark-600 bg-dark-800/80 overflow-hidden max-h-[min(55vh,32rem)] lg:max-h-[calc(100vh-10rem)]">
-            <div class="shrink-0 px-3 py-2 border-b border-dark-600 flex items-center justify-between gap-2">
-                <h2 class="text-sm font-bold text-blue-400/90">Задачи</h2>
-                <span class="text-[10px] text-gray-500 tabular-nums">{{ total }}</span>
+        <section x-data="{ taskSearch: '' }" class="order-3 lg:order-1 flex flex-col min-h-0 rounded-xl border border-dark-600 bg-dark-800/80 overflow-hidden max-h-[min(55vh,32rem)] lg:max-h-[calc(100vh-10rem)]">
+            <div class="shrink-0 px-3 py-2 border-b border-dark-600 space-y-1.5">
+                <div class="flex items-center justify-between gap-2">
+                    <h2 class="text-sm font-bold text-blue-400/90">Задачи</h2>
+                    <span class="text-[10px] text-gray-500 tabular-nums">{{ total }}</span>
+                </div>
+                <input type="text" x-model="taskSearch" placeholder="Поиск по задачам..."
+                       class="w-full bg-dark-900 border border-dark-600 rounded-md px-2 py-1 text-[10px] text-gray-300 focus:outline-none focus:border-blue-500/50 placeholder-gray-600">
             </div>
 
             <div class="flex-1 min-h-0 overflow-y-auto">
                 {% if tasks %}
                 <ul class="divide-y divide-dark-700/80">
                     {% for task in tasks %}
-                    <li id="archive-task-{{ task.id }}"
+                    <li id="archive-task-{{ task.id }}" x-show="taskSearch === '' || '{{ task.title|lower }}'.includes(taskSearch.toLowerCase())"
                         class="group px-3 py-1.5 hover:bg-dark-700/40 flex items-center gap-2 min-h-[2rem]">
                         <div class="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
                             <span class="text-sm font-medium text-gray-200 truncate" title="{{ task.title }}">{{ task.title }}</span>
@@ -174,6 +178,31 @@
                 {% endif %}
             </div>
             {% endif %}
+        </section>
+
+        <!-- Цели -->
+        <section class="order-4 flex flex-col min-h-0 rounded-xl border border-emerald-500/20 bg-dark-800/80 overflow-hidden max-h-[min(42vh,22rem)] lg:max-h-[calc(100vh-10rem)] lg:sticky lg:top-4">
+            <div class="shrink-0 px-3 py-2 border-b border-dark-600 bg-emerald-500/5 flex items-center justify-between gap-2">
+                <h2 class="text-sm font-bold text-emerald-400/90">Цели</h2>
+                <span class="text-[10px] text-gray-500 tabular-nums">{{ completed_goals|length }}</span>
+            </div>
+            <div class="flex-1 min-h-0 overflow-y-auto">
+                {% if completed_goals %}
+                <ul class="divide-y divide-dark-700/80">
+                    {% for goal in completed_goals %}
+                    <li class="px-3 py-2 hover:bg-dark-700/40">
+                        <span class="text-sm text-gray-200 block">{{ goal.name }}</span>
+                        <div class="flex items-baseline gap-2 mt-0.5">
+                            <span class="text-xs font-bold text-emerald-500">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</span>
+                            <span class="text-[10px] text-emerald-600">100%</span>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-center py-8 text-sm text-gray-600">Выполненных целей пока нет</p>
+                {% endif %}
+            </div>
         </section>
     </div>
 </div>
