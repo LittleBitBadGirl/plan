@@ -68,31 +68,36 @@
 
         {# --- Progress section — two modes --- #}
 
-        {# Mode A: pages_total is set — show progress bar with ± buttons #}
+        {# Mode A: pages_total is set — show progress bar, click counter to edit #}
         {% if item.pages_total and item.pages_total > 0 %}
         {% set pct = ((item.pages_read or 0) / item.pages_total * 100) | round %}
-        <div class="flex items-center gap-2 pl-6">
-            <span class="text-[10px] text-gray-500 tabular-nums w-14 text-right shrink-0">{{ item.pages_read or 0 }}/{{ item.pages_total }}</span>
+        <div class="flex items-center gap-2 pl-6" id="pg-row-{{ item.id }}">
+            {# Clickable counter → inline edit #}
+            <span id="pg-display-{{ item.id }}"
+                  onclick="document.getElementById('pg-display-{{ item.id }}').classList.add('hidden'); document.getElementById('pg-edit-{{ item.id }}').classList.remove('hidden'); document.getElementById('pg-input-{{ item.id }}').focus()"
+                  class="text-[10px] text-gray-400 hover:text-amber-400 tabular-nums w-14 text-right shrink-0 cursor-pointer border-b border-dashed border-gray-700 hover:border-amber-600 transition"
+                  title="Кликни чтобы обновить страницу">{{ item.pages_read or 0 }}/{{ item.pages_total }}</span>
+            {# Inline edit form (hidden by default) #}
+            <form id="pg-edit-{{ item.id }}"
+                  hx-post="/api/reading/{{ item.id }}/pages"
+                  hx-target="#reading-list"
+                  hx-swap="innerHTML"
+                  class="hidden flex items-center gap-1">
+                <span class="text-[9px] text-gray-500">стр.</span>
+                <input id="pg-input-{{ item.id }}" type="number" name="pages_read" value="{{ item.pages_read or 0 }}" min="0" max="{{ item.pages_total }}"
+                       class="w-12 bg-dark-900 border border-amber-700 rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none focus:border-amber-500">
+                <span class="text-[9px] text-gray-600">/ {{ item.pages_total }}</span>
+                <button type="submit" class="text-[9px] text-amber-400 hover:text-amber-300 transition font-bold">ок</button>
+                <button type="button"
+                        onclick="document.getElementById('pg-display-{{ item.id }}').classList.remove('hidden'); document.getElementById('pg-edit-{{ item.id }}').classList.add('hidden')"
+                        class="text-[9px] text-gray-600 hover:text-gray-400 transition">×</button>
+            </form>
+            {# Progress bar #}
             <div class="flex-1 bg-dark-700 rounded-full h-2 overflow-hidden border border-dark-600">
                 <div class="h-full {{ 'bg-amber-600' if item.status == 'reading' else 'bg-emerald-700' }} transition-all duration-500" style="width: {{ [pct, 100] | min }}%"></div>
             </div>
             <span class="text-[10px] text-gray-600 tabular-nums w-8 shrink-0">{{ [pct, 100] | min }}%</span>
-            {# Quick page edit buttons #}
-            <button type="button"
-                    hx-post="/api/reading/{{ item.id }}/pages"
-                    hx-target="#reading-list"
-                    hx-swap="innerHTML"
-                    hx-vals='{"pages_read": {{ ((item.pages_read or 0) - 1) if (item.pages_read or 0) > 0 else 0 }}, "pages_total": {{ item.pages_total }}}'
-                    class="text-[10px] text-gray-500 hover:text-gray-300 px-1 transition font-bold"
-                    title="-1 страница">−</button>
-            <button type="button"
-                    hx-post="/api/reading/{{ item.id }}/pages"
-                    hx-target="#reading-list"
-                    hx-swap="innerHTML"
-                    hx-vals='{"pages_read": {{ (item.pages_read or 0) + 1 }}, "pages_total": {{ item.pages_total }}}'
-                    class="text-[10px] text-gray-500 hover:text-gray-300 px-1 transition font-bold"
-                    title="+1 страница">+</button>
-            {# Edit total #}
+            {# Edit total pages #}
             <button type="button"
                     onclick="this.nextElementSibling.classList.toggle('hidden')"
                     class="text-[9px] text-gray-600 hover:text-amber-400 transition ml-1"
