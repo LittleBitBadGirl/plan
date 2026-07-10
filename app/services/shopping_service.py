@@ -24,10 +24,16 @@ async def load_active_shopping(db: AsyncSession) -> list[ShoppingItem]:
 
 
 async def load_active_reading(db: AsyncSession) -> list[ShoppingItem]:
+    """Активные пункты чтения: сначала «читаю», потом «к прочтению»."""
+    from sqlalchemy import case
+    status_order = case(
+        (ShoppingItem.reading_status == "reading", 0),
+        else_=1,
+    )
     result = await db.execute(
         select(ShoppingItem)
         .where(active_reading_filter())
-        .order_by(ShoppingItem.created_at.desc())
+        .order_by(status_order, ShoppingItem.created_at.desc())
     )
     return list(result.scalars().all())
 

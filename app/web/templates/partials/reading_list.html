@@ -5,14 +5,14 @@
     <div class="reading-item bg-dark-800 rounded-lg p-2 px-3 border border-dark-700 hover:border-amber-600/30 transition flex flex-col gap-2"
          id="reading-{{ item.id }}">
         {# --- Row: status badge, title, actions --- #}
-        <div class="flex items-center gap-2">
+        <div class="flex items-start gap-2">
             {# Status badge + progress toggle button #}
             {% if item.status == 'reading' %}
             <button type="button"
                     hx-post="/api/reading/{{ item.id }}/progress"
                     hx-target="#reading-list"
                     hx-swap="innerHTML"
-                    class="shrink-0 bg-amber-900/60 text-amber-300 px-1.5 py-0.5 rounded text-[9px] font-bold border border-amber-700/50 hover:bg-amber-800/60 transition"
+                    class="shrink-0 bg-amber-900/60 text-amber-300 px-1.5 py-0.5 rounded text-[9px] font-bold border border-amber-700/50 hover:bg-amber-800/60 transition mt-0.5"
                     title="В процессе — нажми чтобы завершить">
                 читаю
             </button>
@@ -21,34 +21,38 @@
                     hx-post="/api/reading/{{ item.id }}/progress"
                     hx-target="#reading-list"
                     hx-swap="innerHTML"
-                    class="shrink-0 bg-dark-700 text-gray-500 hover:text-amber-400 hover:bg-amber-900/30 px-1.5 py-0.5 rounded text-[9px] font-bold border border-dark-600 hover:border-amber-700/50 transition"
+                    class="shrink-0 bg-dark-700 text-gray-500 hover:text-amber-400 hover:bg-amber-900/30 px-1.5 py-0.5 rounded text-[9px] font-bold border border-dark-600 hover:border-amber-700/50 transition mt-0.5"
                     title="Начать читать">
                 к прочтению
             </button>
             {% endif %}
 
-            {# Title / link #}
+            {# Title / link — full visibility, no truncate #}
             <div class="flex-1 min-w-0">
                 {% if item.url %}
                 <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer"
-                   class="font-medium text-sm text-amber-200 hover:text-amber-100 hover:underline flex items-center gap-1 min-w-0"
+                   class="font-medium text-sm text-amber-200 hover:text-amber-100 hover:underline block break-words"
                    title="{{ item.title }}">
-                    <span class="truncate">{{ item.title }}</span>
+                    {{ item.title }}
                     {% if '.pdf' in item.url.lower() %}
-                    <span class="text-[10px] text-amber-500/70 shrink-0">PDF</span>
+                    <span class="text-[10px] text-amber-500/70">PDF</span>
                     {% endif %}
-                    <svg class="w-3 h-3 shrink-0 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                    <svg class="w-3 h-3 inline-block opacity-70 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                 </a>
                 {% else %}
-                <span class="font-medium text-sm text-stone-200 truncate block" title="{{ item.title }}">{{ item.title }}</span>
+                <span class="font-medium text-sm text-stone-200 block break-words">{{ item.title }}</span>
+                {% endif %}
+                {# Show content preview if non-link item has content #}
+                {% if not item.url and item.content %}
+                <p class="text-[10px] text-gray-500 mt-0.5 line-clamp-2">{{ item.content }}</p>
                 {% endif %}
             </div>
 
             {# Info popup button #}
-            {% if item.content %}
+            {% if item.content and item.url %}
             <button type="button"
                     onclick="showReadingPopup({{ item.id }})"
-                    class="icon-action flex-shrink-0 text-stone-500 hover:text-amber-400 transition"
+                    class="icon-action flex-shrink-0 text-stone-500 hover:text-amber-400 transition mt-0.5"
                     title="Подробнее">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             </button>
@@ -62,42 +66,73 @@
             </form>
         </div>
 
-        {# --- Progress bar (if pages_total is set) --- #}
+        {# --- Progress section — two modes --- #}
+
+        {# Mode A: pages_total is set — show progress bar with ± buttons #}
         {% if item.pages_total and item.pages_total > 0 %}
         {% set pct = ((item.pages_read or 0) / item.pages_total * 100) | round %}
-        <div class="flex items-center gap-2">
-            <span class="text-[9px] text-gray-500 tabular-nums w-12 text-right shrink-0">{{ item.pages_read or 0 }}/{{ item.pages_total }}</span>
-            <div class="flex-1 bg-dark-700 rounded-full h-1.5 overflow-hidden border border-dark-600">
+        <div class="flex items-center gap-2 pl-6">
+            <span class="text-[10px] text-gray-500 tabular-nums w-14 text-right shrink-0">{{ item.pages_read or 0 }}/{{ item.pages_total }}</span>
+            <div class="flex-1 bg-dark-700 rounded-full h-2 overflow-hidden border border-dark-600">
                 <div class="h-full {{ 'bg-amber-600' if item.status == 'reading' else 'bg-emerald-700' }} transition-all duration-500" style="width: {{ [pct, 100] | min }}%"></div>
             </div>
-            <span class="text-[9px] text-gray-600 tabular-nums w-8 shrink-0">{{ [pct, 100] | min }}%</span>
+            <span class="text-[10px] text-gray-600 tabular-nums w-8 shrink-0">{{ [pct, 100] | min }}%</span>
             {# Quick page edit buttons #}
             <button type="button"
                     hx-post="/api/reading/{{ item.id }}/pages"
                     hx-target="#reading-list"
                     hx-swap="innerHTML"
                     hx-vals='{"pages_read": {{ ((item.pages_read or 0) - 1) if (item.pages_read or 0) > 0 else 0 }}, "pages_total": {{ item.pages_total }}}'
-                    class="text-[9px] text-gray-600 hover:text-gray-400 px-0.5 transition"
+                    class="text-[10px] text-gray-500 hover:text-gray-300 px-1 transition font-bold"
                     title="-1 страница">−</button>
             <button type="button"
                     hx-post="/api/reading/{{ item.id }}/pages"
                     hx-target="#reading-list"
                     hx-swap="innerHTML"
                     hx-vals='{"pages_read": {{ (item.pages_read or 0) + 1 }}, "pages_total": {{ item.pages_total }}}'
-                    class="text-[9px] text-gray-600 hover:text-gray-400 px-0.5 transition"
+                    class="text-[10px] text-gray-500 hover:text-gray-300 px-1 transition font-bold"
                     title="+1 страница">+</button>
+            {# Edit total #}
+            <button type="button"
+                    onclick="this.nextElementSibling.classList.toggle('hidden')"
+                    class="text-[9px] text-gray-600 hover:text-amber-400 transition ml-1"
+                    title="Изменить всего страниц">✎</button>
+            <form hx-post="/api/reading/{{ item.id }}/pages"
+                  hx-target="#reading-list"
+                  hx-swap="innerHTML"
+                  class="hidden flex items-center gap-1">
+                <input type="number" name="pages_total" value="{{ item.pages_total }}" min="1"
+                       class="w-12 bg-dark-900 border border-dark-600 rounded px-1 py-0.5 text-[9px] text-white focus:outline-none focus:border-amber-600">
+                <button type="submit" class="text-[9px] text-amber-400 hover:text-amber-300 transition">✓</button>
+            </form>
         </div>
         {% endif %}
 
-        {# --- Set total pages row (shown when no pages set yet, or editable) --- #}
-        {% if not item.pages_total or item.pages_total == 0 %}
+        {# Mode B: no pages set yet, and status is reading — show prominent input #}
+        {% if (not item.pages_total or item.pages_total == 0) and item.status == 'reading' %}
+        <div class="pl-6">
+            <form hx-post="/api/reading/{{ item.id }}/pages"
+                  hx-target="#reading-list"
+                  hx-swap="innerHTML"
+                  class="flex items-center gap-2">
+                <span class="text-[10px] text-gray-500 shrink-0">всего страниц:</span>
+                <input type="number" name="pages_total" placeholder="0" min="1"
+                       class="w-16 bg-dark-900 border border-dark-600 rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-600">
+                <button type="submit" class="text-xs bg-amber-800 hover:bg-amber-700 text-amber-200 px-2 py-0.5 rounded transition font-medium">ок</button>
+            </form>
+        </div>
+        {% endif %}
+
+        {# Mode C: no pages and NOT reading — subtle hint #}
+        {% if (not item.pages_total or item.pages_total == 0) and item.status != 'reading' %}
         <form hx-post="/api/reading/{{ item.id }}/pages"
               hx-target="#reading-list"
               hx-swap="innerHTML"
-              class="flex items-center gap-2">
-            <input type="number" name="pages_total" placeholder="стр." min="1"
-                   class="w-14 bg-dark-900 border border-dark-600 rounded px-1.5 py-0.5 text-[9px] text-white placeholder-gray-600 focus:outline-none focus:border-amber-600">
-            <button type="submit" class="text-[8px] text-gray-600 hover:text-amber-400 transition uppercase">✓</button>
+              class="flex items-center gap-1 pl-6 opacity-40 hover:opacity-100 transition-opacity">
+            <span class="text-[9px] text-gray-600">стр:</span>
+            <input type="number" name="pages_total" placeholder="..." min="1"
+                   class="w-10 bg-transparent border-b border-gray-700 px-1 py-0.5 text-[9px] text-white placeholder-gray-700 focus:outline-none focus:border-amber-600">
+            <button type="submit" class="text-[9px] text-gray-600 hover:text-amber-400 transition">✓</button>
         </form>
         {% endif %}
     </div>
@@ -131,7 +166,7 @@
         const titleEl = document.getElementById('reading-popup-title');
         const bodyEl = document.getElementById('reading-popup-body');
         const row = document.getElementById('reading-' + id);
-        const titleText = row ? row.querySelector('a span, span')?.textContent?.trim() || '' : '';
+        const titleText = row ? row.querySelector('a')?.textContent?.trim() || row.querySelector('span')?.textContent?.trim() || '' : '';
         titleEl.textContent = titleText;
         bodyEl.textContent = _readingContents[id] || '';
         overlay.classList.remove('hidden');
