@@ -41,6 +41,11 @@
                 {% if current_subtasks and current_subtasks|length > 0 %}
                     {% set done = current_subtasks | selectattr("status", "equalto", "выполнена") | list | length %}
                     <span class="font-medium">{{ done }}/{{ current_subtasks|length }}</span>
+                    {% if current_subtasks|length > 10 %}
+                    <span class="bg-red-900/60 text-red-300 px-1.5 py-0 rounded text-[10px] font-bold border border-red-700/50" title="Очень много подзадач">XL</span>
+                    {% elif current_subtasks|length > 2 %}
+                    <span class="bg-amber-900/60 text-amber-300 px-1.5 py-0 rounded text-[10px] font-bold border border-amber-700/50" title="Много подзадач">L</span>
+                    {% endif %}
                 {% else %}
                     <span class="text-[10px] opacity-60 font-bold">+</span>
                 {% endif %}

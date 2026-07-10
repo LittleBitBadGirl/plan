@@ -832,8 +832,16 @@ def _reading_url(title: str):
 
 
 def reading_items_view(items: list) -> list:
-    """ShoppingItem(reading) → dict {id, title, url, content} для шаблона."""
-    return [{"id": it.id, "title": it.title, "url": _reading_url(it.title), "content": it.content} for it in items]
+    """ShoppingItem(reading) → dict {id, title, url, content, status, pages_total, pages_read} для шаблона."""
+    return [{
+        "id": it.id,
+        "title": it.title,
+        "url": _reading_url(it.title),
+        "content": it.content,
+        "status": it.reading_status or "want_to_read",
+        "pages_total": it.pages_total,
+        "pages_read": it.pages_read or 0,
+    } for it in items]
 
 
 def _render_reading_list(request: Request, reading_items: list) -> str:

@@ -15,3 +15,9 @@ class ShoppingItem(Base):
     content = Column(Text, nullable=True)  # заметки, полный текст поста
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     purchased_at = Column(DateTime(timezone=True), nullable=True)
+
+    # --- Reading tracker fields ---
+    reading_status = Column(String(20), default="want_to_read", nullable=False)
+    # want_to_read / reading / done
+    pages_total = Column(Integer, nullable=True)
+    pages_read = Column(Integer, default=0)
