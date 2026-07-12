@@ -190,7 +190,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         goals_res = await db.execute(select(FinancialGoal))
         goals = goals_res.scalars().all()
         # Разделение: инвестиционные счета (ИИС, брокерские) vs обычные цели
-        INVESTMENT_GOAL_IDS = [1, 6, 7]  # ИИС, Брокерский 1, Брокерский 2
+        INVESTMENT_GOAL_IDS = [1, 3, 6, 7]  # ИИС, Подушка, Автомобиль(брокер), Брокерский 2
         investment_goals = [g for g in goals if g.id in INVESTMENT_GOAL_IDS]
         other_goals = [g for g in goals if g.id not in INVESTMENT_GOAL_IDS]
 
