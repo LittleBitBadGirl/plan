@@ -679,16 +679,17 @@ function renderAnalytics() {
     if (startBal !== null && endBal !== null) {
         const change = endBal - startBal;
         const changePct = startBal !== 0 ? (change/startBal*100) : 0;
-        // Change without deposits
+        // Change without deposits: real investment return
         const depSum = flows.filter(f => f.type === 'deposit').reduce((s,f) => s + f.amount, 0);
-        const changeNoDep = change - depSum;
-        const changeNoDepPct = startBal !== 0 ? (changeNoDep/startBal*100) : 0;
+        const allDeposits = (d.flows || []).filter(f => f.type === 'deposit').reduce((s,f) => s + f.amount, 0);
+        const realGain = endBal - allDeposits;
+        const realPct = allDeposits !== 0 ? (realGain / allDeposits * 100) : 0;
         
         balanceCards = '<div class="grid grid-cols-2 gap-2 mb-2">' +
             '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">начало</p><p class="text-sm font-bold text-white">'+fmtRub(startBal)+'</p></div>' +
             '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">конец</p><p class="text-sm font-bold text-white">'+fmtRub(endBal)+'</p></div>' +
             '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">изменение</p><p class="text-sm font-bold '+(change>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(change)+' <span class="text-[9px]">('+(changePct>=0?'+':'')+changePct.toFixed(1)+'%)</span></p></div>' +
-            '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">без пополнений</p><p class="text-sm font-bold '+(changeNoDep>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(changeNoDep)+' <span class="text-[9px]">('+(changeNoDepPct>=0?'+':'')+changeNoDepPct.toFixed(1)+'%)</span></p></div>' +
+            '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">без пополнений</p><p class="text-sm font-bold '+(realGain>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(realGain)+' <span class="text-[9px]">('+(realPct>=0?'+':'')+realPct.toFixed(1)+'%)</span></p></div>' +
             '</div>';
     }
 
