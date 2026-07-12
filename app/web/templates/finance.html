@@ -493,7 +493,18 @@ function buildMonthDropdown() {
 
 function setPeriod(p) {
     window._amPeriod = p;
-    if (p !== 'custom') document.getElementById('amMonth').value = '';
+    window._amYoY = false;
+    if (p === 'month') {
+        // Select previous calendar month in dropdown
+        const prevMonth = new Date();
+        prevMonth.setMonth(prevMonth.getMonth() - 1);
+        const defMonth = prevMonth.getFullYear() + '-' + String(prevMonth.getMonth()+1).padStart(2,'0');
+        document.getElementById('amMonth').value = defMonth;
+    } else if (p === 'year') {
+        document.getElementById('amMonth').value = '';
+    } else {
+        document.getElementById('amMonth').value = '';
+    }
     renderAnalytics();
 }
 
@@ -511,8 +522,6 @@ function getCutoff() {
                 compareStart: new Date(now.getFullYear()-2, now.getMonth(), now.getDate()),
                 compareEnd: new Date(now.getFullYear()-1, now.getMonth(), now.getDate()-1)};
     }
-    if (window._amPeriod === 'month')
-        return {start: new Date(now.getFullYear(), now.getMonth()-1, now.getDate()), end: null};
     if (window._amPeriod === 'year')
         return {start: new Date(now.getFullYear()-1, now.getMonth(), now.getDate()), end: null};
     return null;
@@ -686,8 +695,8 @@ function renderAnalytics() {
     // === Totals ===
     const totals = {};
     flows.forEach(f => { totals[f.type] = (totals[f.type]||0) + f.amount; });
-    const labels = {deposit:'Пополнения', coupon:'Купоны', dividend:'Дивиденды', tax:'Налоги', commission:'Комиссии', withdrawal:'Выводы', redemption:'Погашения'};
-    const fixedTypes = ['deposit', 'coupon', 'dividend', 'tax', 'commission'];
+    const fixedTypes = ['deposit', 'withdrawal', 'coupon', 'dividend', 'tax', 'commission'];
+    const labels = {deposit:'Пополнения', withdrawal:'Выводы', coupon:'Купоны', dividend:'Дивиденды', tax:'Налоги', commission:'Комиссии'};
     document.getElementById('amTotals').innerHTML = balanceCards +
         '<div class="grid grid-cols-2 gap-2">' +
         fixedTypes.map(k => {
