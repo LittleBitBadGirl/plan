@@ -263,11 +263,11 @@
                 </div>
                 <div class="p-5 space-y-4">
                     <div class="flex gap-1 flex-wrap items-center" id="amFilters">
-                        <button onclick="setPeriod('month')" class="px-2.5 py-1 text-[9px] rounded-md border transition bg-dark-700 text-gray-400 border-dark-600">мес</button>
-                        <button onclick="setPeriod('year')" class="px-2.5 py-1 text-[9px] rounded-md border transition bg-dark-700 text-gray-400 border-dark-600">год</button>
-                        <button onclick="setPeriod('all')" class="px-2.5 py-1 text-[9px] rounded-md border transition bg-accent/20 text-accent border-accent/30">всё</button>
-                        <select id="amMonth" onchange="setPeriod('custom')" class="ml-2 bg-dark-700 border border-dark-600 rounded-md px-2 py-1 text-[9px] text-gray-300"></select>
-                        <button id="amYoY" onclick="toggleYoY()" class="px-2 py-1 text-[8px] rounded-md border border-dark-600 text-gray-500 hover:text-accent transition hidden">год-к-году</button>
+                        <button onclick="setPeriod('prevMonth')" class="px-2 py-1 text-[9px] rounded-md border transition bg-dark-700 text-gray-400 border-dark-600">пред мес</button>
+                        <button onclick="setPeriod('curYear')" class="px-2 py-1 text-[9px] rounded-md border transition bg-dark-700 text-gray-400 border-dark-600">тек год</button>
+                        <button onclick="toggleYoY()" id="amYoY" class="px-2 py-1 text-[8px] rounded-md border border-dark-600 text-gray-500 hover:text-accent transition">год-к-году</button>
+                        <select id="amYear" onchange="onFilterChange()" class="bg-dark-700 border border-dark-600 rounded-md px-2 py-1 text-[9px] text-gray-300"></select>
+                        <select id="amMonth" onchange="onFilterChange()" class="bg-dark-700 border border-dark-600 rounded-md px-2 py-1 text-[9px] text-gray-300"></select>
                     </div>
                     <div id="amSparkline" class="bg-dark-900 rounded-lg p-3" style="display:none"></div>
                     <div id="amTotals" class="grid grid-cols-2 gap-2"></div>
@@ -461,77 +461,107 @@ document.addEventListener('alpine:init', () => {
 <script>
 // === Analytics Modal (vanilla JS) ===
 window._amData = null;
-window._amPeriod = 'custom';
+window._amPeriod = 'prevMonth';
 window._amYoY = false;
 
 window._openAnalytics = async function(goalId, goalName) {
     document.getElementById('amTitle').textContent = goalName;
-    window._amPeriod = 'custom';
+    window._amPeriod = 'prevMonth';
     window._amYoY = false;
     try {
         const r = await fetch('/api/goals/' + goalId + '/analytics', {credentials: 'same-origin'});
         if (!r.ok) throw new Error('HTTP ' + r.status);
         window._amData = await r.json();
         document.getElementById('analyticsModal').style.display = 'flex';
-        buildMonthDropdown();
+        buildDropdowns();
         renderAnalytics();
     } catch(e) { alert('Ошибка загрузки: ' + e.message); }
 };
 
-function buildMonthDropdown() {
-    const sel = document.getElementById('amMonth');
+function buildDropdowns() {
     const snaps = (window._amData && window._amData.snapshots) || [];
     const months = [...new Set(snaps.map(s => s.date.substring(0,7)))].sort();
+    const years = [...new Set(snaps.map(s => s.date.substring(0,4)))].sort();
     const now = new Date();
+    const curYear = now.getFullYear();
+    
+    // Year dropdown
+    const yearSel = document.getElementById('amYear');
+    yearSel.innerHTML = years.map(y => `<option value="${y}" ${y==curYear?'selected':''}>${y}</option>`).join('');
+    
+    // Month dropdown (all months 01-12)
+    const monthSel = document.getElementById('amMonth');
     const prevMonth = new Date(now.getFullYear(), now.getMonth()-1, 1);
     const defMonth = prevMonth.getFullYear() + '-' + String(prevMonth.getMonth()+1).padStart(2,'0');
-    const defaultMonth = months.includes(defMonth) ? defMonth : (months[months.length-1] || '');
-    sel.innerHTML = months.map(m => `<option value="${m}" ${m===defaultMonth?'selected':''}>${m}</option>`).join('');
-    const years = [...new Set(snaps.map(s => s.date.substring(0,4)))];
-    document.getElementById('amYoY').style.display = years.some(y => parseInt(y) < now.getFullYear()) ? '' : 'none';
+    monthSel.innerHTML = '<option value="">—</option>' + 
+        months.map(m => `<option value="${m}" ${m===defMonth?'selected':''}>${m}</option>`).join('');
+}
+
+function onFilterChange() {
+    window._amPeriod = 'custom';
+    window._amYoY = false;
+    renderAnalytics();
 }
 
 function setPeriod(p) {
     window._amPeriod = p;
     window._amYoY = false;
-    if (p === 'month') {
-        // Select previous calendar month in dropdown
-        const prevMonth = new Date();
-        prevMonth.setMonth(prevMonth.getMonth() - 1);
-        const defMonth = prevMonth.getFullYear() + '-' + String(prevMonth.getMonth()+1).padStart(2,'0');
-        document.getElementById('amMonth').value = defMonth;
-    } else if (p === 'year') {
+    const now = new Date();
+    
+    if (p === 'prevMonth') {
+        const prev = new Date(now.getFullYear(), now.getMonth()-1, 1);
+        document.getElementById('amMonth').value = prev.getFullYear() + '-' + String(prev.getMonth()+1).padStart(2,'0');
+        document.getElementById('amYear').value = now.getFullYear();
+    } else if (p === 'curYear') {
         document.getElementById('amMonth').value = '';
-    } else {
+        document.getElementById('amYear').value = now.getFullYear();
+    }
+    renderAnalytics();
+}
+
+function toggleYoY() {
+    window._amYoY = !window._amYoY;
+    if (window._amYoY) {
+        window._amPeriod = 'custom';
         document.getElementById('amMonth').value = '';
     }
     renderAnalytics();
 }
 
-function toggleYoY() { 
-    window._amYoY = !window._amYoY; 
-    if (window._amYoY) {
-        window._amPeriod = 'year';
-        document.getElementById('amMonth').value = '';
-    }
-    renderAnalytics(); 
-}
-
 function getCutoff() {
     const now = new Date();
+    const yearSel = document.getElementById('amYear').value;
     const monthSel = document.getElementById('amMonth').value;
-    if (monthSel) {
-        const [y, m] = monthSel.split('-').map(Number);
-        return {start: new Date(y, m-1, 1), end: new Date(y, m, 0, 23, 59, 59)};
-    }
+    
+    // YoY mode
     if (window._amYoY) {
-        return {start: new Date(now.getFullYear()-1, now.getMonth(), now.getDate()), end: null,
-                compareStart: new Date(now.getFullYear()-2, now.getMonth(), now.getDate()),
-                compareEnd: new Date(now.getFullYear()-1, now.getMonth(), now.getDate()-1)};
+        const y = parseInt(yearSel) || now.getFullYear();
+        return {start: new Date(y-1, 0, 1), end: new Date(y, 0, 0),
+                compareStart: new Date(y-2, 0, 1), compareEnd: new Date(y-1, 11, 31)};
     }
-    if (window._amPeriod === 'year')
-        return {start: new Date(now.getFullYear()-1, now.getMonth(), now.getDate()), end: null};
-    return null;
+    
+    // Month + Year pair
+    if (monthSel && yearSel) {
+        const [my, mm] = monthSel.split('-').map(Number);
+        return {start: new Date(my, mm-1, 1), end: new Date(my, mm, 0, 23, 59, 59)};
+    }
+    
+    // Year only
+    if (yearSel && !monthSel) {
+        const y = parseInt(yearSel);
+        return {start: new Date(y, 0, 1), end: new Date(y, 11, 31, 23, 59, 59)};
+    }
+    
+    // Month only — use current year
+    if (monthSel && !yearSel) {
+        const [my, mm] = monthSel.split('-').map(Number);
+        return {start: new Date(my, mm-1, 1), end: new Date(my, mm, 0, 23, 59, 59)};
+    }
+    
+    // prevMonth default
+    const prev = new Date(now.getFullYear(), now.getMonth()-1, 1);
+    const py = prev.getFullYear(), pm = prev.getMonth();
+    return {start: new Date(py, pm, 1), end: new Date(py, pm+1, 0, 23, 59, 59)};
 }
 
 function fmtRub(v) { return (v>=0?'+':'') + Math.abs(v).toLocaleString('ru-RU',{maximumFractionDigits:0}) + ' P'; }
@@ -548,19 +578,22 @@ function renderAnalytics() {
     else if (cutoff && cutoff.start) flows = allFlows.filter(f => new Date(f.date) >= cutoff.start);
 
     // Period label
-    let periodLabel = 'All';
-    if (cutoff && cutoff.end) periodLabel = document.getElementById('amMonth').value || 'Month';
-    else if (window._amPeriod === 'month') periodLabel = '30d';
-    else if (window._amPeriod === 'year') periodLabel = window._amYoY ? 'YoY' : '1y';
+    let periodLabel = '';
+    if (cutoff && cutoff.end) {
+        const ms = document.getElementById('amMonth').value;
+        const ys = document.getElementById('amYear').value;
+        periodLabel = ms ? ms : (ys || '');
+    }
+    if (window._amYoY) periodLabel = (document.getElementById('amYear').value||'') + ' YoY';
+    if (!periodLabel) periodLabel = 'prev month';
 
     // Buttons
-    document.querySelectorAll('#amFilters button:not(#amYoY)').forEach(b => {
+    document.querySelectorAll('#amFilters button').forEach(b => {
         const p = b.textContent;
-        const active = (p==='мес' && window._amPeriod==='month' && !window._amYoY) || 
-                       (p==='год' && window._amPeriod==='year' && !window._amYoY) || 
-                       (p==='всё' && window._amPeriod==='all');
-        b.className = active ? 'px-2.5 py-1 text-[9px] rounded-md border transition bg-accent/20 text-accent border-accent/30'
-                             : 'px-2.5 py-1 text-[9px] rounded-md border transition bg-dark-700 text-gray-400 border-dark-600';
+        const active = (p==='пред мес' && window._amPeriod==='prevMonth' && !window._amYoY) || 
+                       (p==='тек год' && window._amPeriod==='curYear' && !window._amYoY);
+        b.className = active ? 'px-2 py-1 text-[9px] rounded-md border transition bg-accent/20 text-accent border-accent/30'
+                             : 'px-2 py-1 text-[9px] rounded-md border transition bg-dark-700 text-gray-400 border-dark-600';
     });
     const yb = document.getElementById('amYoY');
     if (yb) yb.className = window._amYoY ? 'px-2 py-1 text-[8px] rounded-md border border-accent/30 bg-accent/10 text-accent transition'
