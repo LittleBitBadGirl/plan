@@ -271,7 +271,6 @@
                     </div>
                     <div id="amSparkline" class="bg-dark-900 rounded-lg p-3" style="display:none"></div>
                     <div id="amTotals" class="grid grid-cols-2 gap-2"></div>
-                    <div id="amFlows" class="bg-dark-900 rounded-lg p-3 max-h-48 overflow-y-auto" style="display:none"></div>
                 </div>
             </div>
         </div>
@@ -649,18 +648,7 @@ function renderAnalytics() {
             '<p class="text-sm font-bold '+(has && v>=0?'text-emerald-400':(has?'text-red-400':'text-gray-600'))+'">'+(has ? fmtRub(v) : '—')+'</p></div>';
         }).join('') + '</div>';
 
-    // Flows
-    const flowDiv = document.getElementById('amFlows');
-    if (flows.length > 0) {
-        flowDiv.style.display = 'block';
-        flowDiv.innerHTML = '<p class="text-[8px] text-gray-500 mb-2">Last operations</p>'+
-            flows.slice(-20).reverse().map(f =>
-                '<div class="flex justify-between text-[9px] py-0.5 border-b border-dark-800/50">'+
-                '<span class="text-gray-400">'+f.date+'</span>'+
-                '<span class="text-gray-500 truncate mx-2">'+f.description+'</span>'+
-                '<span class="'+(f.amount>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(f.amount)+'</span></div>'
-            ).join('');
-    } else { flowDiv.style.display = 'none'; }
+    // Flows (removed — not needed)
 }
 
 document.addEventListener('keydown', e => { if (e.key==='Escape') document.getElementById('analyticsModal').style.display='none'; });
