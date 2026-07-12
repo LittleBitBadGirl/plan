@@ -629,14 +629,18 @@ function renderAnalytics() {
             '</div>';
     }
     
-    const labels = {deposit:'Deposits', coupon:'Coupons', dividend:'Divs', tax:'Taxes', commission:'Fees', withdrawal:'Withdrawals', redemption:'Redemptions', income:'Income'};
+    const labels = {deposit:'Пополнения', coupon:'Купоны', dividend:'Дивиденды', tax:'Налоги', commission:'Комиссии', withdrawal:'Выводы', redemption:'Погашения', income:'Доходы'};
+    // Fixed order, always show with "-" if no data
+    const fixedTypes = ['deposit', 'coupon', 'dividend', 'tax', 'commission'];
     document.getElementById('amTotals').innerHTML = balanceCards +
         '<div class="grid grid-cols-2 gap-2">' +
-        Object.entries(totals).map(([k,v]) =>
-        '<div class="bg-dark-900 rounded-lg px-3 py-2">'+
-        '<p class="text-[7px] text-gray-500 uppercase tracking-wide">'+(labels[k]||k)+'</p>'+
-        '<p class="text-sm font-bold '+(v>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(v)+'</p></div>'
-    ).join('') + '</div>' || '<p class="text-[9px] text-gray-600 col-span-2">no data</p>';
+        fixedTypes.map(k => {
+            const v = totals[k] || 0;
+            const has = totals[k] !== undefined;
+            return '<div class="bg-dark-900 rounded-lg px-3 py-2">'+
+            '<p class="text-[7px] text-gray-500 uppercase tracking-wide">'+(labels[k]||k)+'</p>'+
+            '<p class="text-sm font-bold '+(has && v>=0?'text-emerald-400':(has?'text-red-400':'text-gray-600'))+'">'+(has ? fmtRub(v) : '—')+'</p></div>';
+        }).join('') + '</div>';
 
     // Flows
     const flowDiv = document.getElementById('amFlows');
