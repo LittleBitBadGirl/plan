@@ -137,7 +137,7 @@
             <!-- Investments -->
             <div class="bg-dark-800/60 rounded-xl border border-dark-600/50 p-3 mb-2">
                 <p class="text-[8px] text-gray-500 tracking-wide mb-2.5">Инвестиции</p>
-                <div class="grid grid-cols-3 gap-2">
+                <div class="grid grid-cols-2 gap-2">
                     {% for goal in investment_goals %}
                     {% set history = goal_history.get(goal.id, []) %}
                     {% set pct = (goal.current_amount / goal.target_amount * 100) if goal.target_amount > 0 else 0 %}
