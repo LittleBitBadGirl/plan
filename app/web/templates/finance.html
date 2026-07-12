@@ -262,12 +262,13 @@
                     <button onclick="document.getElementById('analyticsModal').style.display='none'" class="text-gray-500 hover:text-gray-300 text-lg leading-none">&times;</button>
                 </div>
                 <div class="p-5 space-y-4">
-                    <div class="flex gap-1 flex-wrap items-center" id="amFilters">
-                        <button onclick="setPeriod('prevMonth')" class="px-2 py-1 text-[9px] rounded-md border transition bg-dark-700 text-gray-400 border-dark-600">пред мес</button>
-                        <button onclick="setPeriod('curYear')" class="px-2 py-1 text-[9px] rounded-md border transition bg-dark-700 text-gray-400 border-dark-600">тек год</button>
-                        <button onclick="toggleYoY()" id="amYoY" class="px-2 py-1 text-[8px] rounded-md border border-dark-600 text-gray-500 hover:text-accent transition">год-к-году</button>
-                        <select id="amYear" onchange="onFilterChange()" class="bg-dark-700 border border-dark-600 rounded-md px-2 py-1 text-[9px] text-gray-300"></select>
-                        <select id="amMonth" onchange="onFilterChange()" class="bg-dark-700 border border-dark-600 rounded-md px-2 py-1 text-[9px] text-gray-300"></select>
+                    <div class="flex items-center gap-1.5 mb-1 flex-wrap" id="amFilters">
+                        <button onclick="setPeriod('prevMonth')" id="amBtnPrev" class="px-2.5 py-1 text-[10px] rounded-lg border transition font-medium bg-accent/20 text-accent border-accent/30">← пред мес</button>
+                        <button onclick="setPeriod('curYear')" id="amBtnYear" class="px-2.5 py-1 text-[10px] rounded-lg border transition font-medium bg-dark-700 text-gray-400 border-dark-600">тек год</button>
+                        <span class="text-gray-700 mx-0.5">|</span>
+                        <select id="amYear" onchange="onFilterChange()" class="bg-dark-700 border border-dark-600 rounded-lg px-2.5 py-1 text-[10px] text-gray-300 font-medium focus:outline-none focus:border-accent/50"></select>
+                        <select id="amMonth" onchange="onFilterChange()" class="bg-dark-700 border border-dark-600 rounded-lg px-2.5 py-1 text-[10px] text-gray-300 font-medium focus:outline-none focus:border-accent/50"></select>
+                        <button onclick="toggleYoY()" id="amYoY" class="px-2.5 py-1 text-[10px] rounded-lg border transition font-medium border-dark-600 text-gray-500 hover:text-accent">год-к-году</button>
                     </div>
                     <div id="amSparkline" class="bg-dark-900 rounded-lg p-3" style="display:none"></div>
                     <div id="amTotals" class="grid grid-cols-2 gap-2"></div>
@@ -588,16 +589,18 @@ function renderAnalytics() {
     if (!periodLabel) periodLabel = 'prev month';
 
     // Buttons
-    document.querySelectorAll('#amFilters button').forEach(b => {
-        const p = b.textContent;
-        const active = (p==='пред мес' && window._amPeriod==='prevMonth' && !window._amYoY) || 
-                       (p==='тек год' && window._amPeriod==='curYear' && !window._amYoY);
-        b.className = active ? 'px-2 py-1 text-[9px] rounded-md border transition bg-accent/20 text-accent border-accent/30'
-                             : 'px-2 py-1 text-[9px] rounded-md border transition bg-dark-700 text-gray-400 border-dark-600';
-    });
+    const prevBtn = document.getElementById('amBtnPrev');
+    const yearBtn = document.getElementById('amBtnYear');
+    if (prevBtn) prevBtn.className = (window._amPeriod==='prevMonth' && !window._amYoY) ?
+        'px-2.5 py-1 text-[10px] rounded-lg border transition font-medium bg-accent/20 text-accent border-accent/30' :
+        'px-2.5 py-1 text-[10px] rounded-lg border transition font-medium bg-dark-700 text-gray-400 border-dark-600';
+    if (yearBtn) yearBtn.className = (window._amPeriod==='curYear' && !window._amYoY) ?
+        'px-2.5 py-1 text-[10px] rounded-lg border transition font-medium bg-accent/20 text-accent border-accent/30' :
+        'px-2.5 py-1 text-[10px] rounded-lg border transition font-medium bg-dark-700 text-gray-400 border-dark-600';
     const yb = document.getElementById('amYoY');
-    if (yb) yb.className = window._amYoY ? 'px-2 py-1 text-[8px] rounded-md border border-accent/30 bg-accent/10 text-accent transition'
-                                          : 'px-2 py-1 text-[8px] rounded-md border border-dark-600 text-gray-500 hover:text-accent transition';
+    if (yb) yb.className = window._amYoY ? 
+        'px-2.5 py-1 text-[10px] rounded-lg border transition font-medium border-accent/30 bg-accent/10 text-accent' :
+        'px-2.5 py-1 text-[10px] rounded-lg border transition font-medium border-dark-600 text-gray-500 hover:text-accent';
 
     // === Sparkline ===
     const sparkDiv = document.getElementById('amSparkline');
