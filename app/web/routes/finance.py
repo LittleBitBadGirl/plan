@@ -318,6 +318,38 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
                     "note": h.note
                 })
 
+        # Calculate % change: 1 month and 1 year
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        month_ago = now - timedelta(days=30)
+        year_ago = now - timedelta(days=365)
+        goal_changes = {}
+        for g in goals:
+            hist = goal_history.get(g.id, [])
+            changes = {"month": None, "year": None}
+            if len(hist) >= 2:
+                # Month: earliest entry within 30 days vs current
+                month_start = None
+                for h in hist:
+                    if h["date"]:
+                        d = datetime.strptime(h["date"], "%Y-%m-%d")
+                        if d >= month_ago:
+                            month_start = h["amount"]
+                            break
+                if month_start is not None and month_start != 0 and g.current_amount != month_start:
+                    changes["month"] = round((g.current_amount - month_start) / month_start * 100, 1)
+                # Year: earliest entry within 365 days vs current
+                year_start = None
+                for h in hist:
+                    if h["date"]:
+                        d = datetime.strptime(h["date"], "%Y-%m-%d")
+                        if d >= year_ago:
+                            year_start = h["amount"]
+                            break
+                if year_start is not None and year_start != 0 and g.current_amount != year_start:
+                    changes["year"] = round((g.current_amount - year_start) / year_start * 100, 1)
+            goal_changes[g.id] = changes
+
         fin_cats_res = await db.execute(select(Category).where(Category.type == 'finance').order_by(Category.name))
         fin_categories_all = fin_cats_res.scalars().all()
         fin_categories = fin_categories_all
@@ -334,6 +366,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         "category_summary": category_summary,
         "chart_expense_total": chart_expense_total,
         "goal_history": goal_history,
+        "goal_changes": goal_changes,
         "sparkline": sparkline,
         "goals": goals,
         "investment_goals": investment_goals,

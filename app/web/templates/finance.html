@@ -154,6 +154,17 @@
                         <div x-show="editingGoal !== {{ goal.id }}" class="mb-1.5">
                             <p class="text-base font-bold text-white tracking-tight">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</p>
                         </div>
+                        {% set ch = goal_changes.get(goal.id, {}) %}
+                        {% if ch.month is not none or ch.year is not none %}
+                        <div class="flex gap-2 mb-1">
+                            {% if ch.month is not none %}
+                            <span class="text-[8px] {{ 'text-emerald-400' if ch.month >= 0 else 'text-red-400' }}">{{ 'мес +' if ch.month > 0 else 'мес ' }}{{ ch.month }}%</span>
+                            {% endif %}
+                            {% if ch.year is not none %}
+                            <span class="text-[8px] {{ 'text-emerald-400' if ch.year >= 0 else 'text-red-400' }}">{{ 'год +' if ch.year > 0 else 'год ' }}{{ ch.year }}%</span>
+                            {% endif %}
+                        </div>
+                        {% endif %}
                         <div x-show="editingGoal === {{ goal.id }}" x-cloak class="mb-1.5 space-y-1">
                             <input type="number" x-model="editAmount" @keydown.enter="saveGoal({{ goal.id }})"
                                    class="w-full bg-dark-900 border border-accent/40 rounded-md px-2 py-0.5 text-xs text-white focus:outline-none focus:border-accent" step="1">
@@ -201,6 +212,17 @@
                     <div x-show="editingGoal !== {{ goal.id }}" class="mb-1.5">
                         <p class="text-base font-bold text-white tracking-tight">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</p>
                     </div>
+                    {% set ch = goal_changes.get(goal.id, {}) %}
+                    {% if ch.month is not none or ch.year is not none %}
+                    <div class="flex gap-2 mb-1">
+                        {% if ch.month is not none %}
+                        <span class="text-[8px] {{ 'text-emerald-400' if ch.month >= 0 else 'text-red-400' }}">{{ 'мес +' if ch.month > 0 else 'мес ' }}{{ ch.month }}%</span>
+                        {% endif %}
+                        {% if ch.year is not none %}
+                        <span class="text-[8px] {{ 'text-emerald-400' if ch.year >= 0 else 'text-red-400' }}">{{ 'год +' if ch.year > 0 else 'год ' }}{{ ch.year }}%</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                     <div x-show="editingGoal === {{ goal.id }}" x-cloak class="mb-1.5 space-y-1">
                         <input type="number" x-model="editAmount" @keydown.enter="saveGoal({{ goal.id }})"
                                class="w-full bg-dark-900 border border-accent/40 rounded-md px-2 py-0.5 text-xs text-white focus:outline-none focus:border-accent" step="1">
