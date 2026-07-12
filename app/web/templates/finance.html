@@ -550,7 +550,7 @@ function renderAnalytics() {
 
     // === Sparkline ===
     const sparkDiv = document.getElementById('amSparkline');
-    // Filter snapshots by cutoff
+    // Filter snapshots by cutoff — always include the point just before start
     let chartSnaps = snaps;
     if (cutoff) {
         chartSnaps = snaps.filter(s => {
@@ -558,6 +558,14 @@ function renderAnalytics() {
             if (cutoff.end) return sd >= cutoff.start && sd <= cutoff.end;
             return cutoff.start ? sd >= cutoff.start : true;
         });
+        // Include the last snapshot before the period as the starting point
+        if (cutoff.start && chartSnaps.length > 0) {
+            let preSnap = null;
+            for (let i = snaps.length-1; i >= 0; i--) {
+                if (new Date(snaps[i].date) < cutoff.start) { preSnap = snaps[i]; break; }
+            }
+            if (preSnap) chartSnaps = [preSnap, ...chartSnaps];
+        }
     }
     // If no snapshots in period, still show the sparkline but with surrounding data for context
     const hasPeriodData = chartSnaps.length >= 1;
