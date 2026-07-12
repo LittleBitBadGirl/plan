@@ -567,7 +567,7 @@ function renderAnalytics() {
         // Build display range: selected period + 1 month padding for context
         let displaySnaps = chartSnaps;
         if (displaySnaps.length < 2 && cutoff && cutoff.end) {
-            // Add 1 month before and after
+            // Try adding 1 month padding for context
             const padStart = new Date(cutoff.start);
             padStart.setMonth(padStart.getMonth() - 1);
             const padEnd = new Date(cutoff.end);
@@ -577,8 +577,18 @@ function renderAnalytics() {
                 return sd >= padStart && sd <= padEnd;
             });
         }
-        if (displaySnaps.length < 2) displaySnaps = snaps;
-        
+        // NEVER fall back to all snaps — show single-point chart
+        if (displaySnaps.length === 0) { sparkDiv.style.display = 'none'; }
+        else if (displaySnaps.length === 1) {
+            // Single point: show value card instead of chart
+            sparkDiv.style.display = 'block';
+            sparkDiv.innerHTML = '<p class="text-[8px] text-gray-500 mb-1">Balance <span class="text-gray-600">'+periodLabel+'</span></p>'+
+                '<div class="bg-dark-900 rounded-lg px-3 py-2 text-center">'+
+                '<p class="text-[7px] text-gray-500">'+displaySnaps[0].date+'</p>'+
+                '<p class="text-lg font-bold text-white">'+displaySnaps[0].balance.toLocaleString('ru-RU')+' P</p>'+
+                '<p class="text-[8px] text-gray-600">1 точка данных за период</p></div>';
+            // Skip the rest of sparkline rendering
+        } else {
         const vals = displaySnaps.map(s => s.balance);
         const max = Math.max(...vals), min = Math.min(...vals);
         const range = max - min || 1;
