@@ -594,12 +594,49 @@ function renderAnalytics() {
     // Totals (filtered by period)
     const totals = {};
     flows.forEach(f => { totals[f.type] = (totals[f.type]||0) + f.amount; });
+    
+    // Balance cards: start/end of period
+    const allSnaps = d.snapshots || [];
+    let startBal = null, endBal = null;
+    if (allSnaps.length > 0) {
+        if (cutoff && cutoff.start) {
+            // Find closest snapshot <= start
+            for (let i = allSnaps.length-1; i >= 0; i--) {
+                if (new Date(allSnaps[i].date) <= cutoff.start) { startBal = allSnaps[i].balance; break; }
+            }
+            if (!startBal) startBal = allSnaps[0].balance;
+            // End = latest snapshot in period or overall latest
+            endBal = allSnaps[allSnaps.length-1].balance;
+            if (cutoff.end) {
+                for (let i = allSnaps.length-1; i >= 0; i--) {
+                    if (new Date(allSnaps[i].date) <= cutoff.end) { endBal = allSnaps[i].balance; break; }
+                }
+            }
+        } else {
+            startBal = allSnaps[0].balance;
+            endBal = allSnaps[allSnaps.length-1].balance;
+        }
+    }
+    
+    let balanceCards = '';
+    if (startBal !== null && endBal !== null) {
+        const change = endBal - startBal;
+        const changePct = startBal !== 0 ? (change/startBal*100) : 0;
+        balanceCards = '<div class="grid grid-cols-2 gap-2 mb-0">' +
+            '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">начало</p><p class="text-sm font-bold text-white">'+fmtRub(startBal)+'</p></div>' +
+            '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">конец</p><p class="text-sm font-bold text-white">'+fmtRub(endBal)+'</p></div>' +
+            '<div class="bg-dark-900 rounded-lg px-3 py-2 col-span-2"><p class="text-[7px] text-gray-500 uppercase">изменение</p><p class="text-sm font-bold '+(change>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(change)+' <span class="text-[9px]">('+(changePct>=0?'+':'')+changePct.toFixed(1)+'%)</span></p></div>' +
+            '</div>';
+    }
+    
     const labels = {deposit:'Deposits', coupon:'Coupons', dividend:'Divs', tax:'Taxes', commission:'Fees', withdrawal:'Withdrawals', redemption:'Redemptions', income:'Income'};
-    document.getElementById('amTotals').innerHTML = Object.entries(totals).map(([k,v]) =>
+    document.getElementById('amTotals').innerHTML = balanceCards +
+        '<div class="grid grid-cols-2 gap-2">' +
+        Object.entries(totals).map(([k,v]) =>
         '<div class="bg-dark-900 rounded-lg px-3 py-2">'+
         '<p class="text-[7px] text-gray-500 uppercase tracking-wide">'+(labels[k]||k)+'</p>'+
         '<p class="text-sm font-bold '+(v>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(v)+'</p></div>'
-    ).join('') || '<p class="text-[9px] text-gray-600 col-span-2">no data for this period</p>';
+    ).join('') + '</div>' || '<p class="text-[9px] text-gray-600 col-span-2">no data</p>';
 
     // Flows
     const flowDiv = document.getElementById('amFlows');
