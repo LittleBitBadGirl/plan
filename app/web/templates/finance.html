@@ -462,12 +462,11 @@ document.addEventListener('alpine:init', () => {
 <script>
 // === Analytics Modal (vanilla JS) ===
 window._amData = null;
-window._amPeriod = 'month';
-window._amYoY = false;
+window._amPeriod = 'custom';  // use month dropdown by default
 
 window._openAnalytics = async function(goalId, goalName) {
     document.getElementById('amTitle').textContent = goalName;
-    window._amPeriod = 'month';
+    window._amPeriod = 'custom';
     window._amYoY = false;
     try {
         const r = await fetch('/api/goals/' + goalId + '/analytics');
