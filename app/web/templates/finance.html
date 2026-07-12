@@ -461,7 +461,8 @@ document.addEventListener('alpine:init', () => {
 <script>
 // === Analytics Modal (vanilla JS) ===
 window._amData = null;
-window._amPeriod = 'custom';  // use month dropdown by default
+window._amPeriod = 'custom';
+window._amYoY = false;
 
 window._openAnalytics = async function(goalId, goalName) {
     document.getElementById('amTitle').textContent = goalName;
@@ -469,11 +470,12 @@ window._openAnalytics = async function(goalId, goalName) {
     window._amYoY = false;
     try {
         const r = await fetch('/api/goals/' + goalId + '/analytics', {credentials: 'same-origin'});
+        if (!r.ok) throw new Error('HTTP ' + r.status);
         window._amData = await r.json();
         document.getElementById('analyticsModal').style.display = 'flex';
         buildMonthDropdown();
         renderAnalytics();
-    } catch(e) { alert('Ошибка: ' + e); }
+    } catch(e) { alert('Ошибка загрузки: ' + e.message); }
 };
 
 function buildMonthDropdown() {
@@ -481,8 +483,10 @@ function buildMonthDropdown() {
     const snaps = (window._amData && window._amData.snapshots) || [];
     const months = [...new Set(snaps.map(s => s.date.substring(0,7)))].sort();
     const now = new Date();
-    const curMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
-    sel.innerHTML = months.map(m => `<option value="${m}" ${m===curMonth?'selected':''}>${m}</option>`).join('');
+    const prevMonth = new Date(now.getFullYear(), now.getMonth()-1, 1);
+    const defMonth = prevMonth.getFullYear() + '-' + String(prevMonth.getMonth()+1).padStart(2,'0');
+    const defaultMonth = months.includes(defMonth) ? defMonth : (months[months.length-1] || '');
+    sel.innerHTML = months.map(m => `<option value="${m}" ${m===defaultMonth?'selected':''}>${m}</option>`).join('');
     const years = [...new Set(snaps.map(s => s.date.substring(0,4)))];
     document.getElementById('amYoY').style.display = years.some(y => parseInt(y) < now.getFullYear()) ? '' : 'none';
 }
@@ -500,7 +504,7 @@ function getCutoff() {
     const monthSel = document.getElementById('amMonth').value;
     if (monthSel) {
         const [y, m] = monthSel.split('-').map(Number);
-        return {start: new Date(y, m-1, 1), end: new Date(y, m, 0)};
+        return {start: new Date(y, m-1, 1), end: new Date(y, m, 0, 23, 59, 59)};
     }
     if (window._amYoY) {
         return {start: new Date(now.getFullYear()-1, now.getMonth(), now.getDate()), end: null,
@@ -519,15 +523,19 @@ function fmtRub(v) { return (v>=0?'+':'') + Math.abs(v).toLocaleString('ru-RU',{
 function renderAnalytics() {
     const d = window._amData; if (!d) return;
     const cutoff = getCutoff();
-    let flows = d.flows || [];
-    if (cutoff && cutoff.end) flows = flows.filter(f => { const fd = new Date(f.date); return fd >= cutoff.start && fd <= cutoff.end; });
-    else if (cutoff && cutoff.start) flows = flows.filter(f => new Date(f.date) >= cutoff.start);
+    const snaps = d.snapshots || [];
+    const allFlows = d.flows || [];
+    
+    // Filter flows
+    let flows = allFlows;
+    if (cutoff && cutoff.end) flows = allFlows.filter(f => { const fd = new Date(f.date); return fd >= cutoff.start && fd <= cutoff.end; });
+    else if (cutoff && cutoff.start) flows = allFlows.filter(f => new Date(f.date) >= cutoff.start);
 
     // Period label
     let periodLabel = 'All';
-    if (cutoff && cutoff.end) periodLabel = document.getElementById('amMonth').value;
-    else if (window._amPeriod === 'month') periodLabel = '30 days';
-    else if (window._amPeriod === 'year') periodLabel = window._amYoY ? 'YoY' : '12 months';
+    if (cutoff && cutoff.end) periodLabel = document.getElementById('amMonth').value || 'Month';
+    else if (window._amPeriod === 'month') periodLabel = '30d';
+    else if (window._amPeriod === 'year') periodLabel = window._amYoY ? 'YoY' : '1y';
 
     // Buttons
     document.querySelectorAll('#amFilters button:not(#amYoY)').forEach(b => {
@@ -540,26 +548,29 @@ function renderAnalytics() {
     if (yb) yb.className = window._amYoY ? 'px-2 py-1 text-[8px] rounded-md border border-accent/30 bg-accent/10 text-accent transition'
                                           : 'px-2 py-1 text-[8px] rounded-md border border-dark-600 text-gray-500 hover:text-accent transition';
 
-    // Sparkline
-    const snaps = d.snapshots || [];
+    // === Sparkline ===
     const sparkDiv = document.getElementById('amSparkline');
+    // Filter snapshots by cutoff
+    let chartSnaps = snaps;
+    if (cutoff) {
+        chartSnaps = snaps.filter(s => {
+            const sd = new Date(s.date);
+            if (cutoff.end) return sd >= cutoff.start && sd <= cutoff.end;
+            return cutoff.start ? sd >= cutoff.start : true;
+        });
+    }
+    // If no snapshots in period, still show the sparkline but with surrounding data for context
+    const hasPeriodData = chartSnaps.length >= 1;
+
     if (snaps.length > 1) {
         sparkDiv.style.display = 'block';
-        // Filter snapshots by cutoff
-        let chartSnaps = snaps;
-        if (cutoff && cutoff.start) {
-            chartSnaps = snaps.filter(s => {
-                const sd = new Date(s.date);
-                if (cutoff.end) return sd >= cutoff.start && sd <= cutoff.end;
-                return sd >= cutoff.start;
-            });
-        }
-        if (chartSnaps.length < 2) chartSnaps = snaps;
-
-        const vals = chartSnaps.map(s => s.balance);
+        // Use chartSnaps if available, otherwise all snaps for context
+        const displaySnaps = chartSnaps.length >= 2 ? chartSnaps : snaps;
+        
+        const vals = displaySnaps.map(s => s.balance);
         const max = Math.max(...vals), min = Math.min(...vals);
         const range = max - min || 1;
-        const yMin = Math.max(0, Math.floor((min - range*0.15) / 1000) * 1000);  // never below 0
+        const yMin = Math.max(0, Math.floor((min - range*0.15) / 1000) * 1000);
         const yMax = Math.ceil((max + range*0.15) / 1000) * 1000;
         const yRange = yMax - yMin || 1;
         const steps = 4;
@@ -568,9 +579,22 @@ function renderAnalytics() {
 
         const W = 280, H = 80, padL = 50, padR = 10, padT = 8, padB = 18;
         const cW = W - padL - padR, cH = H - padT - padB;
-        const toX = i => padL + (i/(chartSnaps.length-1)) * cW;
+        const toX = i => padL + (i/(displaySnaps.length-1)) * cW;
         const toY = v => padT + cH - ((v-yMin)/yRange) * cH;
-        const pts = chartSnaps.map((s,i) => toX(i)+','+toY(s.balance)).join(' ');
+        
+        // Main line (full data, dimmed if no period data)
+        const allPts = displaySnaps.map((s,i) => toX(i)+','+toY(s.balance)).join(' ');
+        const lineColor = hasPeriodData ? '#22c55e' : '#4b5563';
+        const lineOpacity = hasPeriodData ? '1' : '0.4';
+        
+        // Highlight period data points if filtered
+        let highlightDots = '';
+        if (chartSnaps.length >= 1 && chartSnaps !== displaySnaps) {
+            highlightDots = chartSnaps.map(s => {
+                const idx = displaySnaps.findIndex(ds => ds.date === s.date);
+                return idx >= 0 ? `<circle cx="${toX(idx)}" cy="${toY(s.balance)}" r="3" fill="#22c55e"/>` : '';
+            }).join('');
+        }
 
         const gridHtml = gridLines.map(y => {
             const yp = toY(y);
@@ -578,49 +602,36 @@ function renderAnalytics() {
             return '<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+yp+'" y2="'+yp+'" stroke="#374151" stroke-width="0.5" stroke-dasharray="3,3"/>'+
                    '<text x="'+(padL-4)+'" y="'+(yp+3)+'" fill="#6b7280" font-size="7" text-anchor="end">'+label+'</text>';
         }).join('');
-        const dateHtml = '<text x="'+padL+'" y="'+(H-2)+'" fill="#6b7280" font-size="7">'+chartSnaps[0].date+'</text>'+
-                         '<text x="'+(W-padR)+'" y="'+(H-2)+'" fill="#6b7280" font-size="7" text-anchor="end">'+chartSnaps[chartSnaps.length-1].date+'</text>';
-
-        let yoyLine = '';
-        if (window._amYoY && cutoff && cutoff.compareStart) {
-            const prev = snaps.filter(s => { const dt = new Date(s.date); return dt >= cutoff.compareStart && dt <= cutoff.compareEnd; });
-            if (prev.length > 1) {
-                const pp = prev.map((s,i) => toX(i*(chartSnaps.length-1)/(prev.length-1))+','+toY(s.balance)).join(' ');
-                yoyLine = '<polyline fill="none" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,2" points="'+pp+'"/>';
-            }
-        }
+        const dateHtml = '<text x="'+padL+'" y="'+(H-2)+'" fill="#6b7280" font-size="7">'+displaySnaps[0].date+'</text>'+
+                         '<text x="'+(W-padR)+'" y="'+(H-2)+'" fill="#6b7280" font-size="7" text-anchor="end">'+displaySnaps[displaySnaps.length-1].date+'</text>';
+        
+        const noDataNote = !hasPeriodData ? '<text x="'+(W/2)+'" y="'+(H/2)+'" fill="#9ca3af" font-size="8" text-anchor="middle">No data for this period</text>' : '';
 
         sparkDiv.innerHTML = '<p class="text-[8px] text-gray-500 mb-1">Balance <span class="text-gray-600">'+periodLabel+'</span></p>'+
             '<svg class="w-full" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet" style="max-height:100px">'+
-            gridHtml + yoyLine +
-            '<polyline fill="none" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="'+pts+'"/>'+
+            gridHtml +
+            '<polyline fill="none" stroke="'+lineColor+'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="'+lineOpacity+'" points="'+allPts+'"/>'+
+            highlightDots + noDataNote +
             dateHtml+'</svg>';
     } else { sparkDiv.style.display = 'none'; }
 
-    // Totals (filtered by period)
-    const totals = {};
-    flows.forEach(f => { totals[f.type] = (totals[f.type]||0) + f.amount; });
-    
-    // Balance cards: start/end of period
-    const allSnaps = d.snapshots || [];
+    // === Balance cards ===
     let startBal = null, endBal = null;
-    if (allSnaps.length > 0) {
+    if (snaps.length > 0) {
         if (cutoff && cutoff.start) {
-            // Find closest snapshot <= start
-            for (let i = allSnaps.length-1; i >= 0; i--) {
-                if (new Date(allSnaps[i].date) <= cutoff.start) { startBal = allSnaps[i].balance; break; }
+            for (let i = snaps.length-1; i >= 0; i--) {
+                if (new Date(snaps[i].date) <= cutoff.start) { startBal = snaps[i].balance; break; }
             }
-            if (!startBal) startBal = allSnaps[0].balance;
-            // End = latest snapshot in period or overall latest
-            endBal = allSnaps[allSnaps.length-1].balance;
+            if (!startBal) startBal = snaps[0].balance;
+            endBal = snaps[snaps.length-1].balance;
             if (cutoff.end) {
-                for (let i = allSnaps.length-1; i >= 0; i--) {
-                    if (new Date(allSnaps[i].date) <= cutoff.end) { endBal = allSnaps[i].balance; break; }
+                for (let i = snaps.length-1; i >= 0; i--) {
+                    if (new Date(snaps[i].date) <= cutoff.end) { endBal = snaps[i].balance; break; }
                 }
             }
         } else {
-            startBal = allSnaps[0].balance;
-            endBal = allSnaps[allSnaps.length-1].balance;
+            startBal = snaps[0].balance;
+            endBal = snaps[snaps.length-1].balance;
         }
     }
     
@@ -628,15 +639,23 @@ function renderAnalytics() {
     if (startBal !== null && endBal !== null) {
         const change = endBal - startBal;
         const changePct = startBal !== 0 ? (change/startBal*100) : 0;
-        balanceCards = '<div class="grid grid-cols-2 gap-2 mb-0">' +
+        // Change without deposits
+        const depSum = flows.filter(f => f.type === 'deposit').reduce((s,f) => s + f.amount, 0);
+        const changeNoDep = change - depSum;
+        const changeNoDepPct = startBal !== 0 ? (changeNoDep/startBal*100) : 0;
+        
+        balanceCards = '<div class="grid grid-cols-2 gap-2 mb-2">' +
             '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">начало</p><p class="text-sm font-bold text-white">'+fmtRub(startBal)+'</p></div>' +
             '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">конец</p><p class="text-sm font-bold text-white">'+fmtRub(endBal)+'</p></div>' +
-            '<div class="bg-dark-900 rounded-lg px-3 py-2 col-span-2"><p class="text-[7px] text-gray-500 uppercase">изменение</p><p class="text-sm font-bold '+(change>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(change)+' <span class="text-[9px]">('+(changePct>=0?'+':'')+changePct.toFixed(1)+'%)</span></p></div>' +
+            '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">изменение</p><p class="text-sm font-bold '+(change>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(change)+' <span class="text-[9px]">('+(changePct>=0?'+':'')+changePct.toFixed(1)+'%)</span></p></div>' +
+            '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">без пополнений</p><p class="text-sm font-bold '+(changeNoDep>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(changeNoDep)+' <span class="text-[9px]">('+(changeNoDepPct>=0?'+':'')+changeNoDepPct.toFixed(1)+'%)</span></p></div>' +
             '</div>';
     }
-    
-    const labels = {deposit:'Пополнения', coupon:'Купоны', dividend:'Дивиденды', tax:'Налоги', commission:'Комиссии', withdrawal:'Выводы', redemption:'Погашения', income:'Доходы'};
-    // Fixed order, always show with "-" if no data
+
+    // === Totals ===
+    const totals = {};
+    flows.forEach(f => { totals[f.type] = (totals[f.type]||0) + f.amount; });
+    const labels = {deposit:'Пополнения', coupon:'Купоны', dividend:'Дивиденды', tax:'Налоги', commission:'Комиссии', withdrawal:'Выводы', redemption:'Погашения'};
     const fixedTypes = ['deposit', 'coupon', 'dividend', 'tax', 'commission'];
     document.getElementById('amTotals').innerHTML = balanceCards +
         '<div class="grid grid-cols-2 gap-2">' +
@@ -645,10 +664,8 @@ function renderAnalytics() {
             const has = totals[k] !== undefined;
             return '<div class="bg-dark-900 rounded-lg px-3 py-2">'+
             '<p class="text-[7px] text-gray-500 uppercase tracking-wide">'+(labels[k]||k)+'</p>'+
-            '<p class="text-sm font-bold '+(has && v>=0?'text-emerald-400':(has?'text-red-400':'text-gray-600'))+'">'+(has ? fmtRub(v) : '—')+'</p></div>';
+            '<p class="text-sm font-bold '+(has && v!==0 ? (v>=0?'text-emerald-400':'text-red-400') : 'text-gray-600')+'">'+(has && v!==0 ? fmtRub(v) : '—')+'</p></div>';
         }).join('') + '</div>';
-
-    // Flows (removed — not needed)
 }
 
 document.addEventListener('keydown', e => { if (e.key==='Escape') document.getElementById('analyticsModal').style.display='none'; });
