@@ -262,10 +262,12 @@
                     <button onclick="document.getElementById('analyticsModal').style.display='none'" class="text-gray-500 hover:text-gray-300 text-lg leading-none">&times;</button>
                 </div>
                 <div class="p-5 space-y-4">
-                    <div class="flex gap-1" id="amFilters">
-                        <button onclick="window._amPeriod='month';renderAnalytics()" class="px-2.5 py-1 text-[9px] rounded-md border transition bg-dark-700 text-gray-400 border-dark-600">месяц</button>
-                        <button onclick="window._amPeriod='year';renderAnalytics()" class="px-2.5 py-1 text-[9px] rounded-md border transition bg-dark-700 text-gray-400 border-dark-600">год</button>
-                        <button onclick="window._amPeriod='all';renderAnalytics()" class="px-2.5 py-1 text-[9px] rounded-md border transition bg-accent/20 text-accent border-accent/30">всё</button>
+                    <div class="flex gap-1 flex-wrap items-center" id="amFilters">
+                        <button onclick="setPeriod('month')" class="px-2.5 py-1 text-[9px] rounded-md border transition bg-dark-700 text-gray-400 border-dark-600">мес</button>
+                        <button onclick="setPeriod('year')" class="px-2.5 py-1 text-[9px] rounded-md border transition bg-dark-700 text-gray-400 border-dark-600">год</button>
+                        <button onclick="setPeriod('all')" class="px-2.5 py-1 text-[9px] rounded-md border transition bg-accent/20 text-accent border-accent/30">всё</button>
+                        <select id="amMonth" onchange="setPeriod('custom')" class="ml-2 bg-dark-700 border border-dark-600 rounded-md px-2 py-1 text-[9px] text-gray-300"></select>
+                        <button id="amYoY" onclick="toggleYoY()" class="px-2 py-1 text-[8px] rounded-md border border-dark-600 text-gray-500 hover:text-accent transition hidden">год-к-году</button>
                     </div>
                     <div id="amSparkline" class="bg-dark-900 rounded-lg p-3" style="display:none"></div>
                     <div id="amTotals" class="grid grid-cols-2 gap-2"></div>
@@ -460,109 +462,158 @@ document.addEventListener('alpine:init', () => {
 <script>
 // === Analytics Modal (vanilla JS) ===
 window._amData = null;
-window._amPeriod = 'all';
+window._amPeriod = 'month';
+window._amYoY = false;
 
 window._openAnalytics = async function(goalId, goalName) {
     document.getElementById('amTitle').textContent = goalName;
-    window._amPeriod = 'all';
+    window._amPeriod = 'month';
+    window._amYoY = false;
     try {
         const r = await fetch('/api/goals/' + goalId + '/analytics');
         window._amData = await r.json();
         document.getElementById('analyticsModal').style.display = 'flex';
+        buildMonthDropdown();
         renderAnalytics();
-    } catch(e) {
-        alert('Ошибка: ' + e);
-    }
+    } catch(e) { alert('Ошибка: ' + e); }
 };
 
-function renderAnalytics() {
-    const d = window._amData;
-    if (!d) return;
+function buildMonthDropdown() {
+    const sel = document.getElementById('amMonth');
+    const snaps = (window._amData && window._amData.snapshots) || [];
+    const months = [...new Set(snaps.map(s => s.date.substring(0,7)))].sort();
     const now = new Date();
-    let cutoff = null;
-    if (window._amPeriod === 'month') cutoff = new Date(now.getFullYear(), now.getMonth()-1, now.getDate());
-    else if (window._amPeriod === 'year') cutoff = new Date(now.getFullYear()-1, now.getMonth(), now.getDate());
-    
-    // Filter flows
+    const curMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+    sel.innerHTML = months.map(m => `<option value="${m}" ${m===curMonth?'selected':''}>${m}</option>`).join('');
+    const years = [...new Set(snaps.map(s => s.date.substring(0,4)))];
+    document.getElementById('amYoY').style.display = years.some(y => parseInt(y) < now.getFullYear()) ? '' : 'none';
+}
+
+function setPeriod(p) {
+    window._amPeriod = p;
+    if (p !== 'custom') document.getElementById('amMonth').value = '';
+    renderAnalytics();
+}
+
+function toggleYoY() { window._amYoY = !window._amYoY; renderAnalytics(); }
+
+function getCutoff() {
+    const now = new Date();
+    const monthSel = document.getElementById('amMonth').value;
+    if (monthSel) {
+        const [y, m] = monthSel.split('-').map(Number);
+        return {start: new Date(y, m-1, 1), end: new Date(y, m, 0)};
+    }
+    if (window._amYoY) {
+        return {start: new Date(now.getFullYear()-1, now.getMonth(), now.getDate()), end: null,
+                compareStart: new Date(now.getFullYear()-2, now.getMonth(), now.getDate()),
+                compareEnd: new Date(now.getFullYear()-1, now.getMonth(), now.getDate()-1)};
+    }
+    if (window._amPeriod === 'month')
+        return {start: new Date(now.getFullYear(), now.getMonth()-1, now.getDate()), end: null};
+    if (window._amPeriod === 'year')
+        return {start: new Date(now.getFullYear()-1, now.getMonth(), now.getDate()), end: null};
+    return null;
+}
+
+function fmtRub(v) { return (v>=0?'+':'') + Math.abs(v).toLocaleString('ru-RU',{maximumFractionDigits:0}) + ' P'; }
+
+function renderAnalytics() {
+    const d = window._amData; if (!d) return;
+    const cutoff = getCutoff();
     let flows = d.flows || [];
-    if (cutoff) flows = flows.filter(f => new Date(f.date) >= cutoff);
-    
-    // Update filter buttons
-    const btns = document.querySelectorAll('#amFilters button');
-    btns.forEach(b => {
+    if (cutoff && cutoff.end) flows = flows.filter(f => { const fd = new Date(f.date); return fd >= cutoff.start && fd <= cutoff.end; });
+    else if (cutoff && cutoff.start) flows = flows.filter(f => new Date(f.date) >= cutoff.start);
+
+    // Period label
+    let periodLabel = 'All';
+    if (cutoff && cutoff.end) periodLabel = document.getElementById('amMonth').value;
+    else if (window._amPeriod === 'month') periodLabel = '30 days';
+    else if (window._amPeriod === 'year') periodLabel = window._amYoY ? 'YoY' : '12 months';
+
+    // Buttons
+    document.querySelectorAll('#amFilters button:not(#amYoY)').forEach(b => {
         const p = b.textContent;
-        const active = (p==='месяц' && window._amPeriod==='month') || (p==='год' && window._amPeriod==='year') || (p==='всё' && window._amPeriod==='all');
+        const active = (p==='мес' && window._amPeriod==='month') || (p==='год' && window._amPeriod==='year') || (p==='всё' && window._amPeriod==='all');
         b.className = active ? 'px-2.5 py-1 text-[9px] rounded-md border transition bg-accent/20 text-accent border-accent/30'
                              : 'px-2.5 py-1 text-[9px] rounded-md border transition bg-dark-700 text-gray-400 border-dark-600';
     });
-    
+    const yb = document.getElementById('amYoY');
+    if (yb) yb.className = window._amYoY ? 'px-2 py-1 text-[8px] rounded-md border border-accent/30 bg-accent/10 text-accent transition'
+                                          : 'px-2 py-1 text-[8px] rounded-md border border-dark-600 text-gray-500 hover:text-accent transition';
+
     // Sparkline
     const snaps = d.snapshots || [];
     const sparkDiv = document.getElementById('amSparkline');
     if (snaps.length > 1) {
         sparkDiv.style.display = 'block';
-        const vals = snaps.map(s => s.balance);
+        let chartSnaps = snaps;
+        if (cutoff && cutoff.start) chartSnaps = snaps.filter(s => new Date(s.date) >= cutoff.start);
+        if (chartSnaps.length < 2) chartSnaps = snaps;
+
+        const vals = chartSnaps.map(s => s.balance);
         const max = Math.max(...vals), min = Math.min(...vals);
         const range = max - min || 1;
-        const pad = range * 0.15;
-        const yMin = Math.floor((min - pad) / 1000) * 1000;
-        const yMax = Math.ceil((max + pad) / 1000) * 1000;
+        const yMin = Math.floor((min - range*0.15) / 1000) * 1000;
+        const yMax = Math.ceil((max + range*0.15) / 1000) * 1000;
         const yRange = yMax - yMin || 1;
         const steps = 4;
         const gridLines = [];
-        for (let i = 0; i <= steps; i++) {
-            const y = yMin + (yRange * i / steps);
-            gridLines.push(y);
-        }
+        for (let i = 0; i <= steps; i++) gridLines.push(yMin + yRange * i / steps);
+
         const W = 280, H = 80, padL = 50, padR = 10, padT = 8, padB = 18;
-        const chartW = W - padL - padR, chartH = H - padT - padB;
-        const toX = i => padL + (i / (vals.length - 1)) * chartW;
-        const toY = v => padT + chartH - ((v - yMin) / yRange) * chartH;
-        const pts = vals.map((v,i) => `${toX(i)},${toY(v)}`).join(' ');
-        
+        const cW = W - padL - padR, cH = H - padT - padB;
+        const toX = i => padL + (i/(chartSnaps.length-1)) * cW;
+        const toY = v => padT + cH - ((v-yMin)/yRange) * cH;
+        const pts = chartSnaps.map((s,i) => toX(i)+','+toY(s.balance)).join(' ');
+
         const gridHtml = gridLines.map(y => {
-            const yPos = toY(y);
-            const label = y >= 1000000 ? (y/1000000).toFixed(1)+'M' : y >= 1000 ? (y/1000).toFixed(0)+'k' : y;
-            return `<line x1="${padL}" x2="${W-padR}" y1="${yPos}" y2="${yPos}" stroke="#374151" stroke-width="0.5" stroke-dasharray="3,3"/>
-            <text x="${padL-4}" y="${yPos+3}" fill="#6b7280" font-size="7" text-anchor="end">${label}</text>`;
+            const yp = toY(y);
+            const label = y >= 1000000 ? (y/1e6).toFixed(1)+'M' : y >= 1000 ? (y/1000).toFixed(0)+'k' : y;
+            return '<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+yp+'" y2="'+yp+'" stroke="#374151" stroke-width="0.5" stroke-dasharray="3,3"/>'+
+                   '<text x="'+(padL-4)+'" y="'+(yp+3)+'" fill="#6b7280" font-size="7" text-anchor="end">'+label+'</text>';
         }).join('');
-        
-        const dateHtml = `<text x="${padL}" y="${H-2}" fill="#6b7280" font-size="7">${snaps[0].date}</text>
-                          <text x="${W-padR}" y="${H-2}" fill="#6b7280" font-size="7" text-anchor="end">${snaps[snaps.length-1].date}</text>`;
-        
-        sparkDiv.innerHTML = '<p class="text-[8px] text-gray-500 mb-1">Баланс</p>' +
-            `<svg class="w-full" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="max-height:100px">` +
-            gridHtml +
-            `<polyline fill="none" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="${pts}"/>` +
-            dateHtml + '</svg>';
-    } else {
-        sparkDiv.style.display = 'none';
-    }
-    
-    // Totals
+        const dateHtml = '<text x="'+padL+'" y="'+(H-2)+'" fill="#6b7280" font-size="7">'+chartSnaps[0].date+'</text>'+
+                         '<text x="'+(W-padR)+'" y="'+(H-2)+'" fill="#6b7280" font-size="7" text-anchor="end">'+chartSnaps[chartSnaps.length-1].date+'</text>';
+
+        let yoyLine = '';
+        if (window._amYoY && cutoff && cutoff.compareStart) {
+            const prev = snaps.filter(s => { const dt = new Date(s.date); return dt >= cutoff.compareStart && dt <= cutoff.compareEnd; });
+            if (prev.length > 1) {
+                const pp = prev.map((s,i) => toX(i*(chartSnaps.length-1)/(prev.length-1))+','+toY(s.balance)).join(' ');
+                yoyLine = '<polyline fill="none" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,2" points="'+pp+'"/>';
+            }
+        }
+
+        sparkDiv.innerHTML = '<p class="text-[8px] text-gray-500 mb-1">Balance <span class="text-gray-600">'+periodLabel+'</span></p>'+
+            '<svg class="w-full" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet" style="max-height:100px">'+
+            gridHtml + yoyLine +
+            '<polyline fill="none" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="'+pts+'"/>'+
+            dateHtml+'</svg>';
+    } else { sparkDiv.style.display = 'none'; }
+
+    // Totals (filtered by period)
     const totals = {};
     flows.forEach(f => { totals[f.type] = (totals[f.type]||0) + f.amount; });
-    const labels = {deposit:'Пополнения', coupon:'Купоны', dividend:'Дивиденды', tax:'Налоги', commission:'Комиссии', withdrawal:'Выводы'};
+    const labels = {deposit:'Deposits', coupon:'Coupons', dividend:'Divs', tax:'Taxes', commission:'Fees', withdrawal:'Withdrawals', redemption:'Redemptions', income:'Income'};
     document.getElementById('amTotals').innerHTML = Object.entries(totals).map(([k,v]) =>
-        '<div class=\"bg-dark-900 rounded-lg px-3 py-2\">' +
-        '<p class=\"text-[7px] text-gray-500 uppercase tracking-wide\">'+(labels[k]||k)+'</p>' +
-        '<p class=\"text-sm font-bold '+(v>=0?'text-emerald-400':'text-red-400')+'\">'+(v>=0?'+':'')+v.toLocaleString('ru-RU',{maximumFractionDigits:0})+' ₽</p></div>'
-    ).join('');
-    
-    // Flows list
+        '<div class="bg-dark-900 rounded-lg px-3 py-2">'+
+        '<p class="text-[7px] text-gray-500 uppercase tracking-wide">'+(labels[k]||k)+'</p>'+
+        '<p class="text-sm font-bold '+(v>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(v)+'</p></div>'
+    ).join('') || '<p class="text-[9px] text-gray-600 col-span-2">no data for this period</p>';
+
+    // Flows
     const flowDiv = document.getElementById('amFlows');
     if (flows.length > 0) {
         flowDiv.style.display = 'block';
-        const recent = flows.slice(-20).reverse();
-        flowDiv.innerHTML = '<p class=\"text-[8px] text-gray-500 mb-2\">Последние операции</p>' +
-            recent.map(f => '<div class=\"flex justify-between text-[9px] py-0.5 border-b border-dark-800/50\">' +
-                '<span class=\"text-gray-400\">'+f.date+'</span>' +
-                '<span class=\"text-gray-500 truncate mx-2\">'+f.description+'</span>' +
-                '<span class=\"'+(f.amount>=0?'text-emerald-400':'text-red-400')+'\">'+(f.amount>=0?'+':'')+f.amount.toLocaleString('ru-RU',{maximumFractionDigits:0})+'</span></div>'
+        flowDiv.innerHTML = '<p class="text-[8px] text-gray-500 mb-2">Last operations</p>'+
+            flows.slice(-20).reverse().map(f =>
+                '<div class="flex justify-between text-[9px] py-0.5 border-b border-dark-800/50">'+
+                '<span class="text-gray-400">'+f.date+'</span>'+
+                '<span class="text-gray-500 truncate mx-2">'+f.description+'</span>'+
+                '<span class="'+(f.amount>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(f.amount)+'</span></div>'
             ).join('');
-    } else {
-        flowDiv.style.display = 'none';
-    }
+    } else { flowDiv.style.display = 'none'; }
 }
 
 document.addEventListener('keydown', e => { if (e.key==='Escape') document.getElementById('analyticsModal').style.display='none'; });
