@@ -508,7 +508,14 @@ function setPeriod(p) {
     renderAnalytics();
 }
 
-function toggleYoY() { window._amYoY = !window._amYoY; renderAnalytics(); }
+function toggleYoY() { 
+    window._amYoY = !window._amYoY; 
+    if (window._amYoY) {
+        window._amPeriod = 'year';
+        document.getElementById('amMonth').value = '';
+    }
+    renderAnalytics(); 
+}
 
 function getCutoff() {
     const now = new Date();
@@ -549,7 +556,9 @@ function renderAnalytics() {
     // Buttons
     document.querySelectorAll('#amFilters button:not(#amYoY)').forEach(b => {
         const p = b.textContent;
-        const active = (p==='мес' && window._amPeriod==='month') || (p==='год' && window._amPeriod==='year') || (p==='всё' && window._amPeriod==='all');
+        const active = (p==='мес' && window._amPeriod==='month' && !window._amYoY) || 
+                       (p==='год' && window._amPeriod==='year' && !window._amYoY) || 
+                       (p==='всё' && window._amPeriod==='all');
         b.className = active ? 'px-2.5 py-1 text-[9px] rounded-md border transition bg-accent/20 text-accent border-accent/30'
                              : 'px-2.5 py-1 text-[9px] rounded-md border transition bg-dark-700 text-gray-400 border-dark-600';
     });
@@ -655,7 +664,7 @@ function renderAnalytics() {
         }
     } else { sparkDiv.style.display = 'none'; }
 
-    // === Balance cards ===
+    // Calculate start/end balances for the period
     let startBal = null, endBal = null;
     if (snaps.length > 0) {
         if (cutoff && cutoff.start) {
@@ -674,39 +683,33 @@ function renderAnalytics() {
             endBal = snaps[snaps.length-1].balance;
         }
     }
-    
-    let balanceCards = '';
+
+    // === Single unified grid for all cards ===
+    let allCards = '';
     if (startBal !== null && endBal !== null) {
         const change = endBal - startBal;
         const changePct = startBal !== 0 ? (change/startBal*100) : 0;
-        // Change without deposits: real investment return
-        const depSum = flows.filter(f => f.type === 'deposit').reduce((s,f) => s + f.amount, 0);
         const allDeposits = (d.flows || []).filter(f => f.type === 'deposit').reduce((s,f) => s + f.amount, 0);
         const realGain = endBal - allDeposits;
         const realPct = allDeposits !== 0 ? (realGain / allDeposits * 100) : 0;
-        
-        balanceCards = '<div class="grid grid-cols-2 gap-2 mb-2">' +
+        allCards += 
             '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">начало</p><p class="text-sm font-bold text-white">'+fmtRub(startBal)+'</p></div>' +
             '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">конец</p><p class="text-sm font-bold text-white">'+fmtRub(endBal)+'</p></div>' +
             '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">изменение</p><p class="text-sm font-bold '+(change>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(change)+' <span class="text-[9px]">('+(changePct>=0?'+':'')+changePct.toFixed(1)+'%)</span></p></div>' +
-            '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">без пополнений</p><p class="text-sm font-bold '+(realGain>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(realGain)+' <span class="text-[9px]">('+(realPct>=0?'+':'')+realPct.toFixed(1)+'%)</span></p></div>' +
-            '</div>';
+            '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">без пополнений</p><p class="text-sm font-bold '+(realGain>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(realGain)+' <span class="text-[9px]">('+(realPct>=0?'+':'')+realPct.toFixed(1)+'%)</span></p></div>';
     }
-
-    // === Totals ===
     const totals = {};
     flows.forEach(f => { totals[f.type] = (totals[f.type]||0) + f.amount; });
     const fixedTypes = ['deposit', 'withdrawal', 'coupon', 'dividend', 'tax', 'commission'];
     const labels = {deposit:'Пополнения', withdrawal:'Выводы', coupon:'Купоны', dividend:'Дивиденды', tax:'Налоги', commission:'Комиссии'};
-    document.getElementById('amTotals').innerHTML = balanceCards +
-        '<div class="grid grid-cols-2 gap-2">' +
-        fixedTypes.map(k => {
-            const v = totals[k] || 0;
-            const has = totals[k] !== undefined;
-            return '<div class="bg-dark-900 rounded-lg px-3 py-2">'+
+    fixedTypes.forEach(k => {
+        const v = totals[k] || 0;
+        const has = totals[k] !== undefined;
+        allCards += '<div class="bg-dark-900 rounded-lg px-3 py-2">'+
             '<p class="text-[7px] text-gray-500 uppercase tracking-wide">'+(labels[k]||k)+'</p>'+
             '<p class="text-sm font-bold '+(has && v!==0 ? (v>=0?'text-emerald-400':'text-red-400') : 'text-gray-600')+'">'+(has && v!==0 ? fmtRub(v) : '—')+'</p></div>';
-        }).join('') + '</div>';
+    });
+    document.getElementById('amTotals').innerHTML = '<div class="grid grid-cols-2 gap-2">'+allCards+'</div>';
 }
 
 document.addEventListener('keydown', e => { if (e.key==='Escape') document.getElementById('analyticsModal').style.display='none'; });
