@@ -196,6 +196,9 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
 
         # Split into active vs completed
         def is_completed(g):
+            # Подушка — инвестиционный инструмент, всегда активна
+            if g.id == 3:
+                return False
             return g.target_amount > 0 and g.current_amount >= g.target_amount
 
         active_investment = [g for g in investment_goals if not is_completed(g)]
