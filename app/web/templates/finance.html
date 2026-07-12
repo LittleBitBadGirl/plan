@@ -562,10 +562,22 @@ function renderAnalytics() {
     // If no snapshots in period, still show the sparkline but with surrounding data for context
     const hasPeriodData = chartSnaps.length >= 1;
 
-    if (snaps.length > 1) {
+    if (snaps.length > 0) {
         sparkDiv.style.display = 'block';
-        // Use chartSnaps if available, otherwise all snaps for context
-        const displaySnaps = chartSnaps.length >= 2 ? chartSnaps : snaps;
+        // Build display range: selected period + 1 month padding for context
+        let displaySnaps = chartSnaps;
+        if (displaySnaps.length < 2 && cutoff && cutoff.end) {
+            // Add 1 month before and after
+            const padStart = new Date(cutoff.start);
+            padStart.setMonth(padStart.getMonth() - 1);
+            const padEnd = new Date(cutoff.end);
+            padEnd.setMonth(padEnd.getMonth() + 1);
+            displaySnaps = snaps.filter(s => {
+                const sd = new Date(s.date);
+                return sd >= padStart && sd <= padEnd;
+            });
+        }
+        if (displaySnaps.length < 2) displaySnaps = snaps;
         
         const vals = displaySnaps.map(s => s.balance);
         const max = Math.max(...vals), min = Math.min(...vals);
