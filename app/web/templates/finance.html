@@ -685,14 +685,14 @@ function renderAnalytics() {
     }
 
     // === Single unified grid for all cards ===
-    let allCards = '';
+    let balanceCards = '';
     if (startBal !== null && endBal !== null) {
         const change = endBal - startBal;
         const changePct = startBal !== 0 ? (change/startBal*100) : 0;
         const allDeposits = (d.flows || []).filter(f => f.type === 'deposit').reduce((s,f) => s + f.amount, 0);
         const realGain = endBal - allDeposits;
         const realPct = allDeposits !== 0 ? (realGain / allDeposits * 100) : 0;
-        allCards += 
+        balanceCards = 
             '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">начало</p><p class="text-sm font-bold text-white">'+fmtRub(startBal)+'</p></div>' +
             '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">конец</p><p class="text-sm font-bold text-white">'+fmtRub(endBal)+'</p></div>' +
             '<div class="bg-dark-900 rounded-lg px-3 py-2"><p class="text-[7px] text-gray-500 uppercase">изменение</p><p class="text-sm font-bold '+(change>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(change)+' <span class="text-[9px]">('+(changePct>=0?'+':'')+changePct.toFixed(1)+'%)</span></p></div>' +
@@ -702,14 +702,19 @@ function renderAnalytics() {
     flows.forEach(f => { totals[f.type] = (totals[f.type]||0) + f.amount; });
     const fixedTypes = ['deposit', 'withdrawal', 'coupon', 'dividend', 'tax', 'commission'];
     const labels = {deposit:'Пополнения', withdrawal:'Выводы', coupon:'Купоны', dividend:'Дивиденды', tax:'Налоги', commission:'Комиссии'};
+    let flowCards = '';
     fixedTypes.forEach(k => {
         const v = totals[k] || 0;
         const has = totals[k] !== undefined;
-        allCards += '<div class="bg-dark-900 rounded-lg px-3 py-2">'+
+        flowCards += '<div class="bg-dark-900 rounded-lg px-3 py-2">'+
             '<p class="text-[7px] text-gray-500 uppercase tracking-wide">'+(labels[k]||k)+'</p>'+
             '<p class="text-sm font-bold '+(has && v!==0 ? (v>=0?'text-emerald-400':'text-red-400') : 'text-gray-600')+'">'+(has && v!==0 ? fmtRub(v) : '—')+'</p></div>';
     });
-    document.getElementById('amTotals').innerHTML = '<div class="grid grid-cols-2 gap-2">'+allCards+'</div>';
+    document.getElementById('amTotals').innerHTML = 
+        '<div class="grid grid-cols-2 gap-2">' +
+        '<div class="space-y-2">' + balanceCards + '</div>' +
+        '<div class="grid grid-cols-2 gap-2">' + flowCards + '</div>' +
+        '</div>';
 }
 
 document.addEventListener('keydown', e => { if (e.key==='Escape') document.getElementById('analyticsModal').style.display='none'; });
