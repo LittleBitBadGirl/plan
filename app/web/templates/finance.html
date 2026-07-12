@@ -469,7 +469,7 @@ window._openAnalytics = async function(goalId, goalName) {
     window._amPeriod = 'custom';
     window._amYoY = false;
     try {
-        const r = await fetch('/api/goals/' + goalId + '/analytics');
+        const r = await fetch('/api/goals/' + goalId + '/analytics', {credentials: 'same-origin'});
         window._amData = await r.json();
         document.getElementById('analyticsModal').style.display = 'flex';
         buildMonthDropdown();
@@ -546,14 +546,21 @@ function renderAnalytics() {
     const sparkDiv = document.getElementById('amSparkline');
     if (snaps.length > 1) {
         sparkDiv.style.display = 'block';
+        // Filter snapshots by cutoff
         let chartSnaps = snaps;
-        if (cutoff && cutoff.start) chartSnaps = snaps.filter(s => new Date(s.date) >= cutoff.start);
+        if (cutoff && cutoff.start) {
+            chartSnaps = snaps.filter(s => {
+                const sd = new Date(s.date);
+                if (cutoff.end) return sd >= cutoff.start && sd <= cutoff.end;
+                return sd >= cutoff.start;
+            });
+        }
         if (chartSnaps.length < 2) chartSnaps = snaps;
 
         const vals = chartSnaps.map(s => s.balance);
         const max = Math.max(...vals), min = Math.min(...vals);
         const range = max - min || 1;
-        const yMin = Math.floor((min - range*0.15) / 1000) * 1000;
+        const yMin = Math.max(0, Math.floor((min - range*0.15) / 1000) * 1000);  // never below 0
         const yMax = Math.ceil((max + range*0.15) / 1000) * 1000;
         const yRange = yMax - yMin || 1;
         const steps = 4;
