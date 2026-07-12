@@ -546,3 +546,36 @@ async def get_goal_history(goal_id: int):
             "delta": r.delta,
             "note": r.note
         } for r in rows])
+
+@router.get("/api/goals/{goal_id}/analytics")
+async def get_goal_analytics(goal_id: int, period: str = "all"):
+    """Return analytics for a goal: snapshots, flows by type, totals."""
+    async with async_session() as db:
+        # Snapshots (balance over time)
+        snap_res = await db.execute(
+            select(investment_snapshots.c.date, investment_snapshots.c.total_balance)
+            .where(investment_snapshots.c.goal_id == goal_id)
+            .order_by(investment_snapshots.c.date.asc())
+        )
+        snapshots = [{"date": str(r.date), "balance": r.total_balance} for r in snap_res]
+        
+        # Flows (deposits, coupons, dividends, etc.)
+        flow_res = await db.execute(
+            select(investment_flows.c.date, investment_flows.c.type, investment_flows.c.amount, investment_flows.c.description)
+            .where(investment_flows.c.goal_id == goal_id)
+            .order_by(investment_flows.c.date.asc())
+        )
+        flows = [{"date": str(r.date), "type": r.type, "amount": r.amount, "description": r.description} for r in flow_res]
+        
+        # Aggregate by type
+        totals = {}
+        for f in flows:
+            t = f["type"]
+            totals[t] = totals.get(t, 0) + f["amount"]
+        
+        return JSONResponse({
+            "goal_id": goal_id,
+            "snapshots": snapshots,
+            "flows": flows,
+            "totals": {k: round(v, 2) for k, v in totals.items()},
+        })

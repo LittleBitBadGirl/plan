@@ -143,7 +143,8 @@
                     {% set pct = (goal.current_amount / goal.target_amount * 100) if goal.target_amount > 0 else 0 %}
                     <div class="bg-dark-800/80 rounded-lg px-2.5 py-2 border border-dark-600/50 hover:border-dark-500/80 hover:bg-dark-800 transition-all duration-200">
                         <div class="flex items-center justify-between mb-0.5">
-                            <p class="text-[8px] text-gray-500 tracking-wide truncate">{{ goal.name }}</p>
+                            <p class="text-[8px] text-gray-500 tracking-wide truncate cursor-pointer hover:text-accent transition-colors"
+                               @click="openAnalytics({{ goal.id }}, '{{ goal.name }}')">{{ goal.name }}</p>
                             <button @click="editGoal({{ goal.id }}, '{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}')"
                                     x-show="editingGoal !== {{ goal.id }}"
                                     class="text-[8px] text-gray-600 hover:text-gray-400 transition-colors">✎</button>
@@ -431,6 +432,70 @@ document.addEventListener('alpine:init', () => {
                 alert('Ошибка: ' + e);
             }
             this.saving = false;
+        },
+        openAnalytics(goalId, goalName) {
+            const modal = document.querySelector('[x-data="analyticsModal()"]');
+            if (modal && modal.__x) {
+                modal.__x.getUnobservedData().openAnalytics(goalId, goalName);
+            }
+        }
+    }));
+    
+    // Analytics modal component
+    Alpine.data('analyticsModal', () => ({
+        show: false,
+        goalId: null,
+        goalName: '',
+        period: 'all',
+        snapshots: [],
+        flows: [],
+        totals: {},
+        
+        get sparklinePoints() {
+            if (this.snapshots.length < 2) return '';
+            const vals = this.snapshots.map(s => s.balance);
+            const max = Math.max(...vals), min = Math.min(...vals);
+            const range = max - min || 1;
+            const w = 200 / (vals.length - 1);
+            return vals.map((v, i) => `${i*w},${40-(v-min)/range*35}`).join(' ');
+        },
+        
+        get filteredFlows() {
+            const now = new Date();
+            let cutoff = null;
+            if (this.period === 'month') cutoff = new Date(now.getFullYear(), now.getMonth()-1, now.getDate());
+            else if (this.period === 'year') cutoff = new Date(now.getFullYear()-1, now.getMonth(), now.getDate());
+            if (!cutoff) return this.flows;
+            return this.flows.filter(f => new Date(f.date) >= cutoff);
+        },
+        
+        get filteredTotals() {
+            const t = {};
+            for (const f of this.filteredFlows) {
+                t[f.type] = (t[f.type] || 0) + f.amount;
+            }
+            return t;
+        },
+        
+        typeLabel(type) {
+            const labels = {deposit:'Пополнения', coupon:'Купоны', dividend:'Дивиденды', tax:'Налоги', commission:'Комиссии'};
+            return labels[type] || type;
+        },
+        
+        async openAnalytics(goalId, goalName) {
+            this.goalId = goalId;
+            this.goalName = goalName;
+            this.period = 'all';
+            try {
+                const r = await fetch('/api/goals/' + goalId + '/analytics');
+                const data = await r.json();
+                this.snapshots = data.snapshots || [];
+                this.flows = data.flows || [];
+                this.totals = data.totals || {};
+                this.show = true;
+            } catch(e) {
+                alert('Ошибка загрузки аналитики');
+            }
         }
     }));
 });
@@ -471,3 +536,62 @@ document.addEventListener('alpine:init', () => {
 </script>
 {% endif %}
 {% endblock %}
+
+<!-- Analytics Modal -->
+<div x-data="analyticsModal()" x-show="show" @click.self="show=false" @keydown.escape.window="show=false"
+     x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/70" style="display:none">
+    <div class="bg-dark-800 border border-dark-600 rounded-xl w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto shadow-2xl" @click.stop>
+        <div class="sticky top-0 bg-dark-800 border-b border-dark-700 px-5 py-3 flex justify-between items-center">
+            <h3 class="text-sm font-bold text-white" x-text="goalName"></h3>
+            <button @click="show=false" class="text-gray-500 hover:text-gray-300 text-lg leading-none">&times;</button>
+        </div>
+        <div class="p-5 space-y-4">
+            <!-- Filters -->
+            <div class="flex gap-1">
+                <button @click="period='month'" :class="period==='month'?'bg-accent/20 text-accent border-accent/30':'bg-dark-700 text-gray-400 border-dark-600'"
+                        class="px-2.5 py-1 text-[9px] rounded-md border transition">месяц</button>
+                <button @click="period='year'" :class="period==='year'?'bg-accent/20 text-accent border-accent/30':'bg-dark-700 text-gray-400 border-dark-600'"
+                        class="px-2.5 py-1 text-[9px] rounded-md border transition">год</button>
+                <button @click="period='all'" :class="period==='all'?'bg-accent/20 text-accent border-accent/30':'bg-dark-700 text-gray-400 border-dark-600'"
+                        class="px-2.5 py-1 text-[9px] rounded-md border transition">всё</button>
+            </div>
+            
+            <!-- Balance chart (sparkline) -->
+            <div x-show="snapshots.length > 1" class="bg-dark-900 rounded-lg p-3">
+                <p class="text-[8px] text-gray-500 mb-1">Баланс</p>
+                <svg class="w-full h-20" viewBox="0 0 200 40" preserveAspectRatio="none">
+                    <polyline fill="none" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+                              :points="sparklinePoints"></polyline>
+                </svg>
+                <div class="flex justify-between text-[8px] text-gray-500 mt-1">
+                    <span x-text="snapshots[0]?.date"></span>
+                    <span x-text="snapshots[snapshots.length-1]?.date"></span>
+                </div>
+            </div>
+            
+            <!-- Totals -->
+            <div class="grid grid-cols-2 gap-2">
+                <template x-for="(val, key) in filteredTotals" :key="key">
+                    <div class="bg-dark-900 rounded-lg px-3 py-2">
+                        <p class="text-[7px] text-gray-500 uppercase tracking-wide" x-text="typeLabel(key)"></p>
+                        <p class="text-sm font-bold" :class="val>=0?'text-emerald-400':'text-red-400'"
+                           x-text="(val>=0?'+':'')+val.toLocaleString('ru-RU',{maximumFractionDigits:0})+' ₽'"></p>
+                    </div>
+                </template>
+            </div>
+            
+            <!-- Recent flows list -->
+            <div x-show="filteredFlows.length > 0" class="bg-dark-900 rounded-lg p-3 max-h-48 overflow-y-auto">
+                <p class="text-[8px] text-gray-500 mb-2">Последние операции</p>
+                <template x-for="f in filteredFlows.slice(-20).reverse()" :key="f.date+f.type+f.amount">
+                    <div class="flex justify-between text-[9px] py-0.5 border-b border-dark-800/50">
+                        <span class="text-gray-400" x-text="f.date"></span>
+                        <span class="text-gray-500 truncate mx-2" x-text="f.description"></span>
+                        <span :class="f.amount>=0?'text-emerald-400':'text-red-400'"
+                              x-text="(f.amount>=0?'+':'')+f.amount.toLocaleString('ru-RU',{maximumFractionDigits:0})"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+</div>
