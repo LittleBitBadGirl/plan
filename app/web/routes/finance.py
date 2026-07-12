@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, Table, MetaData, Column, Integer, String, Float, Date, DateTime, ForeignKey
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date, datetime, time, timedelta
@@ -17,6 +17,25 @@ from app.models.report import AIReport
 from app.models.finance import Transaction
 from app.models.goal_history import GoalHistory
 from app.config import settings
+
+# Reflected tables for investment analytics
+investment_snapshots = Table(
+    'investment_snapshots', MetaData(),
+    Column('id', Integer),
+    Column('goal_id', Integer),
+    Column('date', Date),
+    Column('total_balance', Float),
+)
+
+investment_flows = Table(
+    'investment_flows', MetaData(),
+    Column('id', Integer),
+    Column('goal_id', Integer),
+    Column('date', Date),
+    Column('type', String),
+    Column('amount', Float),
+    Column('description', String),
+)
 
 from app.web.deps import (
     templates,
@@ -321,36 +340,43 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
                     "note": h.note
                 })
 
-        # Calculate % change: 1 month and 1 year
+        # Calculate % change using investment_snapshots (real broker data)
         from datetime import datetime, timedelta
         now = datetime.now()
         month_ago = now - timedelta(days=30)
         year_ago = now - timedelta(days=365)
         goal_changes = {}
+        snapshots_res = await db.execute(
+            select(investment_snapshots.c.goal_id, investment_snapshots.c.date, investment_snapshots.c.total_balance)
+            .order_by(investment_snapshots.c.date.asc())
+        )
+        snapshots_by_goal = {}
+        for row in snapshots_res:
+            snapshots_by_goal.setdefault(row.goal_id, []).append((row.date, row.total_balance))
+        
         for g in goals:
-            hist = goal_history.get(g.id, [])
+            snaps = snapshots_by_goal.get(g.id, [])
             changes = {"month": None, "year": None}
-            if len(hist) >= 2:
-                # Month: earliest entry within 30 days vs current
-                month_start = None
-                for h in hist:
-                    if h["date"]:
-                        d = datetime.strptime(h["date"], "%Y-%m-%d")
-                        if d >= month_ago:
-                            month_start = h["amount"]
-                            break
-                if month_start is not None and month_start != 0 and g.current_amount != month_start:
-                    changes["month"] = round((g.current_amount - month_start) / month_start * 100, 1)
-                # Year: earliest entry within 365 days vs current
-                year_start = None
-                for h in hist:
-                    if h["date"]:
-                        d = datetime.strptime(h["date"], "%Y-%m-%d")
-                        if d >= year_ago:
-                            year_start = h["amount"]
-                            break
-                if year_start is not None and year_start != 0 and g.current_amount != year_start:
-                    changes["year"] = round((g.current_amount - year_start) / year_start * 100, 1)
+            if len(snaps) >= 2:
+                # Month: find closest snapshot <= month_ago, compare to latest
+                month_snap = None
+                for d, bal in snaps:
+                    if d <= month_ago.date():
+                        month_snap = bal
+                    else:
+                        break
+                latest = snaps[-1][1]
+                if month_snap and month_snap > 0 and latest != month_snap:
+                    changes["month"] = round((latest - month_snap) / month_snap * 100, 1)
+                # Year
+                year_snap = None
+                for d, bal in snaps:
+                    if d <= year_ago.date():
+                        year_snap = bal
+                    else:
+                        break
+                if year_snap and year_snap > 0 and latest != year_snap:
+                    changes["year"] = round((latest - year_snap) / year_snap * 100, 1)
             goal_changes[g.id] = changes
 
         fin_cats_res = await db.execute(select(Category).where(Category.type == 'finance').order_by(Category.name))
