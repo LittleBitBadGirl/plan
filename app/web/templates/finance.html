@@ -773,7 +773,7 @@ function renderAnalytics() {
             '<p class="text-lg font-bold '+(has ? (v>=0?'text-emerald-400':'text-red-400') : 'text-gray-600')+' ">'+(has ? fmtRub(v) : '—')+'</p></div>';
     });
     document.getElementById('amTotals').innerHTML = 
-        '<div class="grid grid-cols-2 gap-3"><div class="space-y-3">' + balanceCards + '</div><div class="grid grid-cols-2 gap-3">' + flowCards + '</div></div>';
+        '<div class="grid grid-cols-2 gap-3">' + balanceCards + flowCards + '</div>';
 }
 
 document.addEventListener('keydown', e => { if (e.key==='Escape') document.getElementById('analyticsModal').style.display='none'; });
