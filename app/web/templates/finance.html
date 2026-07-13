@@ -256,7 +256,7 @@
         
         <!-- Analytics Modal (vanilla JS) -->
         <div id="analyticsModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70" style="display:none" onclick="if(event.target===this)this.style.display='none'">
-            <div class="bg-dark-800 border border-dark-600 rounded-xl w-full max-w-xl mx-4 max-h-[85vh] overflow-y-auto shadow-2xl" onclick="event.stopPropagation()">
+            <div class="bg-dark-800 border border-dark-600 rounded-xl w-full max-w-2xl mx-4 max-h-[85vh] overflow-y-auto shadow-2xl" onclick="event.stopPropagation()">
                 <div class="sticky top-0 bg-dark-800 border-b border-dark-700 px-5 py-3 flex justify-between items-center">
                     <h3 class="text-sm font-bold text-white" id="amTitle"></h3>
                     <button onclick="document.getElementById('analyticsModal').style.display='none'" class="text-gray-500 hover:text-gray-300 text-lg leading-none">&times;</button>
@@ -282,14 +282,14 @@
         {% for yr, tabs in year_groups.items() %}
         <div class="flex-shrink-0">
             <button @click="openYears[{{ yr }}] = !openYears[{{ yr }}]"
-               class="px-3 py-1.5 rounded-lg text-[9px] font-bold whitespace-nowrap border transition-all duration-200
+               class="px-3 py-1.5 rounded-lg text-[9px] font-bold  border transition-all duration-200
                       {{ 'bg-accent/10 border-accent/30 text-accent' if yr == current_year else 'bg-dark-800 border-dark-600/50 text-gray-400 hover:border-dark-500 hover:text-gray-300' }}">
                 {{ yr }} <span x-text="openYears[{{ yr }}] ? '▾' : '▸'"></span>
             </button>
             <div x-show="openYears[{{ yr }}]" class="flex gap-1 mt-1.5 ml-1 flex-wrap">
                 {% for tab in tabs %}
                 <a href="/finance?month={{ tab.month }}&year={{ tab.year }}"
-                   class="px-2.5 py-1 rounded-md text-[8px] font-medium whitespace-nowrap border transition-all duration-200
+                   class="px-2.5 py-1 rounded-md text-[8px] font-medium  border transition-all duration-200
                           {{ 'bg-accent/20 border-accent/40 text-accent' if tab.month == current_month and tab.year == current_year else 'bg-dark-700/50 border-dark-600/30 text-gray-500 hover:border-dark-500 hover:text-gray-300' }}">
                     {{ tab.name }}
                 </a>
@@ -312,10 +312,10 @@
                     <table class="w-full text-left border-collapse">
                         <thead class="sticky top-0 z-10">
                             <tr class="bg-dark-800/95 backdrop-blur-sm border-b border-dark-600/50 text-[8px] font-medium text-gray-500 tracking-wide">
-                                <th class="px-2 py-1.5 whitespace-nowrap">Дата</th>
+                                <th class="px-2 py-1.5 ">Дата</th>
                                 <th class="px-2 py-1.5">Описание</th>
-                                <th class="px-2 py-1.5 whitespace-nowrap">Категория</th>
-                                <th class="px-2 py-1.5 whitespace-nowrap text-right">Сумма</th>
+                                <th class="px-2 py-1.5 ">Категория</th>
+                                <th class="px-2 py-1.5  text-right">Сумма</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-dark-700/30">
@@ -392,7 +392,7 @@
                                         </div>
                                     </div>
                                 </td>
-                                <td class="px-2 py-1.5 text-[11px] font-semibold text-right tabular-nums whitespace-nowrap {{ 'text-green-400' if tx.amount > 0 else 'text-red-400' }}">{{ "{:,.0f}".format(tx.amount).replace(',', ' ') }}</td>
+                                <td class="px-2 py-1.5 text-[11px] font-semibold text-right tabular-nums  {{ 'text-green-400' if tx.amount > 0 else 'text-red-400' }}">{{ "{:,.0f}".format(tx.amount).replace(',', ' ') }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -755,10 +755,10 @@ function renderAnalytics() {
         const realGain = endBal - allDeposits;
         const realPct = allDeposits !== 0 ? (realGain / allDeposits * 100) : 0;
         balanceCards = 
-            '<div class="bg-dark-900 rounded-xl px-5 py-4"><p class="text-[10px] text-gray-500 mb-1.5">Начало</p><p class="text-lg font-bold text-white whitespace-nowrap">'+fmtRub(startBal)+'</p></div>' +
-            '<div class="bg-dark-900 rounded-xl px-5 py-4"><p class="text-[10px] text-gray-500 mb-1.5">Конец</p><p class="text-lg font-bold text-white whitespace-nowrap">'+fmtRub(endBal)+'</p></div>' +
-            '<div class="bg-dark-900 rounded-xl px-5 py-4"><p class="text-[10px] text-gray-500 mb-1.5">Изменение</p><p class="text-lg font-bold '+(change>=0?'text-emerald-400':'text-red-400')+' whitespace-nowrap">'+fmtRub(change)+' <span class="text-[11px] font-normal">('+(changePct>=0?'+':'')+changePct.toFixed(1)+'%)</span></p></div>' +
-            '<div class="bg-dark-900 rounded-xl px-5 py-4"><p class="text-[10px] text-gray-500 mb-1.5">Без пополнений</p><p class="text-lg font-bold '+(realGain>=0?'text-emerald-400':'text-red-400')+' whitespace-nowrap">'+fmtRub(realGain)+' <span class="text-[11px] font-normal">('+(realPct>=0?'+':'')+realPct.toFixed(1)+'%)</span></p></div>';
+            '<div class="bg-dark-900 rounded-xl px-5 py-4"><p class="text-[10px] text-gray-500 mb-1.5">Начало</p><p class="text-lg font-bold text-white ">'+fmtRub(startBal)+'</p></div>' +
+            '<div class="bg-dark-900 rounded-xl px-5 py-4"><p class="text-[10px] text-gray-500 mb-1.5">Конец</p><p class="text-lg font-bold text-white ">'+fmtRub(endBal)+'</p></div>' +
+            '<div class="bg-dark-900 rounded-xl px-5 py-4"><p class="text-[10px] text-gray-500 mb-1.5">Изменение</p><p class="text-lg font-bold '+(change>=0?'text-emerald-400':'text-red-400')+' ">'+fmtRub(change)+' <span class="text-[11px] font-normal">('+(changePct>=0?'+':'')+changePct.toFixed(1)+'%)</span></p></div>' +
+            '<div class="bg-dark-900 rounded-xl px-5 py-4"><p class="text-[10px] text-gray-500 mb-1.5">Без пополнений</p><p class="text-lg font-bold '+(realGain>=0?'text-emerald-400':'text-red-400')+' ">'+fmtRub(realGain)+' <span class="text-[11px] font-normal">('+(realPct>=0?'+':'')+realPct.toFixed(1)+'%)</span></p></div>';
     }
     const totals = {};
     flows.forEach(f => { totals[f.type] = (totals[f.type]||0) + f.amount; });
@@ -770,7 +770,7 @@ function renderAnalytics() {
         const has = totals[k] !== undefined && v !== 0;
         flowCards += '<div class="bg-dark-900 rounded-xl px-5 py-4">'+
             '<p class="text-[10px] text-gray-500 mb-1.5">'+(labels[k]||k)+'</p>'+
-            '<p class="text-lg font-bold '+(has ? (v>=0?'text-emerald-400':'text-red-400') : 'text-gray-600')+' whitespace-nowrap">'+(has ? fmtRub(v) : '—')+'</p></div>';
+            '<p class="text-lg font-bold '+(has ? (v>=0?'text-emerald-400':'text-red-400') : 'text-gray-600')+' ">'+(has ? fmtRub(v) : '—')+'</p></div>';
     });
     document.getElementById('amTotals').innerHTML = 
         '<div class="grid grid-cols-2 gap-3">' + balanceCards + flowCards + '</div>';
