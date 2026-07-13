@@ -755,10 +755,10 @@ function renderAnalytics() {
         const realGain = endBal - allDeposits;
         const realPct = allDeposits !== 0 ? (realGain / allDeposits * 100) : 0;
         balanceCards = 
-            '<div class="bg-dark-900 rounded-xl px-4 py-3"><p class="text-[9px] text-gray-500 mb-1">Начало</p><p class="text-base font-bold text-white">'+fmtRub(startBal)+'</p></div>' +
-            '<div class="bg-dark-900 rounded-xl px-4 py-3"><p class="text-[9px] text-gray-500 mb-1">Конец</p><p class="text-base font-bold text-white">'+fmtRub(endBal)+'</p></div>' +
-            '<div class="bg-dark-900 rounded-xl px-4 py-3"><p class="text-[9px] text-gray-500 mb-1">Изменение</p><p class="text-base font-bold '+(change>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(change)+' <span class="text-[10px] font-normal">('+(changePct>=0?'+':'')+changePct.toFixed(1)+'%)</span></p></div>' +
-            '<div class="bg-dark-900 rounded-xl px-4 py-3"><p class="text-[9px] text-gray-500 mb-1">Без пополнений</p><p class="text-base font-bold '+(realGain>=0?'text-emerald-400':'text-red-400')+'">'+fmtRub(realGain)+' <span class="text-[10px] font-normal">('+(realPct>=0?'+':'')+realPct.toFixed(1)+'%)</span></p></div>';
+            '<div class="bg-dark-900 rounded-xl px-4 py-3"><p class="text-[9px] text-gray-500 mb-1">Начало</p><p class="text-base font-bold text-white whitespace-nowrap">'+fmtRub(startBal)+'</p></div>' +
+            '<div class="bg-dark-900 rounded-xl px-4 py-3"><p class="text-[9px] text-gray-500 mb-1">Конец</p><p class="text-base font-bold text-white whitespace-nowrap">'+fmtRub(endBal)+'</p></div>' +
+            '<div class="bg-dark-900 rounded-xl px-4 py-3"><p class="text-[9px] text-gray-500 mb-1">Изменение</p><p class="text-base font-bold '+(change>=0?'text-emerald-400':'text-red-400')+' whitespace-nowrap">'+fmtRub(change)+' <span class="text-[10px] font-normal">('+(changePct>=0?'+':'')+changePct.toFixed(1)+'%)</span></p></div>' +
+            '<div class="bg-dark-900 rounded-xl px-4 py-3"><p class="text-[9px] text-gray-500 mb-1">Без пополнений</p><p class="text-base font-bold '+(realGain>=0?'text-emerald-400':'text-red-400')+' whitespace-nowrap">'+fmtRub(realGain)+' <span class="text-[10px] font-normal">('+(realPct>=0?'+':'')+realPct.toFixed(1)+'%)</span></p></div>';
     }
     const totals = {};
     flows.forEach(f => { totals[f.type] = (totals[f.type]||0) + f.amount; });
@@ -770,7 +770,7 @@ function renderAnalytics() {
         const has = totals[k] !== undefined && v !== 0;
         flowCards += '<div class="bg-dark-900 rounded-xl px-4 py-3">'+
             '<p class="text-[9px] text-gray-500 mb-1">'+(labels[k]||k)+'</p>'+
-            '<p class="text-base font-bold '+(has ? (v>=0?'text-emerald-400':'text-red-400') : 'text-gray-600')+'">'+(has ? fmtRub(v) : '—')+'</p></div>';
+            '<p class="text-base font-bold '+(has ? (v>=0?'text-emerald-400':'text-red-400') : 'text-gray-600')+' whitespace-nowrap">'+(has ? fmtRub(v) : '—')+'</p></div>';
     });
     document.getElementById('amTotals').innerHTML = 
         '<div class="grid grid-cols-3 gap-2">' + balanceCards + flowCards + '</div>';
