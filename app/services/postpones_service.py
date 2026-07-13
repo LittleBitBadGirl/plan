@@ -35,7 +35,12 @@ def rollover_days(due_date: date, today: date, is_work_category: bool = False) -
 def apply_rollover(task: Task, today: date, is_work_category: bool = False) -> None:
     """Увеличить postpones на число просроченных дней и перенести due_date на today."""
     days = rollover_days(task.due_date, today, is_work_category)
-    if days <= 0:
+    # Always move to today if overdue, even if 0 work days between
+    if task.due_date < today:
+        task.postpones = (task.postpones or 0) + max(days, 0)
+        task.due_date = today
+        if task.postpones > 7:
+            task.chronic_task = True
         return
 
     task.postpones = (task.postpones or 0) + days
