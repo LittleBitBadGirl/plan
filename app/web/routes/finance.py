@@ -388,7 +388,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
             if c.parent_id:
                 fin_sub_cats_by_parent.setdefault(c.parent_id, []).append(c)
         
-    return templates.TemplateResponse(request, "finance.html", {
+    response = templates.TemplateResponse(request, "finance.html", {
         "request": request,
         "transactions": transactions,
         "grouped_summary": grouped_summary,
@@ -428,6 +428,10 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         "month_short": MONTH_NAMES[view_month],
         "today": today
     })
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @router.post("/finance/create")
