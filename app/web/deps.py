@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import Request
+from markupsafe import Markup, escape
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, func, or_, and_
 from sqlalchemy.orm import selectinload
@@ -302,6 +303,30 @@ def _strip_emoji(text: str) -> str:
 
 
 templates.env.filters["noemoji"] = _strip_emoji
+
+_URL_IN_TEXT = re.compile(r"((?:https?://|www\.)[^\s<>\"']+)")
+
+
+def _linkify(text: str) -> Markup:
+    """Превратить URL в тексте в кликабельные ссылки."""
+    if not text:
+        return Markup("")
+    parts: list[str] = []
+    pos = 0
+    for match in _URL_IN_TEXT.finditer(text):
+        parts.append(str(escape(text[pos:match.start()])))
+        url = match.group(1)
+        href = url if url.startswith("http") else f"https://{url}"
+        parts.append(
+            f'<a href="{escape(href)}" target="_blank" rel="noopener noreferrer" '
+            f'class="text-amber-400 hover:text-amber-300 hover:underline break-all">{escape(url)}</a>'
+        )
+        pos = match.end()
+    parts.append(str(escape(text[pos:])))
+    return Markup("".join(parts))
+
+
+templates.env.filters["linkify"] = _linkify
 
 
 def _render_shopping_list(request: Request, items: list) -> str:

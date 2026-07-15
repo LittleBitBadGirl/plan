@@ -129,10 +129,11 @@
     </div>
     {% endif %}
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="flex flex-col lg:grid lg:grid-cols-3 gap-6">
         
         <!-- COLUMN 1: TASKS -->
-        <div class="space-y-6">
+        <div class="contents lg:block">
+        <div class="order-1 lg:order-none space-y-6">
             <h2 class="text-xl font-bold text-white px-1">Задачи на сегодня</h2>
 
             <!-- Quick Add -->
@@ -144,11 +145,12 @@
                 {% include "partials/tasks_list_split.html" %}
             </div>
         </div>
+        </div>
 
-        <!-- COLUMN 2: HABITS & RECURRING -->
-        <div class="space-y-8">
-            <!-- Habit Trackers -->
-            <div class="space-y-4">
+        <!-- COLUMN 2: HABITS & PERIOD -->
+        <div class="contents lg:block lg:space-y-8">
+            <!-- Habit Trackers — last on mobile -->
+            <div class="order-[70] lg:order-none space-y-4">
                 <div class="flex items-center justify-between px-1">
                     <h2 class="text-xl font-bold text-white">Трекеры</h2>
                     <button onclick="document.getElementById('add-habit-modal').classList.toggle('hidden')" 
@@ -241,14 +243,8 @@
                 </div>
             </div>
 
-            <div id="habit-history-modal"
-                 class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop p-4"
-                 onclick="closeHabitHistory()">
-                <div id="habit-history-content" class="w-full max-w-md" onclick="event.stopPropagation()"></div>
-            </div>
-
-            <!-- Period Tracker Card — always last in column 2 -->
-            <div class="bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg flex flex-col" id="period-tracker-card">
+            <!-- Period Tracker Card — always last in column 2 on desktop -->
+            <div class="order-50 lg:order-none bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg flex flex-col" id="period-tracker-card">
                 <div class="flex justify-between items-start mb-3 gap-2">
                     <div class="min-w-0">
                         <h3 class="font-bold text-gray-100 text-sm">Месячные</h3>
@@ -311,22 +307,30 @@
 
                 <p class="text-[8px] text-gray-700 text-center mt-2.5">тап: мазня → мес. → боль → снять</p>
             </div>
+
+            <div id="habit-history-modal"
+                 class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop p-4"
+                 onclick="closeHabitHistory()">
+                <div id="habit-history-content" class="w-full max-w-md" onclick="event.stopPropagation()"></div>
+            </div>
         </div>
 
         <!-- COLUMN 3: CALENDAR, RECURRING & SHOPPING -->
-        <div class="space-y-6">
+        <div class="contents lg:block lg:space-y-6">
             {% if calendar_sync_active %}
-            <div class="hidden"
+            <div class="order-20 lg:order-none hidden"
                  hx-post="/api/calendar/sync"
                  hx-trigger="load once"
                  hx-target="#calendar-column-blocks"
                  hx-swap="outerHTML"></div>
             {% endif %}
-            {% include "partials/calendar_column_blocks.html" %}
+            <div class="order-20 lg:order-none">
+                {% include "partials/calendar_column_blocks.html" %}
+            </div>
 
             <!-- Recurring Tasks -->
             {% if recurring_tasks %}
-            <div class="space-y-4">
+            <div class="order-30 lg:order-none space-y-4">
                 <h2 class="text-xl font-bold text-stone-300 px-1">Регулярные</h2>
                 <div class="space-y-3">
                     {% for rt in recurring_tasks %}
@@ -358,8 +362,8 @@
             </div>
             {% endif %}
 
-            <!-- Shopping List -->
-            <div class="space-y-4">
+            <!-- Shopping List — above trackers on mobile -->
+            <div class="order-[60] lg:order-none space-y-4">
                 <div class="flex items-center justify-between px-1">
                     <h2 class="text-xl font-bold text-stone-300 px-1">Покупки</h2>
                     <div class="flex items-center gap-2">
@@ -392,7 +396,7 @@
             </div>
 
             <!-- Reading List -->
-            <div class="space-y-4">
+            <div class="order-40 lg:order-none space-y-4">
                 <div class="flex items-center justify-between px-1">
                     <h2 class="text-xl font-bold text-stone-300 px-1">Читать</h2>
                 </div>

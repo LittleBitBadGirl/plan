@@ -179,5 +179,16 @@
     </div>
 
     {% block extra_scripts %}{% endblock %}
+    <script>
+    document.body.addEventListener('htmx:afterSwap', function (evt) {
+        if (!evt.detail.successful) return;
+        const path = evt.detail.pathInfo?.requestPath || '';
+        if (!/\/tasks\/\d+\/subtasks$/.test(path)) return;
+        const target = evt.detail.target;
+        if (!target?.id?.startsWith('subtasks-')) return;
+        const input = target.querySelector('.subtask-add-input');
+        if (input) input.focus();
+    });
+    </script>
 </body>
 </html>

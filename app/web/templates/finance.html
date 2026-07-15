@@ -255,14 +255,14 @@
         </div>
         
         <!-- Analytics Modal (vanilla JS) -->
-        <div id="analyticsModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70" style="display:none" onclick="if(event.target===this)this.style.display='none'">
-            <div class="bg-dark-800 border border-dark-600 rounded-xl w-full max-w-2xl mx-4 max-h-[85vh] overflow-y-auto shadow-2xl" onclick="event.stopPropagation()">
-                <div class="sticky top-0 bg-dark-800 border-b border-dark-700 px-5 py-3 flex justify-between items-center">
+        <div id="analyticsModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="bg-dark-800 border border-dark-600 rounded-xl w-full max-w-2xl h-[min(85vh,720px)] flex flex-col overflow-hidden shadow-2xl" onclick="event.stopPropagation()">
+                <div class="shrink-0 border-b border-dark-700 px-5 py-3 flex justify-between items-center">
                     <h3 class="text-sm font-bold text-white" id="amTitle"></h3>
                     <button onclick="document.getElementById('analyticsModal').style.display='none'" class="text-gray-500 hover:text-gray-300 text-lg leading-none">&times;</button>
                 </div>
-                <div class="p-5 space-y-4">
-                    <div class="flex items-center gap-1.5 mb-1 flex-wrap" id="amFilters">
+                <div class="flex-1 min-h-0 flex flex-col gap-3 p-4 overflow-hidden">
+                    <div class="shrink-0 flex items-center gap-1.5 flex-wrap" id="amFilters">
                         <button onclick="setPeriod('prevMonth')" id="amBtnPrev" class="px-2.5 py-1 text-[10px] rounded-lg border transition font-medium bg-accent/20 text-accent border-accent/30">← пред мес</button>
                         <button onclick="setPeriod('curYear')" id="amBtnYear" class="px-2.5 py-1 text-[10px] rounded-lg border transition font-medium bg-dark-700 text-gray-400 border-dark-600">тек год</button>
                         <span class="text-gray-700 mx-0.5">|</span>
@@ -270,8 +270,8 @@
                         <select id="amMonth" onchange="onFilterChange()" class="bg-dark-700 border border-dark-600 rounded-lg px-2.5 py-1 text-[10px] text-gray-300 font-medium focus:outline-none focus:border-accent/50"></select>
                         <button onclick="toggleYoY()" id="amYoY" class="px-2.5 py-1 text-[10px] rounded-lg border transition font-medium border-dark-600 text-gray-500 hover:text-accent">год-к-году</button>
                     </div>
-                    <div id="amSparkline" class="bg-dark-900 rounded-lg p-3" style="display:none"></div>
-                    <div id="amTotals" class="grid grid-cols-2 gap-2"></div>
+                    <div id="amSparkline" class="shrink-0 bg-dark-900 rounded-lg p-3" style="display:none"></div>
+                    <div id="amTotals" class="flex-1 min-h-0 grid grid-cols-2 grid-rows-5 gap-2"></div>
                 </div>
             </div>
         </div>
@@ -593,6 +593,12 @@ function getCutoff() {
 
 function fmtRub(v) { return (v>=0?'+':'') + Math.abs(v).toLocaleString('ru-RU',{maximumFractionDigits:0}) + ' ₽'; }
 
+function amCard(label, value, colorClass) {
+    return '<div class="bg-dark-900 rounded-lg px-3 py-2 h-full flex flex-col justify-center min-h-0">' +
+        '<p class="text-[9px] text-gray-500 mb-0.5">' + label + '</p>' +
+        '<p class="text-sm font-bold ' + colorClass + ' leading-tight break-words">' + value + '</p></div>';
+}
+
 function renderAnalytics() {
     const d = window._amData; if (!d) return;
     const cutoff = getCutoff();
@@ -746,7 +752,7 @@ function renderAnalytics() {
         }
     }
 
-    // === Cards: 3-column grid, no truncation ===
+    // === Cards: 2×5 grid, fills remaining modal height ===
     let balanceCards = '';
     if (startBal !== null && endBal !== null) {
         const change = endBal - startBal;
@@ -754,11 +760,11 @@ function renderAnalytics() {
         const allDeposits = (d.flows || []).filter(f => f.type === 'deposit').reduce((s,f) => s + f.amount, 0);
         const realGain = endBal - allDeposits;
         const realPct = allDeposits !== 0 ? (realGain / allDeposits * 100) : 0;
-        balanceCards = 
-            '<div class="bg-dark-900 rounded-xl px-5 py-4"><p class="text-[10px] text-gray-500 mb-1.5">Начало</p><p class="text-lg font-bold text-white ">'+fmtRub(startBal)+'</p></div>' +
-            '<div class="bg-dark-900 rounded-xl px-5 py-4"><p class="text-[10px] text-gray-500 mb-1.5">Конец</p><p class="text-lg font-bold text-white ">'+fmtRub(endBal)+'</p></div>' +
-            '<div class="bg-dark-900 rounded-xl px-5 py-4"><p class="text-[10px] text-gray-500 mb-1.5">Изменение</p><p class="text-lg font-bold '+(change>=0?'text-emerald-400':'text-red-400')+' ">'+fmtRub(change)+' <span class="text-[11px] font-normal">('+(changePct>=0?'+':'')+changePct.toFixed(1)+'%)</span></p></div>' +
-            '<div class="bg-dark-900 rounded-xl px-5 py-4"><p class="text-[10px] text-gray-500 mb-1.5">Без пополнений</p><p class="text-lg font-bold '+(realGain>=0?'text-emerald-400':'text-red-400')+' ">'+fmtRub(realGain)+' <span class="text-[11px] font-normal">('+(realPct>=0?'+':'')+realPct.toFixed(1)+'%)</span></p></div>';
+        balanceCards =
+            amCard('Начало', fmtRub(startBal), 'text-white') +
+            amCard('Конец', fmtRub(endBal), 'text-white') +
+            amCard('Изменение', fmtRub(change) + ' <span class="text-[10px] font-normal">(' + (changePct>=0?'+':'') + changePct.toFixed(1) + '%)</span>', change>=0?'text-emerald-400':'text-red-400') +
+            amCard('Без пополнений', fmtRub(realGain) + ' <span class="text-[10px] font-normal">(' + (realPct>=0?'+':'') + realPct.toFixed(1) + '%)</span>', realGain>=0?'text-emerald-400':'text-red-400');
     }
     const totals = {};
     flows.forEach(f => { totals[f.type] = (totals[f.type]||0) + f.amount; });
@@ -768,12 +774,9 @@ function renderAnalytics() {
     fixedTypes.forEach(k => {
         const v = totals[k] || 0;
         const has = totals[k] !== undefined && v !== 0;
-        flowCards += '<div class="bg-dark-900 rounded-xl px-5 py-4">'+
-            '<p class="text-[10px] text-gray-500 mb-1.5">'+(labels[k]||k)+'</p>'+
-            '<p class="text-lg font-bold '+(has ? (v>=0?'text-emerald-400':'text-red-400') : 'text-gray-600')+' ">'+(has ? fmtRub(v) : '—')+'</p></div>';
+        flowCards += amCard(labels[k]||k, has ? fmtRub(v) : '—', has ? (v>=0?'text-emerald-400':'text-red-400') : 'text-gray-600');
     });
-    document.getElementById('amTotals').innerHTML = 
-        '<div class="grid grid-cols-2 gap-3">' + balanceCards + flowCards + '</div>';
+    document.getElementById('amTotals').innerHTML = balanceCards + flowCards;
 }
 
 document.addEventListener('keydown', e => { if (e.key==='Escape') document.getElementById('analyticsModal').style.display='none'; });
