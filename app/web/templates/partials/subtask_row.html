@@ -12,7 +12,7 @@
     {% else %}
     <span class="icon-action icon-action--success !p-1 opacity-40 cursor-default">{{ icon_check('w-4 h-4') }}</span>
     {% endif %}
-    <span class="flex-1 min-w-0 break-words text-gray-300 leading-snug">{{ sub.title | linkify }}</span>
+    <span class="flex-1 min-w-0 break-words text-gray-300 leading-snug">{{ sub.title }}</span>
     <button hx-delete="/tasks/{{ sub.id }}/subtask"
             hx-target="#subtasks-{{ parent_id }}"
             hx-swap="innerHTML"
