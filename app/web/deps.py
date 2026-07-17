@@ -491,6 +491,30 @@ async def get_subtask_today_progress(db: AsyncSession) -> dict:
     roots_result = await db.execute(select(Task).where(*_today_roots_filter(today)))
     roots = roots_result.scalars().all()
 
+    # Also include parents whose subtasks were completed today (future due_date)
+    extra_result = await db.execute(
+        select(Task)
+        .where(
+            Task.parent_task_id.isnot(None),
+            Task.status == "выполнена",
+            Task.completed_at.isnot(None),
+            func.date(Task.completed_at) == today.isoformat(),
+        )
+    )
+    extra_subs = extra_result.scalars().all()
+    extra_parent_ids = set()
+    for sub in extra_subs:
+        if sub.parent_task_id:
+            extra_parent_ids.add(sub.parent_task_id)
+    
+    if extra_parent_ids:
+        extra_roots_result = await db.execute(
+            select(Task).where(Task.id.in_(extra_parent_ids))
+        )
+        for r in extra_roots_result.scalars().all():
+            if r.id not in {p.id for p in roots}:
+                roots.append(r)
+
     if not roots:
         return {"parent_total": 0, "parent_done": 0, "subtask_total": 0, "subtask_done": 0}
 
