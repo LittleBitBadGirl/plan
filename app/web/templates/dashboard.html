@@ -123,11 +123,9 @@
     </div>
 
     <!-- AI Warning -->
-    {% if ai_warning %}
-    <div class="mb-6 p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">
-        <p class="text-yellow-300">{{ ai_warning }}</p>
+    <div id="ai-warning-block" class="{% if not ai_warning %}hidden{% endif %} mb-6 p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">
+        <p class="text-yellow-300">{% if ai_warning %}{{ ai_warning }}{% endif %}</p>
     </div>
-    {% endif %}
 
     <div class="flex flex-col lg:grid lg:grid-cols-3 gap-6">
         

@@ -42,20 +42,43 @@ async def test_progress_parent_with_subs_excluded_from_progress_bar(db):
 
 
 @pytest.mark.asyncio
-async def test_actionable_parent_not_counted_subs_without_dl(db):
-    """Баннер: родитель не считается, подзадачи без deadline тоже."""
+async def test_actionable_subs_without_dl_count(db):
+    """Баннер: подзадачи без DL тоже входят в нагрузку."""
     today = date.today()
     parent = Task(title="Лендинг", due_date=today, status="новая", source="web")
     db.add(parent)
     await db.flush()
 
-    for i in range(13):
+    for i in range(5):
         db.add(Task(title=f"Шаг {i}", parent_task_id=parent.id, status="новая", source="web"))
     await db.commit()
 
     completed, total = await get_today_actionable_stats(db)
-    assert total == 0
+    assert total == 5
     assert completed == 0
+
+
+@pytest.mark.asyncio
+async def test_actionable_sub_without_dl_completed_today(db):
+    """Закрытие подзадачи без DL сегодня увеличивает и total, и completed."""
+    today = date.today()
+    parent = Task(title="Проект", due_date=today, status="новая", source="web")
+    db.add(parent)
+    await db.flush()
+
+    db.add(Task(
+        title="Без DL",
+        parent_task_id=parent.id,
+        status="выполнена",
+        completed_at=datetime.utcnow(),
+        source="web",
+    ))
+    db.add(Task(title="Ещё одна", parent_task_id=parent.id, status="новая", source="web"))
+    await db.commit()
+
+    completed, total = await get_today_actionable_stats(db)
+    assert total == 2
+    assert completed == 1
 
 
 @pytest.mark.asyncio

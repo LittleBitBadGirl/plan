@@ -535,12 +535,12 @@ async def get_today_stats(db: AsyncSession):
     return await get_today_progress(db)
 
 
-def _actionable_subtasks_filter(today: date) -> list:
-    """Подзадачи в аналитике: deadline задан и <= сегодня, открыты или закрыты сегодня."""
+def _actionable_subtask_filters(today: date, parent_ids: list[int]) -> list:
+    """Подзадачи для баннера: у родителей на сегодня, без DL или DL <= сегодня."""
     return [
-        Task.parent_task_id.isnot(None),
-        Task.deadline.isnot(None),
-        Task.deadline <= today,
+        Task.parent_task_id.in_(parent_ids),
+        Task.item_kind == "task",
+        or_(Task.deadline.is_(None), Task.deadline <= today),
         or_(
             Task.status != "выполнена",
             and_(
@@ -549,19 +549,29 @@ def _actionable_subtasks_filter(today: date) -> list:
                 func.date(Task.completed_at) == today.isoformat(),
             ),
         ),
-        Task.item_kind == "task",
     ]
 
 
 async def get_today_actionable_stats(db: AsyncSession) -> tuple[int, int]:
-    """Реальная дневная нагрузка для баннера: standalone + подзадачи с DL <= сегодня.
+    """Реальная дневная нагрузка для баннера: standalone + подзадачи родителей на сегодня.
 
-    Родительские задачи с подзадачами не считаются — только их подзадачи с дедлайном.
+    Подзадачи считаются если:
+    - deadline не задан (работаем без DL), или
+    - deadline <= сегодня (DL наступил).
+    Подзадачи с DL в будущем не входят, пока дата не наступит.
     """
     today = date.today()
     completed, total = await get_today_progress(db)
 
-    subs_result = await db.execute(select(Task).where(*_actionable_subtasks_filter(today)))
+    roots_result = await db.execute(select(Task).where(*_today_roots_filter(today)))
+    roots = roots_result.scalars().all()
+    if not roots:
+        return completed, total
+
+    root_ids = [r.id for r in roots]
+    subs_result = await db.execute(
+        select(Task).where(*_actionable_subtask_filters(today, root_ids))
+    )
     subs = subs_result.scalars().all()
 
     sub_completed = sum(
@@ -624,10 +634,27 @@ def today_subtask_stats_oob_html(sp: dict) -> str:
     )
 
 
+async def ai_warning_oob_html(db: AsyncSession) -> str:
+    """HTMX OOB: жёлтый баннер нагрузки на дашборде."""
+    warning = await build_daily_load_warning(db)
+    if warning:
+        return (
+            f'<div id="ai-warning-block" hx-swap-oob="true" '
+            f'class="mb-6 p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">'
+            f'<p class="text-yellow-300">{warning}</p></div>'
+        )
+    return '<div id="ai-warning-block" hx-swap-oob="true" class="hidden"></div>'
+
+
 async def append_today_stats_oob(content: str, db: AsyncSession) -> str:
     completed, total = await get_today_stats(db)
     sp = await get_subtask_today_progress(db)
-    return content + today_stats_oob_html(completed, total) + today_subtask_stats_oob_html(sp)
+    return (
+        content
+        + today_stats_oob_html(completed, total)
+        + today_subtask_stats_oob_html(sp)
+        + await ai_warning_oob_html(db)
+    )
 
 
 def _completed_tasks_base_filter(start: date, end: date):
