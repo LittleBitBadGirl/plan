@@ -1,0 +1,18 @@
+{# DL — крайний срок (deadline), отдельно от due_date (фокус дня) #}
+
+{% macro deadline_badge(dl, today=None) %}
+{% if dl %}
+{% set _today = today if today is defined and today else today_date() %}
+<span class="deadline-badge{% if dl < _today %} deadline-badge--overdue{% elif dl == _today %} deadline-badge--today{% else %} deadline-badge--future{% endif %}"
+      title="Дедлайн — {% if dl < _today %}просрочен{% elif dl == _today %}сегодня{% else %}{{ dl.strftime('%d.%m') }}{% endif %}">
+    DL&nbsp;{{ dl.strftime('%d.%m') }}
+</span>
+{% endif %}
+{% endmacro %}
+
+{% macro deadline_active_class(dl, today=None, done=false) %}
+{%- if dl and not done -%}
+{%- set _today = today if today is defined and today else today_date() -%}
+{%- if dl <= _today -%} deadline-active{%- endif -%}
+{%- endif -%}
+{% endmacro %}

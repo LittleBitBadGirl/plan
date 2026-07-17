@@ -1,5 +1,7 @@
-{% from 'partials/icons_macros.html' import icon_check, icon_trash %}
-<div id="subtask-row-{{ sub.id }}" class="flex items-start gap-2 text-sm {{ 'opacity-50 line-through text-gray-600' if sub.status == 'выполнена' else '' }}">
+{% from 'partials/icons_macros.html' import icon_check, icon_trash, icon_calendar %}
+{% from 'partials/deadline_macros.html' import deadline_badge, deadline_active_class %}
+{% set _today = today if today is defined else today_date() %}
+<div id="subtask-row-{{ sub.id }}" class="flex items-start gap-2 text-sm{{ deadline_active_class(sub.deadline, _today, sub.status == 'выполнена') }}{{ ' opacity-50 line-through text-gray-600' if sub.status == 'выполнена' else '' }} rounded px-1 py-0.5">
     {% if sub.status != 'выполнена' %}
     <form hx-post="/tasks/{{ sub.id }}/complete-subtask"
           hx-target="#subtask-row-{{ sub.id }}"
@@ -13,10 +15,27 @@
     <span class="icon-action icon-action--success !p-1 opacity-40 cursor-default">{{ icon_check('w-4 h-4') }}</span>
     {% endif %}
     <span class="flex-1 min-w-0 break-words text-gray-300 leading-snug">{{ sub.title }}</span>
+    {{ deadline_badge(sub.deadline, _today) }}
+    {% if sub.status != 'выполнена' %}
+    <form hx-post="/tasks/{{ sub.id }}/deadline"
+          hx-target="#subtask-row-{{ sub.id }}"
+          hx-swap="outerHTML"
+          class="inline shrink-0">
+        <input type="text" name="deadline" placeholder="DL" maxlength="5"
+               inputmode="numeric" autocomplete="off" title="ДД.ММ — дедлайн"
+               class="date-mask-ddmm bg-dark-900 border border-dark-700 rounded px-1 py-0.5 text-[10px] text-white hidden w-12">
+        <button type="button"
+                onclick="this.previousElementSibling.classList.toggle('hidden'); this.previousElementSibling.focus()"
+                class="icon-action icon-action--info !p-1"
+                title="Задать дедлайн">
+            {{ icon_calendar('w-3.5 h-3.5') }}
+        </button>
+    </form>
+    {% endif %}
     <button hx-delete="/tasks/{{ sub.id }}/subtask"
             hx-target="#subtasks-{{ parent_id }}"
             hx-swap="innerHTML"
-            class="icon-action icon-action--danger !p-1"
+            class="icon-action icon-action--danger !p-1 shrink-0"
             title="Удалить">
         {{ icon_trash() }}
     </button>

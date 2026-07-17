@@ -304,6 +304,13 @@ def _strip_emoji(text: str) -> str:
 
 templates.env.filters["noemoji"] = _strip_emoji
 
+
+def _today_date() -> date:
+    return date.today()
+
+
+templates.env.globals["today_date"] = _today_date
+
 _URL_IN_TEXT = re.compile(r"((?:https?://|www\.)[^\s<>\"']+)")
 
 
@@ -526,6 +533,42 @@ async def get_subtask_today_progress(db: AsyncSession) -> dict:
 async def get_today_stats(db: AsyncSession):
     """Статистика сегодняшнего дня: обычные задачи + регулярные шаблоны на сегодня."""
     return await get_today_progress(db)
+
+
+def _actionable_subtasks_filter(today: date) -> list:
+    """Подзадачи в аналитике: deadline задан и <= сегодня, открыты или закрыты сегодня."""
+    return [
+        Task.parent_task_id.isnot(None),
+        Task.deadline.isnot(None),
+        Task.deadline <= today,
+        or_(
+            Task.status != "выполнена",
+            and_(
+                Task.status == "выполнена",
+                Task.completed_at.isnot(None),
+                func.date(Task.completed_at) == today.isoformat(),
+            ),
+        ),
+        Task.item_kind == "task",
+    ]
+
+
+async def get_today_actionable_stats(db: AsyncSession) -> tuple[int, int]:
+    """Реальная дневная нагрузка для баннера: standalone + подзадачи с DL <= сегодня.
+
+    Родительские задачи с подзадачами не считаются — только их подзадачи с дедлайном.
+    """
+    today = date.today()
+    completed, total = await get_today_progress(db)
+
+    subs_result = await db.execute(select(Task).where(*_actionable_subtasks_filter(today)))
+    subs = subs_result.scalars().all()
+
+    sub_completed = sum(
+        1 for s in subs
+        if s.status == "выполнена" and _completed_on_day(s.completed_at, today)
+    )
+    return completed + sub_completed, total + len(subs)
 
 
 def today_stats_oob_html(completed: int, total: int) -> str:
@@ -778,16 +821,10 @@ async def get_subtask_insights(db: AsyncSession) -> dict:
     }
 
 
-async def build_daily_load_warning(
-    db: AsyncSession, completed: int, total: int, subtask_progress: dict = None
-) -> Optional[str]:
-    """Предупреждение о перегрузке — полная картина дня (standalone + подзадачи + регулярные)."""
-    # Полный тотал: standalone + родители с подзадачами
-    parent_count = subtask_progress["parent_total"] if subtask_progress else 0
-    parent_done = subtask_progress["parent_done"] if subtask_progress else 0
-    full_total = total + parent_count
-    full_completed = completed + parent_done
-    remaining = max(full_total - full_completed, 0)
+async def build_daily_load_warning(db: AsyncSession) -> Optional[str]:
+    """Предупреждение о перегрузке — только реальные задачи на сегодня."""
+    completed, total = await get_today_actionable_stats(db)
+    remaining = max(total - completed, 0)
     if remaining <= 8:
         return None
 
@@ -799,7 +836,7 @@ async def build_daily_load_warning(
         avg_part = "Обычно вы закрываете ~5 в день."
 
     return (
-        f"Сегодня {full_total} задач: {full_completed} готово, {remaining} осталось. {avg_part}"
+        f"Сегодня {total} задач: {completed} готово, {remaining} осталось. {avg_part}"
     )
 
 
@@ -974,6 +1011,7 @@ __all__ = [
     "get_categories_list",
     "get_today_stats",
     "get_today_progress",
+    "get_today_actionable_stats",
     "get_subtask_today_progress",
     "today_stats_oob_html",
     "today_subtask_stats_oob_html",

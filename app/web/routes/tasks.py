@@ -121,6 +121,7 @@ async def delete_subtask(request: Request, task_id: int):
                 "request": request,
                 "subtasks": subtasks,
                 "parent_id": parent_id,
+                "today": date.today(),
             })
             
     return HTMLResponse("Ошибка удаления")
@@ -135,6 +136,7 @@ async def task_web_create(
     category_name: str = Form(""),  # Новое поле для имени подкатегории
     priority: str = Form("средний"),
     due_date: str = Form(""),
+    deadline: str = Form(""),
     status: str = Form("новая"),
     is_milestone: bool = Form(False),
     impact_notes: str = Form(""),
@@ -163,6 +165,7 @@ async def task_web_create(
             category_id=final_cat_id,
             priority=priority,
             due_date=_parse_due_date_form(due_date),
+            deadline=_parse_due_date_form(deadline),
             status=status,
             is_milestone=is_milestone,
             impact_notes=impact_notes,
@@ -186,6 +189,7 @@ async def task_web_edit(
     category_id: str = Form(""),
     priority: str = Form("средний"),
     due_date: str = Form(""),
+    deadline: str = Form(""),
     status: str = Form("новая"),
     is_milestone: bool = Form(False),
     impact_notes: str = Form(""),
@@ -203,6 +207,7 @@ async def task_web_edit(
         task.category_id = int(category_id) if category_id else None
         task.priority = priority
         task.due_date = _parse_due_date_form(due_date)
+        task.deadline = _parse_due_date_form(deadline)
         task.status = status
         task.is_milestone = is_milestone
         task.impact_notes = impact_notes
@@ -243,18 +248,17 @@ async def create_subtask_htmx(
     request: Request,
     task_id: int,
     title: str = Form(...),
+    deadline: str = Form(""),
 ):
-    """HTMX: создать подзадачу (наследует ДЛ родителя)"""
+    """HTMX: создать подзадачу с опциональным дедлайном (DL)."""
     async with async_session() as db:
-        parent_res = await db.execute(select(Task).where(Task.id == task_id))
-        parent = parent_res.scalar_one_or_none()
-        subtask_due = parent.due_date if parent else None
+        parsed_dl = _parse_due_date_form(deadline) if deadline.strip() else None
         subtask = Task(
             title=title,
             parent_task_id=task_id,
             source="web",
             status="новая",
-            due_date=subtask_due,
+            deadline=parsed_dl,
         )
         db.add(subtask)
         await db.commit()
@@ -270,6 +274,7 @@ async def create_subtask_htmx(
         "request": request,
         "subtasks": subtasks,
         "parent_id": task_id,
+        "today": date.today(),
     })
 
 
@@ -374,10 +379,6 @@ async def _sync_parent(db: AsyncSession, parent_id: int):
         parent.status = "выполнена"
         parent.completed_at = datetime.utcnow()
         parent.is_archived = True
-    else:
-        dates = [s.due_date for s in active if s.due_date]
-        if dates:
-            parent.due_date = min(dates)
     await db.commit()
 
 
@@ -406,6 +407,7 @@ async def complete_subtask_htmx(request: Request, task_id: int):
             "request": request,
             "sub": subtask,
             "parent_id": subtask.parent_task_id,
+            "today": date.today(),
         })
         return HTMLResponse(content=await append_today_stats_oob(row, db))
 
@@ -439,6 +441,7 @@ async def complete_task(request: Request, task_id: int):
                     "request": request,
                     "sub": task,
                     "parent_id": task.parent_task_id,
+                    "today": date.today(),
                 })
                 return HTMLResponse(content=await append_today_stats_oob(row, db))
 
@@ -518,3 +521,31 @@ async def plan_task(request: Request, task_id: int, due_date: str = Form(None)):
             return HTMLResponse(content=await get_tasks_today(db, request))
         except:
             raise HTTPException(status_code=400, detail="Неверный формат даты (ДД.ММ)")
+
+
+@router.post("/tasks/{task_id}/deadline", response_class=HTMLResponse)
+async def set_task_deadline(request: Request, task_id: int, deadline: str = Form("")):
+    """Установить дедлайн (DL) — отдельно от даты выполнения."""
+    async with async_session() as db:
+        result = await db.execute(select(Task).where(Task.id == task_id))
+        task = result.scalar_one_or_none()
+        if not task:
+            raise HTTPException(status_code=404, detail="Задача не найдена")
+        try:
+            task.deadline = _parse_due_date_form(deadline) if deadline.strip() else None
+            await db.commit()
+
+            if task.parent_task_id:
+                row = templates.get_template("partials/subtask_row.html").render({
+                    "request": request,
+                    "sub": task,
+                    "parent_id": task.parent_task_id,
+                    "today": date.today(),
+                })
+                return HTMLResponse(content=row)
+
+            return HTMLResponse(content=await get_tasks_today(db, request))
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Неверный формат даты (ДД.ММ)") from exc

@@ -154,6 +154,36 @@
                 <p class="text-[11px] text-gray-500 mt-1.5">Введите 4 цифры, например 1206 → 12.06</p>
             </div>
 
+            <!-- Deadline (DL) -->
+            <div>
+                <label for="deadline" class="block text-sm font-medium text-gray-300 mb-2">
+                    Дедлайн (DL)
+                </label>
+                <p class="text-xs text-gray-500 mb-2">Когда задачу нужно закончить — опционально, не влияет на фокус дня</p>
+                <div class="flex flex-wrap gap-2 mb-2">
+                    <button type="button" data-deadline-chip="today"
+                            class="date-chip px-3 py-1.5 text-xs font-bold rounded-lg border border-dark-500 bg-dark-700 text-gray-300 hover:border-red-700/50 hover:text-red-400 transition-colors min-h-[36px]">
+                        Сегодня
+                    </button>
+                    <button type="button" data-deadline-chip="tomorrow"
+                            class="date-chip px-3 py-1.5 text-xs font-bold rounded-lg border border-dark-500 bg-dark-700 text-gray-300 hover:border-red-700/50 hover:text-red-400 transition-colors min-h-[36px]">
+                        Завтра
+                    </button>
+                    <button type="button" data-deadline-chip="clear"
+                            class="date-chip px-3 py-1.5 text-xs font-bold rounded-lg border border-dark-500 bg-dark-700 text-gray-400 hover:border-gray-400 transition-colors min-h-[36px]">
+                        Без DL
+                    </button>
+                </div>
+                <input type="text" id="deadline" name="deadline"
+                       inputmode="numeric"
+                       autocomplete="off"
+                       maxlength="5"
+                       placeholder="ДД.ММ"
+                       value="{% if task and task.deadline %}{{ task.deadline.strftime('%d.%m') }}{% endif %}"
+                       class="date-mask-ddmm w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white text-base
+                              placeholder-gray-500 focus:outline-none focus:border-red-700/50 min-h-[48px] font-mono tracking-wide">
+            </div>
+
             <!-- Footer -->
             <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center pt-4 border-t border-dark-600">
                 <button type="submit"
@@ -203,6 +233,28 @@
             setDueDate(base);
         });
     });
+
+    const dlInput = document.getElementById('deadline');
+    if (dlInput) {
+        function setDeadline(d) {
+            dlInput.value = formatDate(d);
+            dlInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        document.querySelectorAll('[data-deadline-chip]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const kind = btn.getAttribute('data-deadline-chip');
+                if (kind === 'clear') {
+                    dlInput.value = '';
+                    return;
+                }
+                const base = new Date();
+                if (kind === 'tomorrow') {
+                    base.setDate(base.getDate() + 1);
+                }
+                setDeadline(base);
+            });
+        });
+    }
 })();
 </script>
 {% endblock %}

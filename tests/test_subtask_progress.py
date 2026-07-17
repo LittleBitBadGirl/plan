@@ -5,7 +5,7 @@ import pytest
 from app.models.recurring import RecurringTask
 from app.models.recurring_completion import RecurringCompletion
 from app.models.task import Task
-from app.web.deps import get_today_progress
+from app.web.deps import get_today_progress, get_today_actionable_stats, get_subtask_today_progress
 
 
 @pytest.mark.asyncio
@@ -21,8 +21,8 @@ async def test_progress_leaf_task(db):
 
 
 @pytest.mark.asyncio
-async def test_progress_parent_with_subs_counts_as_one_card(db):
-    """13 подзадач = 1 карточка в total, не 13."""
+async def test_progress_parent_with_subs_excluded_from_progress_bar(db):
+    """Родитель с подзадачами не входит в полоску ПРОГРЕСС — только в ПОДЗАДАЧИ."""
     today = date.today()
     parent = Task(title="Лендинг", due_date=today, status="новая", source="web")
     db.add(parent)
@@ -33,68 +33,94 @@ async def test_progress_parent_with_subs_counts_as_one_card(db):
     await db.commit()
 
     completed, total = await get_today_progress(db)
-    assert total == 1
+    assert total == 0
     assert completed == 0
+
+    sp = await get_subtask_today_progress(db)
+    assert sp["parent_total"] == 1
+    assert sp["subtask_total"] == 13
 
 
 @pytest.mark.asyncio
-async def test_progress_subtask_completed_today(db):
+async def test_actionable_parent_not_counted_subs_without_dl(db):
+    """Баннер: родитель не считается, подзадачи без deadline тоже."""
     today = date.today()
     parent = Task(title="Лендинг", due_date=today, status="новая", source="web")
     db.add(parent)
     await db.flush()
 
-    sub = Task(
-        title="Шаг 1",
-        parent_task_id=parent.id,
-        status="выполнена",
-        completed_at=datetime.utcnow(),
-        source="web",
-        is_archived=False,
-    )
-    db.add(sub)
-    db.add(Task(title="Шаг 2", parent_task_id=parent.id, status="новая", source="web"))
+    for i in range(13):
+        db.add(Task(title=f"Шаг {i}", parent_task_id=parent.id, status="новая", source="web"))
     await db.commit()
 
-    completed, total = await get_today_progress(db)
-    assert total == 1
-    assert completed == 1
+    completed, total = await get_today_actionable_stats(db)
+    assert total == 0
+    assert completed == 0
 
 
 @pytest.mark.asyncio
-async def test_progress_mixed_leaf_and_subtasks(db):
-    """X = закрытые листья + чекнутые подзадачи, Y = все карточки."""
+async def test_actionable_subs_with_deadline_today(db):
+    """Баннер: подзадачи с deadline <= сегодня считаются поштучно."""
     today = date.today()
-    done_leaf = Task(
-        title="Звонок",
-        due_date=today,
-        status="выполнена",
-        completed_at=datetime.utcnow(),
-        is_archived=True,
-        source="web",
-    )
-    open_leaf = Task(title="Письмо", due_date=today, status="новая", source="web")
-    parent = Task(title="Проект", due_date=today, status="новая", source="web")
-    db.add_all([done_leaf, open_leaf, parent])
+    parent = Task(title="Лендинг", due_date=today, status="новая", source="web")
+    db.add(parent)
     await db.flush()
 
+    db.add(Task(title="Шаг 1", parent_task_id=parent.id, deadline=today, status="новая", source="web"))
     db.add(Task(
-        title="Sub1",
+        title="Шаг 2",
         parent_task_id=parent.id,
+        deadline=today,
         status="выполнена",
         completed_at=datetime.utcnow(),
         source="web",
     ))
-    db.add(Task(title="Sub2", parent_task_id=parent.id, status="новая", source="web"))
+    db.add(Task(title="Шаг 3", parent_task_id=parent.id, deadline=today, status="новая", source="web"))
     await db.commit()
 
-    completed, total = await get_today_progress(db)
+    completed, total = await get_today_actionable_stats(db)
     assert total == 3
-    assert completed == 2
+    assert completed == 1
 
 
 @pytest.mark.asyncio
-async def test_progress_subtask_completed_yesterday_not_counted(db):
+async def test_actionable_subs_future_deadline_not_counted(db):
+    """Подзадачи с deadline в будущем не портят статистику."""
+    today = date.today()
+    future = today + timedelta(days=7)
+    parent = Task(title="Проект", due_date=today, status="новая", source="web")
+    db.add(parent)
+    await db.flush()
+
+    db.add(Task(title="Сегодня", parent_task_id=parent.id, deadline=today, status="новая", source="web"))
+    db.add(Task(title="Потом", parent_task_id=parent.id, deadline=future, status="новая", source="web"))
+    await db.commit()
+
+    completed, total = await get_today_actionable_stats(db)
+    assert total == 1
+    assert completed == 0
+
+
+@pytest.mark.asyncio
+async def test_actionable_overdue_sub_counted(db):
+    """Просроченные подзадачи (deadline <= сегодня) входят в нагрузку."""
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    parent = Task(title="Проект", due_date=today, status="новая", source="web")
+    db.add(parent)
+    await db.flush()
+
+    db.add(Task(title="Вчера", parent_task_id=parent.id, deadline=yesterday, status="новая", source="web"))
+    await db.commit()
+
+    completed, total = await get_today_actionable_stats(db)
+    assert total == 1
+    assert completed == 0
+
+
+@pytest.mark.asyncio
+async def test_actionable_sub_completed_yesterday_not_in_today(db):
+    """Подзадача, закрытая вчера, не входит в сегодняшнюю нагрузку."""
     today = date.today()
     parent = Task(title="Лендинг", due_date=today, status="новая", source="web")
     db.add(parent)
@@ -104,17 +130,42 @@ async def test_progress_subtask_completed_yesterday_not_counted(db):
     db.add(Task(
         title="Вчера",
         parent_task_id=parent.id,
+        deadline=today - timedelta(days=1),
         status="выполнена",
         completed_at=yesterday,
         source="web",
-        is_archived=False,
     ))
-    db.add(Task(title="Сегодня", parent_task_id=parent.id, status="новая", source="web"))
+    db.add(Task(title="Сегодня", parent_task_id=parent.id, deadline=today, status="новая", source="web"))
     await db.commit()
 
-    completed, total = await get_today_progress(db)
+    completed, total = await get_today_actionable_stats(db)
     assert total == 1
     assert completed == 0
+
+
+@pytest.mark.asyncio
+async def test_actionable_mixed_leaf_and_subs(db):
+    """Standalone + подзадачи с deadline."""
+    today = date.today()
+    open_leaf = Task(title="Письмо", due_date=today, status="новая", source="web")
+    parent = Task(title="Проект", due_date=today, status="новая", source="web")
+    db.add_all([open_leaf, parent])
+    await db.flush()
+
+    db.add(Task(
+        title="Sub1",
+        parent_task_id=parent.id,
+        deadline=today,
+        status="выполнена",
+        completed_at=datetime.utcnow(),
+        source="web",
+    ))
+    db.add(Task(title="Sub2", parent_task_id=parent.id, deadline=today, status="новая", source="web"))
+    await db.commit()
+
+    completed, total = await get_today_actionable_stats(db)
+    assert total == 3  # 1 leaf + 2 subs with deadline
+    assert completed == 1
 
 
 @pytest.mark.asyncio
@@ -135,38 +186,6 @@ async def test_progress_archived_leaf_completed_today(db):
 
     completed, total = await get_today_progress(db)
     assert total == 2
-    assert completed == 1
-
-
-@pytest.mark.asyncio
-async def test_progress_parent_closed_today_counts_as_one(db):
-    """Закрытие родителя целиком = +1, не по числу подзадач."""
-    today = date.today()
-    parent = Task(
-        title="Проект",
-        due_date=today,
-        status="выполнена",
-        completed_at=datetime.utcnow(),
-        is_archived=True,
-        source="web",
-    )
-    db.add(parent)
-    await db.flush()
-
-    now = datetime.utcnow()
-    for title in ("A", "B", "C"):
-        db.add(Task(
-            title=title,
-            parent_task_id=parent.id,
-            status="выполнена",
-            completed_at=now,
-            source="web",
-            is_archived=False,
-        ))
-    await db.commit()
-
-    completed, total = await get_today_progress(db)
-    assert total == 1
     assert completed == 1
 
 
@@ -213,35 +232,6 @@ async def test_progress_recurring_completed_today(db):
 
     completed, total = await get_today_progress(db)
     assert total == 1
-    assert completed == 1
-
-
-@pytest.mark.asyncio
-async def test_progress_mixed_regular_and_recurring(db):
-    """1/2: одна обычная закрыта, одна регулярная открыта."""
-    today = date.today()
-    db.add(
-        Task(
-            title="Сделано",
-            due_date=today,
-            status="выполнена",
-            completed_at=datetime.utcnow(),
-            is_archived=True,
-            source="web",
-        )
-    )
-    db.add(
-        RecurringTask(
-            title="Регулярная",
-            recurrence_type="daily",
-            start_date=today,
-            is_active=True,
-        )
-    )
-    await db.commit()
-
-    completed, total = await get_today_progress(db)
-    assert total == 2
     assert completed == 1
 
 

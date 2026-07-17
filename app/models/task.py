@@ -14,6 +14,7 @@ class Task(Base):
     status = Column(String(20), default="новая", index=True)  # новая/в_работе/выполнена/отложена
     priority = Column(String(20), default="средний")  # низкий/средний/высокий
     due_date = Column(Date, nullable=True, index=True)
+    deadline = Column(Date, nullable=True, index=True)  # DL — крайний срок (отдельно от фокуса дня)
     due_time = Column(Time, nullable=True) # Время встречи
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)

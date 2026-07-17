@@ -23,6 +23,7 @@ class TaskResponse(BaseModel):
     status: str
     priority: str
     due_date: Optional[date]
+    deadline: Optional[date]
     created_at: datetime
     completed_at: Optional[datetime]
     source: str
@@ -50,6 +51,7 @@ class TaskCreate(BaseModel):
     category_id: Optional[int] = None
     priority: str = "средний"
     due_date: Optional[date] = None
+    deadline: Optional[date] = None
     source: str = "web"
     tags: Optional[str] = None
     size: Optional[str] = None  # L / XL
@@ -62,6 +64,7 @@ class TaskUpdate(BaseModel):
     status: Optional[str] = None
     priority: Optional[str] = None
     due_date: Optional[date] = None
+    deadline: Optional[date] = None
     size: Optional[str] = None  # L / XL / None (пустая строка = сброс)
 
 
@@ -110,6 +113,7 @@ async def create_task(
         category_id=task_data.category_id,
         priority=task_data.priority,
         due_date=task_data.due_date,
+        deadline=task_data.deadline,
         source=task_data.source,
         parent_task_id=task_data.parent_task_id,
         tags=task_data.tags,
@@ -257,6 +261,9 @@ async def add_subtask(
         category_id=task_data.category_id or parent.category_id,
         parent_task_id=task_id,
         source=task_data.source,
+        due_date=task_data.due_date,
+        deadline=task_data.deadline,
+        status="новая",
     )
     db.add(subtask)
     await db.flush()

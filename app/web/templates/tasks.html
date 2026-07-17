@@ -125,6 +125,9 @@
                     </td>
                     <td class="px-6 py-4 text-gray-400">
                         {% if task.due_date %}{{ task.due_date.strftime('%d.%m.%Y') }}{% else %}—{% endif %}
+                        {% if task.deadline %}
+                        <span class="block mt-0.5 text-xs text-red-400/80">DL {{ task.deadline.strftime('%d.%m') }}</span>
+                        {% endif %}
                     </td>
                     <td class="px-6 py-4">
                         <div class="flex items-center space-x-2">

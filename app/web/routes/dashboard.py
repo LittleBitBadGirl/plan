@@ -159,7 +159,7 @@ async def dashboard(request: Request):
             from app.utils.logger import app_logger
             app_logger.warning(f"Calendar events skipped: {exc}")
 
-        ai_warning = await build_daily_load_warning(db, completed, total, subtask_progress)
+        ai_warning = await build_daily_load_warning(db)
 
     return templates.TemplateResponse(request, "dashboard.html", {
         "request": request,

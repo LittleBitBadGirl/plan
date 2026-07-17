@@ -1,6 +1,8 @@
 {% from 'partials/icons_macros.html' import icon_check, icon_calendar, icon_backlog, icon_edit, icon_trash, icon_subtasks, icon_clock %}
+{% from 'partials/deadline_macros.html' import deadline_badge, deadline_active_class %}
+{% set _today = today if today is defined else today_date() %}
 
-<div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-amber-700/40 transition flex flex-col gap-3" id="task-{{ task.id }}">
+<div class="bg-dark-800 rounded-lg p-4 border border-dark-700 hover:border-amber-700/40 transition flex flex-col gap-3{{ deadline_active_class(task.deadline, _today, task.status == 'выполнена') }}" id="task-{{ task.id }}">
     <div class="flex items-center gap-2">
         {% if task.due_time %}
             <span class="bg-amber-900/40 text-amber-300 px-1.5 py-0.5 rounded text-xs font-mono border border-amber-700/40">
@@ -8,6 +10,7 @@
             </span>
         {% endif %}
         <h3 class="font-semibold text-white flex-1">{{ task.title }}</h3>
+        {{ deadline_badge(task.deadline, _today) }}
         {% if task.size == 'XL' %}
             <span class="bg-red-900/60 text-red-300 px-2 py-0.5 rounded text-xs font-bold border border-red-700/50" title="Очень крупная задача">XL</span>
         {% elif task.size == 'L' %}
@@ -88,9 +91,12 @@
         <form hx-post="/tasks/{{ task.id }}/subtasks"
               hx-target="#subtasks-{{ task.id }}"
               hx-swap="innerHTML"
-              class="mt-1">
-            <input type="text" name="title" placeholder="+ Добавить подзадачу..." required
-                   class="subtask-add-input w-full bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-700/50">
+              class="flex gap-1 mt-1">
+            <input type="text" name="title" placeholder="+ Подзадача..." required
+                   class="subtask-add-input flex-1 min-w-0 bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-700/50">
+            <input type="text" name="deadline" placeholder="DL" maxlength="5"
+                   inputmode="numeric" autocomplete="off" title="Дедлайн (ДД.ММ) — опционально"
+                   class="date-mask-ddmm w-14 shrink-0 bg-dark-900 border border-dark-700 rounded px-1.5 py-1 text-xs text-white text-center placeholder-gray-600 focus:outline-none focus:border-red-700/40">
         </form>
     </div>
 </div>

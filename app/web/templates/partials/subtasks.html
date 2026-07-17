@@ -1,8 +1,9 @@
 <!-- Список существующих подзадач -->
+{% set _today = today if today is defined else today_date() %}
 {% if subtasks and subtasks|length > 0 %}
     <div class="space-y-1 mb-2">
         {% for sub in subtasks %}
-            {% with parent_id=parent_id %}
+            {% with parent_id=parent_id, today=_today %}
                 {% include 'partials/subtask_row.html' %}
             {% endwith %}
         {% endfor %}
@@ -14,7 +15,10 @@
 <form hx-post="/tasks/{{ parent_id }}/subtasks"
       hx-target="#subtasks-{{ parent_id }}"
       hx-swap="innerHTML"
-      class="mt-1">
-    <input type="text" name="title" placeholder="+ Добавить подзадачу..." required
-           class="subtask-add-input w-full bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500/50">
+      class="flex gap-1 mt-1">
+    <input type="text" name="title" placeholder="+ Подзадача..." required
+           class="subtask-add-input flex-1 min-w-0 bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500/50">
+    <input type="text" name="deadline" placeholder="DL" maxlength="5"
+           inputmode="numeric" autocomplete="off" title="Дедлайн (ДД.ММ) — опционально"
+           class="date-mask-ddmm w-14 shrink-0 bg-dark-900 border border-dark-700 rounded px-1.5 py-1 text-xs text-white text-center placeholder-gray-600 focus:outline-none focus:border-red-700/40">
 </form>

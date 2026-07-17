@@ -1,13 +1,16 @@
 {% from 'partials/icons_macros.html' import icon_check, icon_calendar, icon_edit, icon_trash, icon_subtasks, icon_repeat, icon_bolt %}
+{% from 'partials/deadline_macros.html' import deadline_badge, deadline_active_class %}
+{% set _today = today if today is defined else today_date() %}
 
 {% if tasks %}
 <div class="rounded-xl border border-dark-600 bg-dark-800/50 overflow-hidden divide-y divide-dark-700">
     {% for task in tasks %}
     {% set current_subtasks = subtasks_map.get(task.id, []) %}
-    <div class="group px-3 py-2.5 sm:py-2 hover:bg-dark-700/40 transition-colors" id="task-{{ task.id }}">
+    <div class="group px-3 py-2.5 sm:py-2 hover:bg-dark-700/40 transition-colors{{ deadline_active_class(task.deadline, _today, task.status == 'выполнена') }}" id="task-{{ task.id }}">
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2 min-h-[2rem]">
             <div class="flex-1 min-w-0 flex items-center gap-2">
                 <h3 class="text-[15px] sm:text-sm font-semibold text-white leading-snug sm:truncate" title="{{ task.title }}">{{ task.title }}</h3>
+                {{ deadline_badge(task.deadline, _today) }}
                 {% if task.size == 'XL' %}
                 <span class="bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-red-700/50 shrink-0" title="Очень крупная задача">XL</span>
                 {% elif task.size == 'L' %}
