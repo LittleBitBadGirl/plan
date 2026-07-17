@@ -45,3 +45,4 @@ docs/internal/
 CONTEXT.md
 .env.bak
 uploads/
+__pycache__/

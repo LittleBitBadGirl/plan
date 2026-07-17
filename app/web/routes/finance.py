@@ -245,18 +245,26 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         yearly_income = yearly_row.income or 0
         yearly_expense_gross = yearly_row.expense or 0
         
-        # Сбережения за год
-        yearly_savings_res = await db.execute(
-            select(func.sum(func.abs(Transaction.amount)))
-            .where(
-                Transaction.date >= year_start, 
-                Transaction.date < year_end, 
-                Transaction.amount < 0,
-                Transaction.category_id.in_(SAVINGS_CATEGORY_IDS)
+        # Сбережения за год (из investment_flows: deposit - withdrawal, только положительные)
+        inv_savings_res = await db.execute(
+            select(
+                investment_flows.c.goal_id,
+                func.sum(case((investment_flows.c.type == 'deposit', investment_flows.c.amount), else_=0)).label('dep'),
+                func.sum(case((investment_flows.c.type == 'withdrawal', func.abs(investment_flows.c.amount)), else_=0)).label('wdr')
             )
+            .where(
+                investment_flows.c.date >= year_start,
+                investment_flows.c.date < year_end
+            )
+            .group_by(investment_flows.c.goal_id)
         )
-        yearly_savings = yearly_savings_res.scalar() or 0
-        yearly_expense = yearly_expense_gross - yearly_savings
+        yearly_savings = 0
+        for row in inv_savings_res:
+            net = (row.dep or 0) - (row.wdr or 0)
+            if net > 0:
+                yearly_savings += net
+        yearly_savings = round(yearly_savings)
+        yearly_expense = yearly_expense_gross
 
         # Month stats for previous years (same month, different year)
         prev_years = []
@@ -276,12 +284,21 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
             py_row = py_res.first()
             py_income = py_row.income or 0
             py_expense_gross = py_row.expense or 0
-            py_savings_res = await db.execute(
-                select(func.sum(func.abs(Transaction.amount)))
-                .where(Transaction.date >= py_start, Transaction.date < py_end,
-                       Transaction.amount < 0, Transaction.category_id.in_(SAVINGS_CATEGORY_IDS))
+            py_inv_res = await db.execute(
+                select(
+                    investment_flows.c.goal_id,
+                    func.sum(case((investment_flows.c.type == 'deposit', investment_flows.c.amount), else_=0)).label('dep'),
+                    func.sum(case((investment_flows.c.type == 'withdrawal', func.abs(investment_flows.c.amount)), else_=0)).label('wdr')
+                )
+                .where(investment_flows.c.date >= py_start, investment_flows.c.date < py_end)
+                .group_by(investment_flows.c.goal_id)
             )
-            py_savings = py_savings_res.scalar() or 0
+            py_savings = 0
+            for row in py_inv_res:
+                net = (row.dep or 0) - (row.wdr or 0)
+                if net > 0:
+                    py_savings += net
+            py_savings = round(py_savings)
             if py_income > 0 or py_expense_gross > 0:
                 prev_years.append({
                     'year': py,
@@ -304,12 +321,21 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
             fy_row = fy_res.first()
             fy_income = fy_row.income or 0
             fy_expense_gross = fy_row.expense or 0
-            fy_savings_res = await db.execute(
-                select(func.sum(func.abs(Transaction.amount)))
-                .where(Transaction.date >= fy_start, Transaction.date < fy_end,
-                       Transaction.amount < 0, Transaction.category_id.in_(SAVINGS_CATEGORY_IDS))
+            fy_inv_res = await db.execute(
+                select(
+                    investment_flows.c.goal_id,
+                    func.sum(case((investment_flows.c.type == 'deposit', investment_flows.c.amount), else_=0)).label('dep'),
+                    func.sum(case((investment_flows.c.type == 'withdrawal', func.abs(investment_flows.c.amount)), else_=0)).label('wdr')
+                )
+                .where(investment_flows.c.date >= fy_start, investment_flows.c.date < fy_end)
+                .group_by(investment_flows.c.goal_id)
             )
-            fy_savings = fy_savings_res.scalar() or 0
+            fy_savings = 0
+            for row in fy_inv_res:
+                net = (row.dep or 0) - (row.wdr or 0)
+                if net > 0:
+                    fy_savings += net
+            fy_savings = round(fy_savings)
             if fy_income > 0 or fy_expense_gross > 0:
                 full_years.append({
                     'year': fy,
@@ -321,7 +347,22 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         # Расчет итогов за месяц
         total_income = sum(tx.amount for tx in transactions if tx.amount > 0)
         total_expense = sum(abs(tx.amount) for tx in transactions if tx.amount < 0 and tx.category_id not in SAVINGS_CATEGORY_IDS)
-        total_savings = sum(abs(tx.amount) for tx in transactions if tx.amount < 0 and tx.category_id in SAVINGS_CATEGORY_IDS)
+        # Месячные сбережения (из investment_flows)
+        month_inv_res = await db.execute(
+            select(
+                investment_flows.c.goal_id,
+                func.sum(case((investment_flows.c.type == 'deposit', investment_flows.c.amount), else_=0)).label('dep'),
+                func.sum(case((investment_flows.c.type == 'withdrawal', func.abs(investment_flows.c.amount)), else_=0)).label('wdr')
+            )
+            .where(investment_flows.c.date >= start_date, investment_flows.c.date < end_date)
+            .group_by(investment_flows.c.goal_id)
+        )
+        total_savings = 0
+        for row in month_inv_res:
+            net = (row.dep or 0) - (row.wdr or 0)
+            if net > 0:
+                total_savings += net
+        total_savings = round(total_savings)
         
         # Список категорий для модалки (иерархия)
         goal_ids = [g.id for g in goals]
@@ -577,9 +618,54 @@ async def get_goal_analytics(goal_id: int, period: str = "all"):
             t = f["type"]
             totals[t] = totals.get(t, 0) + f["amount"]
         
+        # Monthly cashflow (2025-2026): per-instrument coupons/dividends + summary
+        cashflow_res = await db.execute(
+            select(
+                func.strftime("%Y", investment_flows.c.date).label("year"),
+                func.strftime("%m", investment_flows.c.date).label("month"),
+                investment_flows.c.type,
+                investment_flows.c.description,
+                func.sum(investment_flows.c.amount).label("total")
+            )
+            .where(
+                investment_flows.c.goal_id == goal_id,
+                investment_flows.c.date >= "2025-01-01",
+                investment_flows.c.type.in_(["coupon", "dividend", "deposit", "withdrawal", "tax"])
+            )
+            .group_by("year", "month", investment_flows.c.type, investment_flows.c.description)
+            .order_by("year", "month")
+        )
+        
+        instruments = {}
+        summary = {}
+        
+        for row in cashflow_res:
+            ym = f"{row.year}-{row.month}"
+            amt = round(row.total)
+            # Summary
+            if ym not in summary:
+                summary[ym] = {"deposits": 0, "withdrawals": 0, "coupons": 0, "dividends": 0, "taxes": 0}
+            if row.type in summary[ym]:
+                summary[ym][row.type] += amt
+            # Per-instrument (only coupons and dividends)
+            if row.type in ("coupon", "dividend") and row.description:
+                name = row.description
+                if name not in instruments:
+                    instruments[name] = {}
+                instruments[name][ym] = instruments[name].get(ym, 0) + amt
+        
+        sorted_instruments = sorted(
+            [{"name": k, "months": v, "total": sum(v.values())} for k, v in instruments.items()],
+            key=lambda x: x["total"], reverse=True
+        )
+        
         return JSONResponse({
             "goal_id": goal_id,
             "snapshots": snapshots,
             "flows": flows,
             "totals": {k: round(v, 2) for k, v in totals.items()},
+            "monthly_cashflow": {
+                "instruments": sorted_instruments,
+                "summary": summary
+            }
         })

@@ -111,6 +111,12 @@
                                 <span class="text-gray-500">Расход</span>
                                 <span class="font-semibold text-red-400/50 tabular-nums">{{ "{:,.0f}".format(py.expense).replace(',', ' ') if py else '—' }}</span>
                             </div>
+                            {% if py and py.savings > 0 %}
+                            <div class="flex justify-between text-[9px]">
+                                <span class="text-gray-500">Сбережения</span>
+                                <span class="font-semibold text-purple-400/50 tabular-nums">{{ "{:,.0f}".format(py.savings).replace(',', ' ') }}</span>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                     <div class="p-3">
@@ -124,6 +130,12 @@
                                 <span class="text-gray-500">Расход</span>
                                 <span class="font-semibold text-red-400/50 tabular-nums">{{ "{:,.0f}".format(fy.expense).replace(',', ' ') }}</span>
                             </div>
+                            {% if fy.savings > 0 %}
+                            <div class="flex justify-between text-[9px]">
+                                <span class="text-gray-500">Сбережения</span>
+                                <span class="font-semibold text-purple-400/50 tabular-nums">{{ "{:,.0f}".format(fy.savings).replace(',', ' ') }}</span>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
