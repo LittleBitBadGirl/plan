@@ -283,7 +283,17 @@
                         <button onclick="toggleYoY()" id="amYoY" class="px-2.5 py-1 text-[10px] rounded-lg border transition font-medium border-dark-600 text-gray-500 hover:text-accent">год-к-году</button>
                     </div>
                     <div id="amSparkline" class="shrink-0 bg-dark-900 rounded-lg p-3" style="display:none"></div>
-                    <div id="amTotals" class="flex-1 min-h-0 grid grid-cols-2 grid-rows-5 gap-2"></div>
+                    <div id="amTotals" class="shrink-0 grid grid-cols-2 gap-2" style="grid-template-rows: repeat(5, minmax(0,1fr))"></div>
+                    <div id="amCashflow" class="flex-1 min-h-0 overflow-auto flex flex-col" style="display:none">
+                        <div class="flex items-center justify-between mb-2 shrink-0">
+                            <p class="text-[8px] text-gray-500">Календарь купонов и дивидендов</p>
+                            <div class="flex gap-1">
+                                <button onclick="switchCashflowYear(2025)" id="cfBtn2025" class="px-2 py-0.5 text-[8px] rounded border transition bg-dark-700 text-gray-400 border-dark-600">2025</button>
+                                <button onclick="switchCashflowYear(2026)" id="cfBtn2026" class="px-2 py-0.5 text-[8px] rounded border transition bg-accent/20 text-accent border-accent/30">2026</button>
+                            </div>
+                        </div>
+                        <div id="amCashflowTable" class="flex-1 overflow-auto"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -788,7 +798,88 @@ function renderAnalytics() {
         const has = totals[k] !== undefined && v !== 0;
         flowCards += amCard(labels[k]||k, has ? fmtRub(v) : '—', has ? (v>=0?'text-emerald-400':'text-red-400') : 'text-gray-600');
     });
-    document.getElementById('amTotals').innerHTML = balanceCards + flowCards;
+    document.getElementById("amTotals").innerHTML = balanceCards + flowCards;
+    renderCashflow();
+}
+
+function renderCashflow() {
+    var d = window._amData;
+    if (!d || !d.monthly_cashflow) return;
+    var cf = d.monthly_cashflow;
+    var instruments = cf.instruments || [];
+    if (instruments.length === 0) return;
+    document.getElementById("amCashflow").style.display = "flex";
+    window._cfYear = window._cfYear || 2026;
+    buildCashflowTable(window._cfYear);
+}
+
+function switchCashflowYear(year) {
+    window._cfYear = year;
+    document.getElementById("cfBtn2025").className = year === 2025 ? "px-2 py-0.5 text-[8px] rounded border transition bg-accent/20 text-accent border-accent/30" : "px-2 py-0.5 text-[8px] rounded border transition bg-dark-700 text-gray-400 border-dark-600";
+    document.getElementById("cfBtn2026").className = year === 2026 ? "px-2 py-0.5 text-[8px] rounded border transition bg-accent/20 text-accent border-accent/30" : "px-2 py-0.5 text-[8px] rounded border transition bg-dark-700 text-gray-400 border-dark-600";
+    buildCashflowTable(year);
+}
+
+function buildCashflowTable(year) {
+    var d = window._amData;
+    if (!d || !d.monthly_cashflow) return;
+    var instruments = d.monthly_cashflow.instruments || [];
+    var summary = d.monthly_cashflow.summary || {};
+    var MONTHS = ["Янв","Фев","Мар","Апр","Май","Июн","Июл","Авг","Сен","Окт","Ноя","Дек"];
+    var yrSummary = {deposits:0, withdrawals:0, coupons:0, dividends:0, taxes:0};
+    for (var m = 1; m <= 12; m++) {
+        var ym = year + "-" + String(m).padStart(2,"0");
+        if (summary[ym]) {
+            yrSummary.deposits += (summary[ym].deposits || 0);
+            yrSummary.withdrawals += (summary[ym].withdrawals || 0);
+            yrSummary.coupons += (summary[ym].coupons || 0);
+            yrSummary.dividends += (summary[ym].dividends || 0);
+            yrSummary.taxes += (summary[ym].taxes || 0);
+        }
+    }
+    var fmtRub = function(v) { return v ? Math.abs(v).toLocaleString("ru-RU", {maximumFractionDigits:0}) : ""; };
+    var clr = function(v) { return v > 0 ? "text-emerald-400" : v < 0 ? "text-red-400" : "text-gray-600"; };
+    var html = "<table class="w-full text-[8px] border-collapse"><thead><tr class="border-b border-dark-700">";
+    html += "<th class="sticky left-0 bg-dark-800 px-2 py-1 text-left text-gray-500">Инструмент</th>";
+    html += "<th class="px-1.5 py-1 text-right text-gray-500 w-12">∑</th>";
+    for (var m = 1; m <= 12; m++) { html += "<th class="px-1.5 py-1 text-right text-gray-500">" + MONTHS[m-1] + "</th>"; }
+    html += "</tr></thead><tbody>";
+    for (var i = 0; i < instruments.length; i++) {
+        var instr = instruments[i];
+        html += "<tr class="border-b border-dark-700/30 hover:bg-dark-700/20">";
+        var sn = instr.name.length > 22 ? instr.name.substring(0, 19) + "..." : instr.name;
+        var esn = instr.name.replace(/"/g, "&quot;");
+        html += "<td class="sticky left-0 bg-dark-800 px-2 py-1 text-gray-300 whitespace-nowrap" title="" + esn + "">" + sn + "</td>";
+        html += "<td class="px-1.5 py-1 text-right font-semibold text-emerald-400">" + instr.total.toLocaleString("ru-RU") + "</td>";
+        for (var m = 1; m <= 12; m++) {
+            var ym2 = year + "-" + String(m).padStart(2,"0");
+            var val = instr.months[ym2] || 0;
+            html += "<td class="px-1.5 py-1 text-right " + (val > 0 ? "text-emerald-400" : "text-gray-600") + "">" + (val > 0 ? val.toLocaleString("ru-RU") : "") + "</td>";
+        }
+        html += "</tr>";
+    }
+    var rows = [
+        {key: "deposits", label: "Пополнения", cls: "text-blue-400"},
+        {key: "coupons", label: "Купоны", cls: "text-emerald-400"},
+        {key: "dividends", label: "Дивиденды", cls: "text-amber-400"},
+        {key: "taxes", label: "Налоги", cls: "text-red-400"},
+        {key: "withdrawals", label: "Выводы", cls: "text-red-400"}
+    ];
+    for (var j = 0; j < rows.length; j++) {
+        var sr = rows[j];
+        if (yrSummary[sr.key] === 0) continue;
+        html += "<tr class="border-t border-dark-600/50 bg-dark-700/30 font-semibold">";
+        html += "<td class="sticky left-0 bg-dark-700/30 px-2 py-1 " + sr.cls + "">" + sr.label + "</td>";
+        html += "<td class="px-1.5 py-1 text-right " + sr.cls + "">" + Math.abs(yrSummary[sr.key]).toLocaleString("ru-RU") + "</td>";
+        for (var m = 1; m <= 12; m++) {
+            var ym3 = year + "-" + String(m).padStart(2,"0");
+            var sv = summary[ym3] ? (summary[ym3][sr.key] || 0) : 0;
+            html += "<td class="px-1.5 py-1 text-right " + clr(sv) + "">" + (sv !== 0 ? fmtRub(sv) : "") + "</td>";
+        }
+        html += "</tr>";
+    }
+    html += "</tbody></table>";
+    document.getElementById("amCashflowTable").innerHTML = html;
 }
 
 document.addEventListener('keydown', e => { if (e.key==='Escape') document.getElementById('analyticsModal').style.display='none'; });
