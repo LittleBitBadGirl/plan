@@ -349,12 +349,13 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
             1: "янв", 2: "фев", 3: "мар", 4: "апр", 5: "май", 6: "июн",
             7: "июл", 8: "авг", 9: "сен", 10: "окт", 11: "ноя", 12: "дек",
         }
+        WEEKDAY_SHORT = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")
         daily_map: dict = {}
         for tx in transactions:
             entry = daily_map.setdefault(tx.date, {"income": 0.0, "expense": 0.0, "count": 0})
             if tx.amount > 0:
                 entry["income"] += tx.amount
-            else:
+            elif tx.category_id not in SAVINGS_CATEGORY_IDS:
                 entry["expense"] += abs(tx.amount)
             entry["count"] += 1
 
@@ -366,13 +367,17 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         d_cursor = start_date
         while d_cursor <= last_day:
             entry = daily_map.get(d_cursor, {"income": 0.0, "expense": 0.0, "count": 0})
+            wd = d_cursor.weekday()
+            is_weekend = wd >= 5
             daily_breakdown.append({
                 "date": d_cursor,
                 "label": f"{d_cursor.day} {MONTH_ABBR[d_cursor.month]}",
+                "weekday": WEEKDAY_SHORT[wd],
                 "income": entry["income"],
                 "expense": entry["expense"],
                 "count": entry["count"],
                 "is_today": d_cursor == today,
+                "is_weekend": is_weekend,
             })
             d_cursor += timedelta(days=1)
 
@@ -470,7 +475,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
     response = templates.TemplateResponse(request, "finance.html", {
         "request": request,
         "transactions": transactions,
-        "daily_breakdown": list(reversed(daily_breakdown)),
+        "daily_breakdown": daily_breakdown,
         "daily_totals": daily_totals,
         "grouped_summary": grouped_summary,
         "category_summary": category_summary,

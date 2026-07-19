@@ -1,37 +1,120 @@
-<div id="finance-chart-panel" class="bg-dark-800/80 rounded-2xl border border-dark-600/50 shadow-sm overflow-hidden">
-    <div class="bg-dark-700/30 p-4 border-b border-dark-600/50">
-        <h2 class="text-[10px] font-semibold text-gray-400 tracking-wide flex items-center gap-2">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/></svg>
-            Расходы по категориям
-        </h2>
-    </div>
-    <div class="p-4">
-        {% if category_summary %}
-        <div class="relative mx-auto" style="max-width: 220px;">
-            <canvas id="finance-expense-chart"
-                    role="img"
-                    aria-label="Круговая диаграмма расходов за месяц"
-                    data-chart-labels='{{ category_summary | map(attribute="name") | list | tojson }}'
-                    data-chart-amounts='{{ category_summary | map(attribute="amount") | list | tojson }}'
-                    data-chart-total="{{ chart_expense_total }}"></canvas>
+{# Табы: Категории (donut) | По дням (bar + таблица). Выходные — фиолетовый фон/столбцы. #}
+{% set default_tab = 'days' if current_month == today.month and current_year == today.year else 'categories' %}
+<div id="finance-chart-panel"
+     class="bg-dark-800/80 rounded-2xl border border-dark-600/50 shadow-sm overflow-hidden flex flex-col lg:h-full"
+     x-data="{ tab: '{{ default_tab }}' }">
+    <div class="bg-dark-700/30 p-3 border-b border-dark-600/50 shrink-0">
+        <div class="flex items-center justify-between gap-2 mb-2">
+            <h2 class="text-[10px] font-semibold text-gray-400 tracking-wide flex items-center gap-2">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                Аналитика
+            </h2>
+            <span class="text-[8px] text-gray-600">{{ month_name }}</span>
         </div>
-        <ul id="finance-chart-legend" class="mt-4 space-y-1.5"></ul>
-        {% if monthly_savings > 0 %}
-        <div class="mt-3 pt-3 border-t border-dark-700/50 px-1">
-            <div class="flex items-center justify-between text-[10px]">
-                <span class="text-purple-400 flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full shrink-0" style="background:#a855f7"></span>
-                    Сбережения (ИИС + Подушка)
-                </span>
-                <span class="text-purple-300 tabular-nums font-medium">{{ "{:,.0f}".format(monthly_savings).replace(',', ' ') }} ₽</span>
+        <div class="flex gap-1 p-0.5 bg-dark-900/60 rounded-lg border border-dark-600/40">
+            <button type="button" @click="tab = 'categories'"
+                    :class="tab === 'categories'
+                        ? 'bg-accent/20 text-accent border-accent/30'
+                        : 'text-gray-500 hover:text-gray-300 border-transparent'"
+                    class="flex-1 px-2 py-1 text-[9px] font-medium rounded-md border transition-all duration-150">
+                Категории
+            </button>
+            <button type="button" @click="tab = 'days'"
+                    :class="tab === 'days'
+                        ? 'bg-accent/20 text-accent border-accent/30'
+                        : 'text-gray-500 hover:text-gray-300 border-transparent'"
+                    class="flex-1 px-2 py-1 text-[9px] font-medium rounded-md border transition-all duration-150">
+                По дням
+            </button>
+        </div>
+    </div>
+
+    <div class="p-4 flex-1 min-h-0 flex flex-col overflow-hidden">
+        {# --- Tab: Categories (donut) --- #}
+        <div x-show="tab === 'categories'" x-cloak class="flex-1 min-h-0 overflow-y-auto">
+            {% if category_summary %}
+            <div class="relative mx-auto" style="max-width: 220px;">
+                <canvas id="finance-expense-chart"
+                        role="img"
+                        aria-label="Круговая диаграмма расходов за месяц"
+                        data-chart-labels='{{ category_summary | map(attribute="name") | list | tojson }}'
+                        data-chart-amounts='{{ category_summary | map(attribute="amount") | list | tojson }}'
+                        data-chart-total="{{ chart_expense_total }}"></canvas>
+            </div>
+            <ul id="finance-chart-legend" class="mt-4 space-y-1.5"></ul>
+            {% if monthly_savings > 0 %}
+            <div class="mt-3 pt-3 border-t border-dark-700/50 px-1">
+                <div class="flex items-center justify-between text-[10px]">
+                    <span class="text-purple-400 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full shrink-0" style="background:#a855f7"></span>
+                        Сбережения (ИИС + Подушка)
+                    </span>
+                    <span class="text-purple-300 tabular-nums font-medium">{{ "{:,.0f}".format(monthly_savings).replace(',', ' ') }} ₽</span>
+                </div>
+            </div>
+            {% endif %}
+            {% else %}
+            <div id="finance-chart-empty" class="py-10 text-center">
+                <p class="text-sm text-gray-500">Нет расходов</p>
+                <p class="text-[10px] text-gray-600 mt-1">за выбранный месяц</p>
+            </div>
+            {% endif %}
+        </div>
+
+        {# --- Tab: Daily (bar chart + table) --- #}
+        <div x-show="tab === 'days'" x-cloak class="flex-1 min-h-0 flex flex-col overflow-hidden">
+            {% if daily_totals.expense > 0 or daily_totals.count > 0 %}
+            <div class="shrink-0 mb-3">
+                <p class="text-[8px] text-gray-500 mb-1.5">Расход по дням</p>
+                <div class="relative" style="height: 110px;">
+                    <canvas id="finance-daily-chart"
+                            role="img"
+                            aria-label="Столбчатая диаграмма расходов по дням"
+                            data-daily-labels='{{ daily_breakdown | map(attribute="label") | list | tojson }}'
+                            data-daily-expenses='{{ daily_breakdown | map(attribute="expense") | list | tojson }}'
+                            data-daily-weekends='{{ daily_breakdown | map(attribute="is_weekend") | list | tojson }}'></canvas>
+                </div>
+                <div class="flex gap-3 mt-1.5 text-[7px] text-gray-600">
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-red-400/80"></span> будни</span>
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-violet-400/80"></span> выходные</span>
+                </div>
+            </div>
+            {% endif %}
+            <div class="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="sticky top-0 z-10">
+                        <tr class="bg-dark-800/95 backdrop-blur-sm border-b border-dark-600/50 text-[8px] font-medium text-gray-500 tracking-wide">
+                            <th class="px-2 py-1.5">День</th>
+                            <th class="px-2 py-1.5 text-right">Доход</th>
+                            <th class="px-2 py-1.5 text-right">Расход</th>
+                            <th class="px-2 py-1.5 text-right">Оп.</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-dark-700/30">
+                        {% for day in daily_breakdown %}
+                        <tr class="hover:bg-dark-700/20 transition-colors duration-150
+                            {% if day.is_today %}bg-accent/5{% elif day.is_weekend %}bg-violet-950/25{% endif %}">
+                            <td class="px-2 py-1 text-[9px] font-mono tabular-nums whitespace-nowrap
+                                {% if day.is_today %}text-accent font-semibold{% elif day.is_weekend %}text-violet-300/80{% else %}text-gray-400{% endif %}">
+                                {{ day.label }}
+                                <span class="text-[7px] {% if day.is_weekend %}text-violet-400/70{% else %}text-gray-600{% endif %}">{{ day.weekday }}</span>{% if day.is_today %} •{% endif %}
+                            </td>
+                            <td class="px-2 py-1 text-[9px] text-right tabular-nums {{ 'text-green-400 font-semibold' if day.income > 0 else 'text-gray-600' }}">{{ "+{:,.0f}".format(day.income).replace(',', ' ') if day.income > 0 else '0' }}</td>
+                            <td class="px-2 py-1 text-[9px] text-right tabular-nums {{ 'text-red-400 font-semibold' if day.expense > 0 else 'text-gray-600' }}">{{ "-{:,.0f}".format(day.expense).replace(',', ' ') if day.expense > 0 else '0' }}</td>
+                            <td class="px-2 py-1 text-[9px] text-right tabular-nums text-gray-500">{{ day.count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="sticky bottom-0">
+                        <tr class="bg-dark-800/95 backdrop-blur-sm border-t border-dark-600/50 text-[9px] font-semibold">
+                            <td class="px-2 py-1.5 text-gray-300">Итого</td>
+                            <td class="px-2 py-1.5 text-right tabular-nums text-green-400">+{{ "{:,.0f}".format(daily_totals.income).replace(',', ' ') }}</td>
+                            <td class="px-2 py-1.5 text-right tabular-nums text-red-400">-{{ "{:,.0f}".format(daily_totals.expense).replace(',', ' ') }}</td>
+                            <td class="px-2 py-1.5 text-right tabular-nums text-gray-300">{{ daily_totals.count }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
             </div>
         </div>
-        {% endif %}
-        {% else %}
-        <div id="finance-chart-empty" class="py-10 text-center">
-            <p class="text-sm text-gray-500">Нет расходов</p>
-            <p class="text-[10px] text-gray-600 mt-1">за выбранный месяц</p>
-        </div>
-        {% endif %}
     </div>
 </div>

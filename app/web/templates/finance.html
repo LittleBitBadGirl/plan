@@ -321,49 +321,6 @@
         {% endfor %}
     </div>
 
-    <!-- Daily breakdown (как в сводке импорта Гермеса) -->
-    <div class="mb-5 bg-dark-800/80 rounded-xl border border-dark-600/50 shadow-sm overflow-hidden" x-data="{ open: true }">
-        <button @click="open = !open" class="w-full bg-dark-700/30 p-2.5 border-b border-dark-600/50 flex justify-between items-center hover:bg-dark-700/50 transition-colors">
-            <h2 class="text-[9px] font-semibold text-gray-400 tracking-wide flex items-center gap-1.5">
-                📊 По дням
-                <span class="text-[8px] text-gray-600 font-normal">{{ month_name }}</span>
-            </h2>
-            <svg class="w-3 h-3 text-gray-500 transition-transform" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-            </svg>
-        </button>
-        <div x-show="open" x-cloak class="overflow-y-auto overflow-x-auto" style="max-height: 320px">
-            <table class="w-full text-left border-collapse">
-                <thead class="sticky top-0 z-10">
-                    <tr class="bg-dark-800/95 backdrop-blur-sm border-b border-dark-600/50 text-[8px] font-medium text-gray-500 tracking-wide">
-                        <th class="px-3 py-1.5">День</th>
-                        <th class="px-3 py-1.5 text-right">Доход</th>
-                        <th class="px-3 py-1.5 text-right">Расход</th>
-                        <th class="px-3 py-1.5 text-right">Операций</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-dark-700/30">
-                    {% for day in daily_breakdown %}
-                    <tr class="hover:bg-dark-700/20 transition-colors duration-150 {{ 'bg-accent/5' if day.is_today else '' }}">
-                        <td class="px-3 py-1.5 text-[10px] {{ 'text-accent font-semibold' if day.is_today else 'text-gray-400' }} font-mono tabular-nums">{{ day.label }}{{ ' •' if day.is_today else '' }}</td>
-                        <td class="px-3 py-1.5 text-[10px] text-right tabular-nums {{ 'text-green-400 font-semibold' if day.income > 0 else 'text-gray-600' }}">{{ "+{:,.0f}".format(day.income).replace(',', ' ') if day.income > 0 else '0' }}</td>
-                        <td class="px-3 py-1.5 text-[10px] text-right tabular-nums {{ 'text-red-400 font-semibold' if day.expense > 0 else 'text-gray-600' }}">{{ "-{:,.0f}".format(day.expense).replace(',', ' ') if day.expense > 0 else '0' }}</td>
-                        <td class="px-3 py-1.5 text-[10px] text-right tabular-nums text-gray-500">{{ day.count }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot class="sticky bottom-0">
-                    <tr class="bg-dark-800/95 backdrop-blur-sm border-t border-dark-600/50 text-[10px] font-semibold">
-                        <td class="px-3 py-1.5 text-gray-300">Итого</td>
-                        <td class="px-3 py-1.5 text-right tabular-nums text-green-400">+{{ "{:,.0f}".format(daily_totals.income).replace(',', ' ') }}</td>
-                        <td class="px-3 py-1.5 text-right tabular-nums text-red-400">-{{ "{:,.0f}".format(daily_totals.expense).replace(',', ' ') }}</td>
-                        <td class="px-3 py-1.5 text-right tabular-nums text-gray-300">{{ daily_totals.count }}</td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-    </div>
-
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-5 lg:items-stretch">
         <!-- Transactions -->
         <div class="lg:col-span-3 space-y-3">
@@ -466,8 +423,8 @@
             </div>
         </div>
 
-        <!-- Chart -->
-        <div class="space-y-5">
+        <!-- Analytics panel (categories / daily tabs) -->
+        <div class="space-y-5 lg:h-full">
             {% include "partials/finance_expense_chart.html" %}
         </div>
     </div>
@@ -928,38 +885,95 @@ function buildCashflowTable(year) {
 
 document.addEventListener('keydown', e => { if (e.key==='Escape') document.getElementById('analyticsModal').style.display='none'; });
 </script>
-{% if category_summary %}
+{% if category_summary or daily_totals.expense > 0 or daily_totals.count > 0 %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 (function () {
-    const canvas = document.getElementById('finance-expense-chart');
-    const legendEl = document.getElementById('finance-chart-legend');
-    if (!canvas || !legendEl || typeof Chart === 'undefined') return;
-    const labels = JSON.parse(canvas.dataset.chartLabels || '[]');
-    const amounts = JSON.parse(canvas.dataset.chartAmounts || '[]');
-    const total = parseFloat(canvas.dataset.chartTotal || '0') || 0;
-    const COLORS = ['#3b82f6','#8b5cf6','#ec4899','#f59e0b','#22c55e','#06b6d4','#f97316','#a855f7','#14b8a6','#ef4444','#6366f1','#84cc16'];
+    if (typeof Chart === 'undefined') return;
     const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
-    new Chart(canvas, {
-        type: 'doughnut',
-        data: { labels, datasets: [{ data: amounts,
-            backgroundColor: labels.map((_, i) => COLORS[i % COLORS.length]),
-            borderColor: '#1a1a2e', borderWidth: 2, hoverOffset: 6 }] },
-        options: {
-            responsive: true, maintainAspectRatio: true, cutout: '58%',
-            plugins: {
-                legend: { display: false },
-                tooltip: { backgroundColor: '#1e1e3a', titleColor: '#e5e7eb', bodyColor: '#9ca3af',
-                    borderColor: '#3a3a5c', borderWidth: 1,
-                    callbacks: { label(ctx) { const v = ctx.parsed||0; const pct = total?((v/total)*100).toFixed(1):'0'; return ' '+fmt(v)+' ₽ ('+pct+'%)'; } } }
+    const COLORS = ['#3b82f6','#8b5cf6','#ec4899','#f59e0b','#22c55e','#06b6d4','#f97316','#a855f7','#14b8a6','#ef4444','#6366f1','#84cc16'];
+
+    const catCanvas = document.getElementById('finance-expense-chart');
+    const legendEl = document.getElementById('finance-chart-legend');
+    if (catCanvas && legendEl) {
+        const labels = JSON.parse(catCanvas.dataset.chartLabels || '[]');
+        const amounts = JSON.parse(catCanvas.dataset.chartAmounts || '[]');
+        const total = parseFloat(catCanvas.dataset.chartTotal || '0') || 0;
+        new Chart(catCanvas, {
+            type: 'doughnut',
+            data: { labels, datasets: [{ data: amounts,
+                backgroundColor: labels.map((_, i) => COLORS[i % COLORS.length]),
+                borderColor: '#1a1a2e', borderWidth: 2, hoverOffset: 6 }] },
+            options: {
+                responsive: true, maintainAspectRatio: true, cutout: '58%',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { backgroundColor: '#1e1e3a', titleColor: '#e5e7eb', bodyColor: '#9ca3af',
+                        borderColor: '#3a3a5c', borderWidth: 1,
+                        callbacks: { label(ctx) { const v = ctx.parsed||0; const pct = total?((v/total)*100).toFixed(1):'0'; return ' '+fmt(v)+' ₽ ('+pct+'%)'; } } }
+                }
             }
-        }
-    });
-    legendEl.innerHTML = labels.map((name,i) => {
-        const amount = amounts[i]||0;
-        const pct = total?((amount/total)*100).toFixed(1):'0';
-        return '<li class="flex items-center justify-between gap-2 text-[10px]"><span class="flex items-center gap-2 min-w-0"><span class="w-2 h-2 rounded-full shrink-0" style="background:'+COLORS[i%COLORS.length]+'"></span><span class="text-gray-300 truncate">'+name+'</span></span><span class="text-gray-500 shrink-0 tabular-nums">'+fmt(amount)+' · '+pct+'%</span></li>';
-    }).join('');
+        });
+        legendEl.innerHTML = labels.map((name,i) => {
+            const amount = amounts[i]||0;
+            const pct = total?((amount/total)*100).toFixed(1):'0';
+            return '<li class="flex items-center justify-between gap-2 text-[10px]"><span class="flex items-center gap-2 min-w-0"><span class="w-2 h-2 rounded-full shrink-0" style="background:'+COLORS[i%COLORS.length]+'"></span><span class="text-gray-300 truncate">'+name+'</span></span><span class="text-gray-500 shrink-0 tabular-nums">'+fmt(amount)+' · '+pct+'%</span></li>';
+        }).join('');
+    }
+
+    const dailyCanvas = document.getElementById('finance-daily-chart');
+    if (dailyCanvas) {
+        const dayLabels = JSON.parse(dailyCanvas.dataset.dailyLabels || '[]');
+        const expenses = JSON.parse(dailyCanvas.dataset.dailyExpenses || '[]');
+        const weekends = JSON.parse(dailyCanvas.dataset.dailyWeekends || '[]');
+        const barColors = expenses.map((v, i) => {
+            if (!v) return 'rgba(55, 65, 81, 0.35)';
+            return weekends[i] ? 'rgba(167, 139, 250, 0.85)' : 'rgba(248, 113, 113, 0.85)';
+        });
+        new Chart(dailyCanvas, {
+            type: 'bar',
+            data: {
+                labels: dayLabels.map(l => l.replace(/ .*/, '')),
+                datasets: [{
+                    data: expenses,
+                    backgroundColor: barColors,
+                    borderColor: barColors.map(c => c.replace('0.85', '1').replace('0.35', '0.5')),
+                    borderWidth: 1,
+                    borderRadius: 2,
+                    maxBarThickness: 14,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1e1e3a', titleColor: '#e5e7eb', bodyColor: '#9ca3af',
+                        borderColor: '#3a3a5c', borderWidth: 1,
+                        callbacks: {
+                            title: (items) => dayLabels[items[0].dataIndex] + (weekends[items[0].dataIndex] ? ' · выходной' : ''),
+                            label: (ctx) => ' ' + fmt(ctx.parsed.y) + ' ₽'
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#6b7280', font: { size: 8 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 16 }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(55, 65, 81, 0.4)' },
+                        ticks: {
+                            color: '#6b7280', font: { size: 8 },
+                            callback: (v) => v >= 1000 ? (v/1000)+'k' : v
+                        }
+                    }
+                }
+            }
+        });
+    }
 })();
 </script>
 {% endif %}
