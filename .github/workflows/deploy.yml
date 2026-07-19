@@ -15,7 +15,10 @@ jobs:
         username: root
         key: ${{ secrets.VPS_SSH_KEY }}
         script: |
+          set -e
           cd /opt/projects/planner
           export GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519_deploy -o StrictHostKeyChecking=no"
-          git pull origin main
-          docker compose restart
+          git fetch origin main
+          git reset --hard origin/main
+          echo "Deployed commit: $(git rev-parse --short HEAD)"
+          docker compose up -d --force-recreate
