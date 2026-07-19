@@ -344,6 +344,44 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
                     'savings': fy_savings
                 })
 
+        # РАЗБИВКА ПО ДНЯМ (как в сводке импорта Гермеса: День | Доход | Расход | Операций)
+        MONTH_ABBR = {
+            1: "янв", 2: "фев", 3: "мар", 4: "апр", 5: "май", 6: "июн",
+            7: "июл", 8: "авг", 9: "сен", 10: "окт", 11: "ноя", 12: "дек",
+        }
+        daily_map: dict = {}
+        for tx in transactions:
+            entry = daily_map.setdefault(tx.date, {"income": 0.0, "expense": 0.0, "count": 0})
+            if tx.amount > 0:
+                entry["income"] += tx.amount
+            else:
+                entry["expense"] += abs(tx.amount)
+            entry["count"] += 1
+
+        last_day = end_date - timedelta(days=1)
+        if view_year == today.year and view_month == today.month:
+            last_day = today
+
+        daily_breakdown = []
+        d_cursor = start_date
+        while d_cursor <= last_day:
+            entry = daily_map.get(d_cursor, {"income": 0.0, "expense": 0.0, "count": 0})
+            daily_breakdown.append({
+                "date": d_cursor,
+                "label": f"{d_cursor.day} {MONTH_ABBR[d_cursor.month]}",
+                "income": entry["income"],
+                "expense": entry["expense"],
+                "count": entry["count"],
+                "is_today": d_cursor == today,
+            })
+            d_cursor += timedelta(days=1)
+
+        daily_totals = {
+            "income": sum(day["income"] for day in daily_breakdown),
+            "expense": sum(day["expense"] for day in daily_breakdown),
+            "count": sum(day["count"] for day in daily_breakdown),
+        }
+
         # Расчет итогов за месяц
         total_income = sum(tx.amount for tx in transactions if tx.amount > 0)
         total_expense = sum(abs(tx.amount) for tx in transactions if tx.amount < 0 and tx.category_id not in SAVINGS_CATEGORY_IDS)
@@ -432,6 +470,8 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
     response = templates.TemplateResponse(request, "finance.html", {
         "request": request,
         "transactions": transactions,
+        "daily_breakdown": list(reversed(daily_breakdown)),
+        "daily_totals": daily_totals,
         "grouped_summary": grouped_summary,
         "category_summary": category_summary,
         "chart_expense_total": chart_expense_total,
