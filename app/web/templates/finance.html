@@ -321,6 +321,49 @@
         {% endfor %}
     </div>
 
+    <!-- Daily breakdown (как в сводке импорта Гермеса) -->
+    <div class="mb-5 bg-dark-800/80 rounded-xl border border-dark-600/50 shadow-sm overflow-hidden" x-data="{ open: true }">
+        <button @click="open = !open" class="w-full bg-dark-700/30 p-2.5 border-b border-dark-600/50 flex justify-between items-center hover:bg-dark-700/50 transition-colors">
+            <h2 class="text-[9px] font-semibold text-gray-400 tracking-wide flex items-center gap-1.5">
+                📊 По дням
+                <span class="text-[8px] text-gray-600 font-normal">{{ month_name }}</span>
+            </h2>
+            <svg class="w-3 h-3 text-gray-500 transition-transform" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+        <div x-show="open" x-cloak class="overflow-y-auto overflow-x-auto" style="max-height: 320px">
+            <table class="w-full text-left border-collapse">
+                <thead class="sticky top-0 z-10">
+                    <tr class="bg-dark-800/95 backdrop-blur-sm border-b border-dark-600/50 text-[8px] font-medium text-gray-500 tracking-wide">
+                        <th class="px-3 py-1.5">День</th>
+                        <th class="px-3 py-1.5 text-right">Доход</th>
+                        <th class="px-3 py-1.5 text-right">Расход</th>
+                        <th class="px-3 py-1.5 text-right">Операций</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-dark-700/30">
+                    {% for day in daily_breakdown %}
+                    <tr class="hover:bg-dark-700/20 transition-colors duration-150 {{ 'bg-accent/5' if day.is_today else '' }}">
+                        <td class="px-3 py-1.5 text-[10px] {{ 'text-accent font-semibold' if day.is_today else 'text-gray-400' }} font-mono tabular-nums">{{ day.label }}{{ ' •' if day.is_today else '' }}</td>
+                        <td class="px-3 py-1.5 text-[10px] text-right tabular-nums {{ 'text-green-400 font-semibold' if day.income > 0 else 'text-gray-600' }}">{{ "+{:,.0f}".format(day.income).replace(',', ' ') if day.income > 0 else '0' }}</td>
+                        <td class="px-3 py-1.5 text-[10px] text-right tabular-nums {{ 'text-red-400 font-semibold' if day.expense > 0 else 'text-gray-600' }}">{{ "-{:,.0f}".format(day.expense).replace(',', ' ') if day.expense > 0 else '0' }}</td>
+                        <td class="px-3 py-1.5 text-[10px] text-right tabular-nums text-gray-500">{{ day.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="sticky bottom-0">
+                    <tr class="bg-dark-800/95 backdrop-blur-sm border-t border-dark-600/50 text-[10px] font-semibold">
+                        <td class="px-3 py-1.5 text-gray-300">Итого</td>
+                        <td class="px-3 py-1.5 text-right tabular-nums text-green-400">+{{ "{:,.0f}".format(daily_totals.income).replace(',', ' ') }}</td>
+                        <td class="px-3 py-1.5 text-right tabular-nums text-red-400">-{{ "{:,.0f}".format(daily_totals.expense).replace(',', ' ') }}</td>
+                        <td class="px-3 py-1.5 text-right tabular-nums text-gray-300">{{ daily_totals.count }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-5 lg:items-stretch">
         <!-- Transactions -->
         <div class="lg:col-span-3 space-y-3">
