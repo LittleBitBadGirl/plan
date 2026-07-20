@@ -315,13 +315,6 @@
 
         <!-- COLUMN 3: CALENDAR, RECURRING & SHOPPING -->
         <div class="contents lg:block lg:space-y-6">
-            {% if calendar_sync_active %}
-            <div class="order-20 lg:order-none hidden"
-                 hx-post="/api/calendar/sync"
-                 hx-trigger="load once"
-                 hx-target="#calendar-column-blocks"
-                 hx-swap="outerHTML"></div>
-            {% endif %}
             <div class="order-20 lg:order-none">
                 {% include "partials/calendar_column_blocks.html" %}
             </div>

@@ -89,6 +89,27 @@ async def refresh_calendar_events(timeout: float = 45.0) -> dict[str, int]:
         return await asyncio.wait_for(sync_calendar_events(), timeout=timeout)
 
 
+_UID_PRELOAD_CHUNK = 500
+
+
+async def _load_existing_events_by_uid(
+    db,
+    uids: list[str],
+) -> dict[str, CalendarEvent]:
+    """Preload calendar rows for batch upsert (avoids N+1 SELECT per event)."""
+    existing_map: dict[str, CalendarEvent] = {}
+    if not uids:
+        return existing_map
+    for i in range(0, len(uids), _UID_PRELOAD_CHUNK):
+        chunk = uids[i : i + _UID_PRELOAD_CHUNK]
+        result = await db.execute(
+            select(CalendarEvent).where(CalendarEvent.external_uid.in_(chunk))
+        )
+        for ev in result.scalars().all():
+            existing_map[ev.external_uid] = ev
+    return existing_map
+
+
 async def sync_calendar_events() -> dict[str, int]:
     """
     Pull CalDAV + Google iCal и upsert в БД.
@@ -122,15 +143,15 @@ async def sync_calendar_events() -> dict[str, int]:
 
     async with async_session() as db:
         ignore_rules = await load_ignore_rules(db)
+        existing_map = await _load_existing_events_by_uid(
+            db, [row["external_uid"] for row in rows]
+        )
 
         for row in rows:
             uid = row["external_uid"]
             seen_uids.add(uid)
 
-            existing = await db.execute(
-                select(CalendarEvent).where(CalendarEvent.external_uid == uid)
-            )
-            ev = existing.scalar_one_or_none()
+            ev = existing_map.get(uid)
 
             user_ignored = event_matches_any_rule(
                 external_uid=uid,

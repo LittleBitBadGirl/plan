@@ -218,6 +218,58 @@ async def test_yandex_recurring_occurrences_all_persist():
         assert visible[0].start_at.date() == day
 
 
+@pytest.mark.asyncio
+async def test_sync_batch_preloads_existing_rows():
+    """Batch upsert: повторный sync обновляет строки без дублей."""
+    from datetime import timedelta
+
+    base = datetime(2026, 7, 20, 10, 0)
+    fake_rows = [
+        {
+            "external_uid": f"yandex:batch-{i}",
+            "is_all_day": False,
+            "calendar_source": "yandex",
+            "calendar_kind": "work",
+            "recurrence_id": None,
+            "calendar_name": "группа",
+            "calendar_url": "https://caldav.yandex.ru/events-1/",
+            "title": f"Meeting {i}",
+            "start_at": base + timedelta(hours=i),
+            "end_at": base + timedelta(hours=i, minutes=30),
+            "location": None,
+            "is_recurring": False,
+        }
+        for i in range(20)
+    ]
+
+    with patch("app.services.calendar_sync_service.settings") as mock_settings:
+        mock_settings.calendar_sync_enabled = True
+        mock_settings.yandex_caldav_user = "test@dalee.ru"
+        mock_settings.yandex_caldav_app_password = "secret"
+        mock_settings.google_calendar_sync_enabled = False
+        mock_settings.google_calendar_ical_url = ""
+        with patch(
+            "app.services.calendar_sync_service._fetch_all_provider_rows",
+            return_value=fake_rows,
+        ):
+            first = await sync_calendar_events()
+            updated_rows = [{**row, "title": f"Updated {i}"} for i, row in enumerate(fake_rows)]
+            with patch(
+                "app.services.calendar_sync_service._fetch_all_provider_rows",
+                return_value=updated_rows,
+            ):
+                second = await sync_calendar_events()
+
+    assert first.get("upserted") == 20
+    assert second.get("upserted") == 20
+
+    async with async_session() as db:
+        all_rows = await db.execute(select(CalendarEvent))
+        events = all_rows.scalars().all()
+        assert len(events) == 20
+        assert all(ev.title.startswith("Updated ") for ev in events)
+
+
 def test_yandex_occurrence_uid_unique_per_start():
     from app.services.calendar_caldav import _yandex_occurrence_uid
 

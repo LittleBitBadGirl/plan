@@ -1,9 +1,10 @@
 """Shared web dependencies: templates, filters, helpers."""
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 import re
 from statistics import mean
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import Request
@@ -435,23 +436,37 @@ def _is_actionable_subtask(sub: Task, today: date) -> bool:
     return _completed_on_day(sub.completed_at, today)
 
 
-async def _today_roots_with_sub_completions(db: AsyncSession, today: date) -> list[Task]:
-    """Корневые задачи на сегодня + родители с подзадачами, закрытыми сегодня."""
-    roots_result = await db.execute(select(Task).where(*_today_roots_filter(today)))
-    roots = list(roots_result.scalars().all())
-    seen = {r.id for r in roots}
+def _utc_day_bounds(day: date) -> tuple[datetime, datetime]:
+    """Локальный календарный день → UTC bounds для SQL filter."""
+    local_start = datetime.combine(day, time.min).astimezone()
+    local_end = datetime.combine(day, time.max).astimezone()
+    start_utc = local_start.astimezone(timezone.utc)
+    end_utc = local_end.astimezone(timezone.utc)
+    return start_utc, end_utc
 
+
+async def _load_today_roots_bundle(
+    db: AsyncSession, today: date
+) -> tuple[list[Task], list[Task]]:
+    """Корневые задачи на сегодня + расширенный список с родителями закрытых подзадач."""
+    roots_result = await db.execute(select(Task).where(*_today_roots_filter(today)))
+    roots_today = list(roots_result.scalars().all())
+    seen = {r.id for r in roots_today}
+    roots_with_sub = list(roots_today)
+
+    start_utc, end_utc = _utc_day_bounds(today)
     extra_result = await db.execute(
-        select(Task).where(
+        select(Task.parent_task_id)
+        .where(
             Task.parent_task_id.isnot(None),
             Task.status == "выполнена",
             Task.completed_at.isnot(None),
+            Task.completed_at >= start_utc,
+            Task.completed_at <= end_utc,
         )
+        .distinct()
     )
-    extra_parent_ids: set[int] = set()
-    for sub in extra_result.scalars().all():
-        if sub.parent_task_id and _completed_on_day(sub.completed_at, today):
-            extra_parent_ids.add(sub.parent_task_id)
+    extra_parent_ids = {pid for (pid,) in extra_result.all() if pid}
 
     if extra_parent_ids:
         extra_roots_result = await db.execute(
@@ -459,10 +474,16 @@ async def _today_roots_with_sub_completions(db: AsyncSession, today: date) -> li
         )
         for parent in extra_roots_result.scalars().all():
             if parent.id not in seen:
-                roots.append(parent)
+                roots_with_sub.append(parent)
                 seen.add(parent.id)
 
-    return roots
+    return roots_today, roots_with_sub
+
+
+async def _today_roots_with_sub_completions(db: AsyncSession, today: date) -> list[Task]:
+    """Корневые задачи на сегодня + родители с подзадачами, закрытыми сегодня."""
+    _, roots_with_sub = await _load_today_roots_bundle(db, today)
+    return roots_with_sub
 
 
 def _today_roots_filter(today: date) -> list:
@@ -480,82 +501,70 @@ def _today_roots_filter(today: date) -> list:
     ]
 
 
-async def get_today_progress(db: AsyncSession) -> tuple[int, int]:
-    """Прогресс дня для STANDALONE-задач (без подзадач) + регулярные.
+@dataclass
+class DashboardDayStats:
+    completed: int
+    total: int
+    subtask_progress: dict
+    ai_warning: Optional[str]
+    recurring_today: list
+    actionable_completed: int
+    actionable_total: int
 
-    Задачи с подзадачами исключены — их прогресс считается отдельно
-    через get_subtask_today_progress().
-    """
-    today = date.today()
 
-    roots_result = await db.execute(select(Task).where(*_today_roots_filter(today)))
-    roots = roots_result.scalars().all()
+async def get_dashboard_day_stats(
+    db: AsyncSession, today: Optional[date] = None
+) -> DashboardDayStats:
+    """Единый проход: standalone + subtask + recurring + banner."""
+    if today is None:
+        today = date.today()
 
-    # Собираем подзадачи для всех корневых, чтобы отфильтровать родителей
-    standalone_total = 0
-    standalone_completed = 0
+    roots_today, roots_with_sub = await _load_today_roots_bundle(db, today)
 
-    if roots:
-        root_ids = [r.id for r in roots]
+    subs_by_parent: dict[int, list[Task]] = defaultdict(list)
+    if roots_with_sub:
+        root_ids = [r.id for r in roots_with_sub]
         subs_result = await db.execute(
             select(Task).where(Task.parent_task_id.in_(root_ids))
         )
-        parents_with_subs: set[int] = set()
         for sub in subs_result.scalars().all():
-            parents_with_subs.add(sub.parent_task_id)
+            subs_by_parent[sub.parent_task_id].append(sub)
 
-        for root in roots:
-            if root.id in parents_with_subs:
-                # Пропускаем: задача с подзадачами — в отдельной полоске
-                continue
-            standalone_total += 1
-            if root.status == "выполнена" and _completed_on_day(root.completed_at, today):
-                standalone_completed += 1
+    parents_with_subs = set(subs_by_parent.keys())
 
-    from app.services.recurring_schedule import get_recurring_templates_for_date
+    from app.services.recurring_schedule import (
+        filter_recurring_templates,
+        load_active_recurring_templates,
+    )
     from app.services.recurring_completion_service import get_completed_today_keys
 
-    recurring_today = await get_recurring_templates_for_date(
-        db, today, exclude_completed=False
-    )
+    templates = await load_active_recurring_templates(db)
     completed_keys = await get_completed_today_keys(db, today)
+    recurring_all = filter_recurring_templates(templates, today)
+    recurring_today = filter_recurring_templates(
+        templates, today, exclude_completed_keys=completed_keys
+    )
+
+    standalone_total = 0
+    standalone_completed = 0
+    for root in roots_today:
+        if root.id in parents_with_subs:
+            continue
+        standalone_total += 1
+        if root.status == "выполнена" and _completed_on_day(root.completed_at, today):
+            standalone_completed += 1
+
     recurring_completed = sum(
-        1 for rt in recurring_today if (rt.title, rt.category_id) in completed_keys
+        1 for rt in recurring_all if (rt.title, rt.category_id) in completed_keys
     )
-
-    return standalone_completed + recurring_completed, standalone_total + len(recurring_today)
-
-
-async def get_subtask_today_progress(db: AsyncSession) -> dict:
-    """Прогресс задач С подзадачами: родители + подзадачи.
-
-    Returns:
-        parent_total: сколько родительских задач с подзадачами на сегодня
-        parent_done:  сколько родителей, у которых ВСЕ подзадачи выполнены
-        subtask_total: общее количество подзадач
-        subtask_done:  сколько подзадач выполнено
-    """
-    today = date.today()
-
-    roots = await _today_roots_with_sub_completions(db, today)
-
-    if not roots:
-        return {"parent_total": 0, "parent_done": 0, "subtask_total": 0, "subtask_done": 0}
-
-    root_ids = [r.id for r in roots]
-    subs_result = await db.execute(
-        select(Task).where(Task.parent_task_id.in_(root_ids))
-    )
-    subs_by_parent: dict[int, list[Task]] = defaultdict(list)
-    for sub in subs_result.scalars().all():
-        subs_by_parent[sub.parent_task_id].append(sub)
+    completed = standalone_completed + recurring_completed
+    total = standalone_total + len(recurring_all)
 
     parent_total = 0
     parent_done = 0
     subtask_total = 0
     subtask_done = 0
-
-    for root in roots:
+    for root in roots_with_sub:
         subs = subs_by_parent.get(root.id, [])
         if not subs:
             continue
@@ -570,45 +579,60 @@ async def get_subtask_today_progress(db: AsyncSession) -> dict:
         if all_done:
             parent_done += 1
 
-    return {
+    subtask_progress = {
         "parent_total": parent_total,
         "parent_done": parent_done,
         "subtask_total": subtask_total,
         "subtask_done": subtask_done,
     }
 
+    actionable_subs: list[Task] = []
+    for root in roots_with_sub:
+        for sub in subs_by_parent.get(root.id, []):
+            if _is_actionable_subtask(sub, today):
+                actionable_subs.append(sub)
+
+    sub_completed = sum(1 for s in actionable_subs if s.status == "выполнена")
+    actionable_completed = completed + sub_completed
+    actionable_total = total + len(actionable_subs)
+
+    ai_warning = await _build_daily_load_warning(
+        db, actionable_completed, actionable_total
+    )
+
+    return DashboardDayStats(
+        completed=completed,
+        total=total,
+        subtask_progress=subtask_progress,
+        ai_warning=ai_warning,
+        recurring_today=recurring_today,
+        actionable_completed=actionable_completed,
+        actionable_total=actionable_total,
+    )
+
+
+async def get_today_progress(db: AsyncSession) -> tuple[int, int]:
+    """Прогресс дня для STANDALONE-задач (без подзадач) + регулярные."""
+    bundle = await get_dashboard_day_stats(db)
+    return bundle.completed, bundle.total
+
+
+async def get_subtask_today_progress(db: AsyncSession) -> dict:
+    """Прогресс задач С подзадачами: родители + подзадачи."""
+    bundle = await get_dashboard_day_stats(db)
+    return bundle.subtask_progress
+
 
 async def get_today_stats(db: AsyncSession):
     """Статистика сегодняшнего дня: обычные задачи + регулярные шаблоны на сегодня."""
-    return await get_today_progress(db)
+    bundle = await get_dashboard_day_stats(db)
+    return bundle.completed, bundle.total
 
 
 async def get_today_actionable_stats(db: AsyncSession) -> tuple[int, int]:
-    """Реальная дневная нагрузка для баннера: standalone + подзадачи родителей на сегодня.
-
-    Подзадачи считаются если:
-    - deadline не задан (работаем без DL), или
-    - deadline <= сегодня (DL наступил).
-    Подзадачи с DL в будущем не входят, пока дата не наступит.
-    """
-    today = date.today()
-    completed, total = await get_today_progress(db)
-
-    roots = await _today_roots_with_sub_completions(db, today)
-    if not roots:
-        return completed, total
-
-    root_ids = [r.id for r in roots]
-    subs_result = await db.execute(
-        select(Task).where(
-            Task.parent_task_id.in_(root_ids),
-            Task.item_kind == "task",
-        )
-    )
-    subs = [s for s in subs_result.scalars().all() if _is_actionable_subtask(s, today)]
-
-    sub_completed = sum(1 for s in subs if s.status == "выполнена")
-    return completed + sub_completed, total + len(subs)
+    """Реальная дневная нагрузка для баннера: standalone + подзадачи родителей на сегодня."""
+    bundle = await get_dashboard_day_stats(db)
+    return bundle.actionable_completed, bundle.actionable_total
 
 
 def today_stats_oob_html(completed: int, total: int) -> str:
@@ -664,9 +688,8 @@ def today_subtask_stats_oob_html(sp: dict) -> str:
     )
 
 
-async def ai_warning_oob_html(db: AsyncSession) -> str:
+def ai_warning_oob_from(warning: Optional[str]) -> str:
     """HTMX OOB: жёлтый баннер нагрузки на дашборде."""
-    warning = await build_daily_load_warning(db)
     if warning:
         return (
             f'<div id="ai-warning-block" hx-swap-oob="true" '
@@ -676,14 +699,19 @@ async def ai_warning_oob_html(db: AsyncSession) -> str:
     return '<div id="ai-warning-block" hx-swap-oob="true" class="hidden"></div>'
 
 
+async def ai_warning_oob_html(db: AsyncSession) -> str:
+    """HTMX OOB: жёлтый баннер нагрузки на дашборде."""
+    bundle = await get_dashboard_day_stats(db)
+    return ai_warning_oob_from(bundle.ai_warning)
+
+
 async def append_today_stats_oob(content: str, db: AsyncSession) -> str:
-    completed, total = await get_today_stats(db)
-    sp = await get_subtask_today_progress(db)
+    bundle = await get_dashboard_day_stats(db)
     return (
         content
-        + today_stats_oob_html(completed, total)
-        + today_subtask_stats_oob_html(sp)
-        + await ai_warning_oob_html(db)
+        + today_stats_oob_html(bundle.completed, bundle.total)
+        + today_subtask_stats_oob_html(bundle.subtask_progress)
+        + ai_warning_oob_from(bundle.ai_warning)
     )
 
 
@@ -878,9 +906,10 @@ async def get_subtask_insights(db: AsyncSession) -> dict:
     }
 
 
-async def build_daily_load_warning(db: AsyncSession) -> Optional[str]:
-    """Предупреждение о перегрузке — только реальные задачи на сегодня."""
-    completed, total = await get_today_actionable_stats(db)
+async def _build_daily_load_warning(
+    db: AsyncSession, completed: int, total: int
+) -> Optional[str]:
+    """Текст предупреждения о перегрузке по уже посчитанной нагрузке."""
     remaining = max(total - completed, 0)
     if remaining <= 8:
         return None
@@ -895,6 +924,12 @@ async def build_daily_load_warning(db: AsyncSession) -> Optional[str]:
     return (
         f"Сегодня {total} задач: {completed} готово, {remaining} осталось. {avg_part}"
     )
+
+
+async def build_daily_load_warning(db: AsyncSession) -> Optional[str]:
+    """Предупреждение о перегрузке — только реальные задачи на сегодня."""
+    bundle = await get_dashboard_day_stats(db)
+    return bundle.ai_warning
 
 
 def _shopping_stats_oob(total: int, archived_count: int) -> str:
@@ -1066,6 +1101,8 @@ __all__ = [
     "templates",
     "compute_period_data",
     "get_categories_list",
+    "get_dashboard_day_stats",
+    "DashboardDayStats",
     "get_today_stats",
     "get_today_progress",
     "get_today_actionable_stats",

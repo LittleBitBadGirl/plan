@@ -8,10 +8,12 @@
                 hx-post="/api/calendar/sync"
                 hx-target="#calendar-column-blocks"
                 hx-swap="outerHTML"
+                hx-indicator="#calendar-sync-spinner"
                 class="shrink-0 text-[10px] text-gray-400 hover:text-amber-400 border border-gray-600 hover:border-amber-700/50 rounded px-2 py-1 whitespace-nowrap"
                 title="Обновить календари">
             ↻
         </button>
+        <span id="calendar-sync-spinner" class="htmx-indicator text-[10px] text-gray-600">синк…</span>
     </div>
     {% endif %}
     {% include "partials/calendar_events_block.html" %}

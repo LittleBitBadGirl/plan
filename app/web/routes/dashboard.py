@@ -21,12 +21,10 @@ from app.web.deps import (
     templates,
     compute_period_data,
     get_categories_list,
-    get_today_stats,
-    build_daily_load_warning,
+    get_dashboard_day_stats,
     get_history_data,
     get_tasks_today,
     append_today_stats_oob,
-    get_subtask_today_progress,
     load_subtasks_map,
     repair_archived_subtasks,
     dashboard_task_order_by,
@@ -120,17 +118,14 @@ async def dashboard(request: Request):
         tasks_with_subtasks = [t for t in tasks if subtasks_map.get(t.id)]
         standalone_tasks = [t for t in tasks if not subtasks_map.get(t.id)]
 
-        from app.services.recurring_schedule import get_recurring_templates_for_date
-
-        recurring_today = await get_recurring_templates_for_date(
-            db, today, exclude_completed=True
-        )
-
-        # Получаем статистику через хелпер
-        completed, total = await get_today_stats(db)
-        subtask_progress = await get_subtask_today_progress(db)
-
         from app.services.shopping_service import load_active_shopping, load_active_reading
+
+        bundle = await get_dashboard_day_stats(db, today)
+        recurring_today = bundle.recurring_today
+        completed, total = bundle.completed, bundle.total
+        subtask_progress = bundle.subtask_progress
+        ai_warning = bundle.ai_warning
+
         shopping_items = await load_active_shopping(db)
         reading_items = await load_active_reading(db)
 
@@ -158,8 +153,6 @@ async def dashboard(request: Request):
         except Exception as exc:
             from app.utils.logger import app_logger
             app_logger.warning(f"Calendar events skipped: {exc}")
-
-        ai_warning = await build_daily_load_warning(db)
 
     return templates.TemplateResponse(request, "dashboard.html", {
         "request": request,
