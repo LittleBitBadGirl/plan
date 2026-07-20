@@ -137,3 +137,31 @@ async def test_append_today_stats_oob_uses_single_bundle(db):
         assert 'id="today-stats-counter"' in html
         assert 'id="today-subtask-stats-block"' in html
         assert 'id="ai-warning-block"' in html
+
+
+@pytest.mark.asyncio
+async def test_load_period_entries_for_dashboard_window(db):
+    """Дашборд не тянет period entries старше окна."""
+    from app.models.period_entry import PeriodEntry
+    from app.web.deps import PERIOD_DASHBOARD_WINDOW_DAYS, load_period_entries_for_dashboard
+
+    today = date.today()
+    db.add(PeriodEntry(date=today - timedelta(days=PERIOD_DASHBOARD_WINDOW_DAYS + 10), has_pain=False))
+    db.add(PeriodEntry(date=today - timedelta(days=5), has_pain=True))
+    await db.commit()
+
+    entries = await load_period_entries_for_dashboard(db, today)
+    dates = {e.date for e in entries}
+    assert today - timedelta(days=5) in dates
+    assert today - timedelta(days=PERIOD_DASHBOARD_WINDOW_DAYS + 10) not in dates
+
+
+@pytest.mark.asyncio
+async def test_jinja_template_cache_enabled():
+    """Шаблоны кэшируются — повторный get_template не читает с диска."""
+    from app.web.deps import templates
+
+    assert templates.env.cache is not None
+    tpl1 = templates.env.get_template("dashboard.html")
+    tpl2 = templates.env.get_template("dashboard.html")
+    assert tpl1 is tpl2

@@ -283,10 +283,28 @@ def compute_period_data(entries, today: date) -> dict:
         "pending_spotting_start": pending_spotting_start,
     }
 
+
+PERIOD_DASHBOARD_WINDOW_DAYS = 120
+
+
+async def load_period_entries_for_dashboard(
+    db: AsyncSession, today: date, *, window_days: int = PERIOD_DASHBOARD_WINDOW_DAYS
+) -> list:
+    """Period entries для дашборда — только последние window_days."""
+    from app.models.period_entry import PeriodEntry
+
+    window_start = today - timedelta(days=window_days)
+    result = await db.execute(
+        select(PeriodEntry)
+        .where(PeriodEntry.date >= window_start)
+        .order_by(PeriodEntry.date)
+    )
+    return list(result.scalars().all())
+
+
 # Шаблоны
 templates_dir = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(templates_dir))
-templates.env.cache = None  # Отключаем кэш, чтобы избежать ошибок с хэшированием словарей
 
 _EMOJI_IN_NAME = re.compile(
     r"[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F600-\U0001F64F"
@@ -1100,6 +1118,8 @@ async def get_tasks_today(db: AsyncSession, request: Request):
 __all__ = [
     "templates",
     "compute_period_data",
+    "load_period_entries_for_dashboard",
+    "PERIOD_DASHBOARD_WINDOW_DAYS",
     "get_categories_list",
     "get_dashboard_day_stats",
     "DashboardDayStats",

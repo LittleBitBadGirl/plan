@@ -20,6 +20,7 @@ from app.config import settings
 from app.web.deps import (
     templates,
     compute_period_data,
+    load_period_entries_for_dashboard,
     get_categories_list,
     get_dashboard_day_stats,
     get_history_data,
@@ -89,11 +90,9 @@ async def dashboard(request: Request):
                 "start_weekday": start_weekday
             })
 
-        # Period tracker data
-        from app.models.period_entry import PeriodEntry
-        period_result = await db.execute(select(PeriodEntry).order_by(PeriodEntry.date))
-        period_entries = period_result.scalars().all()
-        period_data = compute_period_data(list(period_entries), today)
+        # Period tracker data (последние 120 дней — достаточно для фазы и календаря)
+        period_entries = await load_period_entries_for_dashboard(db, today)
+        period_data = compute_period_data(period_entries, today)
 
         # Обычные задачи (только корневые)
         result = await db.execute(
