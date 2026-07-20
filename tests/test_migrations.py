@@ -9,7 +9,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.db.migrate import run_migrations
 from app.models import calendar_event as _ce  # noqa: F401
 from app.models import calendar_ignore_rule as _cir  # noqa: F401
+from app.models import investment as _inv  # noqa: F401
 from app.models import period_entry as _pe  # noqa: F401
+from app.models import portfolio as _pf  # noqa: F401
 from app.models import recurring_completion as _rc  # noqa: F401
 from app.models.base import Base
 
@@ -39,11 +41,20 @@ async def test_run_migrations_on_fresh_db():
                 text("SELECT version_num FROM alembic_version")
             )
             version = result.scalar_one()
-        assert version == "002_legacy_schema"
+        assert version == "008_portfolio_analyzer"
 
         sync = sqlite3.connect(db_path)
-        cols = {row[1] for row in sync.execute("PRAGMA table_info(tasks)")}
+        task_cols = {row[1] for row in sync.execute("PRAGMA table_info(tasks)")}
+        flow_cols = {row[1] for row in sync.execute("PRAGMA table_info(investment_flows)")}
+        tables = {
+            row[0]
+            for row in sync.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
         sync.close()
-        assert "estimated_minutes" in cols
+        assert "estimated_minutes" in task_cols
+        assert "portfolio_id" in flow_cols
+        assert "portfolios" in tables
 
         await engine.dispose()

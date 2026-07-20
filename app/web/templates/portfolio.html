@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Портфель — Планировщик{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto" id="portfolioRoot"
+     {% if active_portfolio %}data-portfolio-id="{{ active_portfolio.id }}"{% endif %}>
+
+    <h1 class="text-3xl font-bold text-white mb-6">Портфель</h1>
+
+    <nav class="flex flex-wrap gap-2 mb-6" id="portfolioTabs">
+        {% for p in portfolios %}
+        <a href="/portfolio?tab={{ p.slug }}"
+           class="px-4 py-2 rounded-lg text-sm font-medium transition border
+                  {% if p.slug == active_tab %}
+                  bg-yellow-600/20 border-yellow-600 text-yellow-300
+                  {% else %}
+                  bg-dark-800 border-dark-600 text-gray-400 hover:text-white hover:border-dark-500
+                  {% endif %}">
+            {{ p.name }}
+        </a>
+        {% endfor %}
+    </nav>
+
+    <p id="paError" class="hidden mb-4 text-red-400 text-sm bg-red-900/20 border border-red-800 rounded-lg px-4 py-2"></p>
+
+    {% if active_portfolio %}
+    {% if active_portfolio.goals %}
+    <div class="mb-6 space-y-3" id="portfolioGoals">
+        {% for goal in active_portfolio.goals %}
+        {% set pct = ((goal.current_amount / goal.target_amount * 100) if goal.target_amount else 0) | int %}
+        <div class="bg-dark-800 rounded-xl border border-dark-600 px-5 py-4">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-sm text-gray-300">Цель: {{ goal.name }}</span>
+                <span class="text-sm text-yellow-300 font-medium">{{ pct }}%</span>
+            </div>
+            <div class="w-full bg-dark-700 rounded-full h-2 mb-1">
+                <div class="bg-yellow-600 h-2 rounded-full transition-all" style="width: {{ [pct, 100] | min }}%"></div>
+            </div>
+            <p class="text-xs text-gray-500">
+                {{ "{:,.0f}".format(goal.current_amount).replace(",", " ") }} /
+                {{ "{:,.0f}".format(goal.target_amount).replace(",", " ") }} ₽
+            </p>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div id="paKpi" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+        {% for _ in range(5) %}
+        <div class="bg-dark-800 rounded-xl border border-dark-600 px-4 py-3 animate-pulse">
+            <div class="h-3 bg-dark-700 rounded w-2/3 mb-2"></div>
+            <div class="h-6 bg-dark-700 rounded w-1/2"></div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="bg-dark-800 rounded-xl border border-dark-600 p-4 mb-6">
+        <div class="flex flex-wrap items-center gap-1.5 mb-4" id="paFilters">
+            <button type="button" onclick="PortfolioAnalytics.setPeriod('prevMonth')" id="paBtnPrev"
+                    class="px-2.5 py-1 text-[10px] rounded-lg border transition font-medium bg-dark-700 text-gray-400 border-dark-600">
+                ← пред мес
+            </button>
+            <button type="button" onclick="PortfolioAnalytics.setPeriod('curYear')" id="paBtnYear"
+                    class="px-2.5 py-1 text-[10px] rounded-lg border transition font-medium bg-dark-700 text-gray-400 border-dark-600">
+                тек год
+            </button>
+            <span class="text-gray-700 mx-0.5">|</span>
+            <select id="paYear" onchange="PortfolioAnalytics.onFilterChange()"
+                    class="bg-dark-700 border border-dark-600 rounded-lg px-2.5 py-1 text-[10px] text-gray-300 font-medium focus:outline-none focus:border-yellow-600/50"></select>
+            <select id="paMonth" onchange="PortfolioAnalytics.onFilterChange()"
+                    class="bg-dark-700 border border-dark-600 rounded-lg px-2.5 py-1 text-[10px] text-gray-300 font-medium focus:outline-none focus:border-yellow-600/50"></select>
+            <button type="button" onclick="PortfolioAnalytics.toggleYoY()" id="paYoY"
+                    class="px-2.5 py-1 text-[10px] rounded-lg border transition font-medium border-dark-600 text-gray-500 hover:text-yellow-300">
+                год-к-году
+            </button>
+        </div>
+        <div id="paSparkline" class="bg-dark-900 rounded-lg p-3 min-h-[80px]">
+            <div class="animate-pulse h-16 bg-dark-700 rounded"></div>
+        </div>
+    </div>
+
+    <div id="paCashflow" class="bg-dark-800 rounded-xl border border-dark-600 p-4 mb-6 hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h2 class="text-sm font-semibold text-white">Календарь доходов</h2>
+            <div class="flex flex-wrap items-center gap-2">
+                <input type="text" id="paSearch" placeholder="Поиск инструмента..."
+                       class="bg-dark-900 border border-dark-600 rounded-lg px-3 py-1 text-[11px] text-white placeholder-gray-600 focus:outline-none focus:border-yellow-600/50 w-40">
+                <div id="paYearTabs" class="flex flex-wrap gap-1"></div>
+            </div>
+        </div>
+        <div id="paCashflowTable" class="overflow-x-auto"></div>
+    </div>
+
+    <div class="bg-dark-800 rounded-xl border border-dark-600 p-4 mb-6">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-semibold text-white">Состав портфеля</h2>
+            <span id="paCompositionMeta" class="text-[10px] text-gray-500"></span>
+        </div>
+        <div id="paComposition">
+            <div class="animate-pulse space-y-2">
+                <div class="h-4 bg-dark-700 rounded w-full"></div>
+                <div class="h-4 bg-dark-700 rounded w-3/4"></div>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <p class="text-gray-400">Портфели не найдены. Запустите seed.</p>
+    {% endif %}
+</div>
+
+<div id="paDrilldown" class="hidden fixed inset-y-0 right-0 w-full max-w-md bg-dark-800 border-l border-dark-600 shadow-2xl z-40 flex flex-col"
+     onclick="if(event.target===this)PortfolioAnalytics.closeDrilldown()">
+    <div class="shrink-0 border-b border-dark-700 px-5 py-4 flex justify-between items-center">
+        <h3 class="text-sm font-bold text-white truncate pr-4" id="paDrillTitle">Выплаты</h3>
+        <button type="button" onclick="PortfolioAnalytics.closeDrilldown()"
+                class="text-gray-500 hover:text-gray-300 text-xl leading-none">&times;</button>
+    </div>
+    <div id="paDrillBody" class="flex-1 overflow-auto p-4"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/web/static/js/portfolio-analytics.js"></script>
+{% endblock %}

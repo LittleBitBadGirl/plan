@@ -1,0 +1,10 @@
+{
+  "report_date": "2025-07-31",
+  "snapshot": {"date": "2025-07-31", "total_balance": 850000},
+  "positions": [
+    {"ticker": "TRNFP", "name": "Транснефть (п)", "asset_type": "stock", "quantity": 50, "market_value": 72000}
+  ],
+  "flows": [
+    {"date": "2025-07-15", "type": "dividend", "amount": 10200, "instrument": "TRNFP", "description": "Дивиденды TRNFP"}
+  ]
+}

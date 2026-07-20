@@ -73,6 +73,7 @@ router = APIRouter()
 import datetime as dt
 from sqlalchemy import desc, case
 from app.models.goal import FinancialGoal
+from app.models.portfolio import Portfolio
 
 # ID категорий-сбережений (не считаются расходами)
 SAVINGS_CATEGORY_IDS = [37, 61, 157]  # ИИС, Подушка, Переводы между счетами
@@ -208,15 +209,32 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         # ЦЕЛИ
         goals_res = await db.execute(select(FinancialGoal))
         goals = goals_res.scalars().all()
-        # Разделение: инвестиционные счета (ИИС, брокерские) vs обычные цели
-        INVESTMENT_GOAL_IDS = [1, 3, 6, 7]  # ИИС, Подушка, Автомобиль(брокер), Брокерский 2
-        investment_goals = [g for g in goals if g.id in INVESTMENT_GOAL_IDS]
-        other_goals = [g for g in goals if g.id not in INVESTMENT_GOAL_IDS]
 
-        # Split into active vs completed
+        portfolios_res = await db.execute(
+            select(Portfolio).order_by(Portfolio.sort_order)
+        )
+        portfolios = portfolios_res.scalars().all()
+        portfolio_slugs = {
+            p.legacy_goal_id: p.slug
+            for p in portfolios
+            if p.legacy_goal_id is not None
+        }
+        reserve_goal_ids = {
+            p.legacy_goal_id
+            for p in portfolios
+            if p.type == "reserve" and p.legacy_goal_id is not None
+        }
+        goals_by_id = {g.id: g for g in goals}
+        investment_goals = [
+            goals_by_id[gid]
+            for p in portfolios
+            if (gid := p.legacy_goal_id) is not None and gid in goals_by_id
+        ]
+        investment_goal_ids = set(portfolio_slugs.keys())
+        other_goals = [g for g in goals if g.id not in investment_goal_ids]
+
         def is_completed(g):
-            # Подушка — инвестиционный инструмент, всегда активна
-            if g.id == 3:
+            if g.id in reserve_goal_ids:
                 return False
             return g.target_amount > 0 and g.current_amount >= g.target_amount
 
@@ -425,7 +443,6 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
                 })
 
         # Calculate % change using investment_snapshots (real broker data)
-        from datetime import datetime, timedelta
         now = datetime.now()
         month_ago = now - timedelta(days=30)
         year_ago = now - timedelta(days=365)
@@ -485,6 +502,7 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         "sparkline": sparkline,
         "goals": goals,
         "investment_goals": investment_goals,
+        "portfolio_slugs": portfolio_slugs,
         "other_goals": other_goals,
         "completed_investment": completed_investment,
         "completed_other": completed_other,
@@ -639,78 +657,20 @@ async def get_goal_history(goal_id: int):
 
 @router.get("/api/goals/{goal_id}/analytics")
 async def get_goal_analytics(goal_id: int, period: str = "all"):
-    """Return analytics for a goal: snapshots, flows by type, totals."""
+    """Backward-compat alias: resolve portfolio by legacy goal_id."""
+    from app.services.portfolio_service import (
+        PortfolioNotFoundError,
+        build_portfolio_analytics,
+        get_portfolio_by_legacy_goal_id,
+    )
+
     async with async_session() as db:
-        # Snapshots (balance over time)
-        snap_res = await db.execute(
-            select(investment_snapshots.c.date, investment_snapshots.c.total_balance)
-            .where(investment_snapshots.c.goal_id == goal_id)
-            .order_by(investment_snapshots.c.date.asc())
-        )
-        snapshots = [{"date": str(r.date), "balance": r.total_balance} for r in snap_res]
-        
-        # Flows (deposits, coupons, dividends, etc.)
-        flow_res = await db.execute(
-            select(investment_flows.c.date, investment_flows.c.type, investment_flows.c.amount, investment_flows.c.description)
-            .where(investment_flows.c.goal_id == goal_id)
-            .order_by(investment_flows.c.date.asc())
-        )
-        flows = [{"date": str(r.date), "type": r.type, "amount": r.amount, "description": r.description} for r in flow_res]
-        
-        # Aggregate by type
-        totals = {}
-        for f in flows:
-            t = f["type"]
-            totals[t] = totals.get(t, 0) + f["amount"]
-        
-        # Monthly cashflow (2025-2026): per-instrument coupons/dividends + summary
-        cashflow_res = await db.execute(
-            select(
-                func.strftime("%Y", investment_flows.c.date).label("year"),
-                func.strftime("%m", investment_flows.c.date).label("month"),
-                investment_flows.c.type,
-                investment_flows.c.description,
-                func.sum(investment_flows.c.amount).label("total")
-            )
-            .where(
-                investment_flows.c.goal_id == goal_id,
-                investment_flows.c.date >= "2025-01-01",
-                investment_flows.c.type.in_(["coupon", "dividend", "deposit", "withdrawal", "tax"])
-            )
-            .group_by("year", "month", investment_flows.c.type, investment_flows.c.description)
-            .order_by("year", "month")
-        )
-        
-        instruments = {}
-        summary = {}
-        
-        for row in cashflow_res:
-            ym = f"{row.year}-{row.month}"
-            amt = round(row.total)
-            # Summary
-            if ym not in summary:
-                summary[ym] = {"deposits": 0, "withdrawals": 0, "coupons": 0, "dividends": 0, "taxes": 0}
-            if row.type in summary[ym]:
-                summary[ym][row.type] += amt
-            # Per-instrument (only coupons and dividends)
-            if row.type in ("coupon", "dividend") and row.description:
-                name = row.description
-                if name not in instruments:
-                    instruments[name] = {}
-                instruments[name][ym] = instruments[name].get(ym, 0) + amt
-        
-        sorted_instruments = sorted(
-            [{"name": k, "months": v, "total": sum(v.values())} for k, v in instruments.items()],
-            key=lambda x: x["total"], reverse=True
-        )
-        
-        return JSONResponse({
-            "goal_id": goal_id,
-            "snapshots": snapshots,
-            "flows": flows,
-            "totals": {k: round(v, 2) for k, v in totals.items()},
-            "monthly_cashflow": {
-                "instruments": sorted_instruments,
-                "summary": summary
-            }
-        })
+        portfolio = await get_portfolio_by_legacy_goal_id(db, goal_id)
+        if portfolio is None:
+            raise HTTPException(status_code=404, detail=f"No portfolio for goal {goal_id}")
+        try:
+            data = await build_portfolio_analytics(db, portfolio.id)
+        except PortfolioNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        data["goal_id"] = goal_id
+        return JSONResponse(data)
