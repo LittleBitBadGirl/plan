@@ -2,7 +2,7 @@ from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Form, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, and_, update
+from sqlalchemy import select, delete, and_, update, tuple_
 from app.db.database import async_session
 from app.models.habit import Habit
 from app.models.habit_log import HabitLog
@@ -32,6 +32,24 @@ def compute_next_cycle_start(habit: Habit, today: date) -> date:
     if scheduled <= today:
         return scheduled
     return today
+
+
+async def load_habit_logs_map(
+    db: AsyncSession, habits: list[Habit]
+) -> dict[int, set[str]]:
+    """Batch-load current-cycle log dates for dashboard habits (one query)."""
+    if not habits:
+        return {}
+    pairs = [(h.id, h.current_cycle) for h in habits]
+    result = await db.execute(
+        select(HabitLog.habit_id, HabitLog.date).where(
+            tuple_(HabitLog.habit_id, HabitLog.cycle_number).in_(pairs)
+        )
+    )
+    out: dict[int, set[str]] = defaultdict(set)
+    for habit_id, log_date in result.all():
+        out[habit_id].add(log_date.isoformat())
+    return dict(out)
 
 
 def build_habit_cycle_grid(habit: Habit, today: date) -> dict:

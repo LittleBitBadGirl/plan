@@ -197,6 +197,78 @@ async def test_load_period_entries_for_dashboard_window(db):
 
 
 @pytest.mark.asyncio
+async def test_load_habit_logs_map_batch(db):
+    """Batch habit logs — один запрос на все привычки текущего цикла."""
+    from app.api.habits import load_habit_logs_map
+    from app.models.habit import Habit
+    from app.models.habit_log import HabitLog
+
+    today = date.today()
+    habits = []
+    for i in range(5):
+        h = Habit(title=f"Habit {i}", start_date=today, current_cycle=1 if i < 3 else 2)
+        db.add(h)
+        habits.append(h)
+    await db.flush()
+
+    for h in habits[:3]:
+        db.add(HabitLog(habit_id=h.id, cycle_number=1, date=today - timedelta(days=1)))
+    for h in habits[3:]:
+        db.add(HabitLog(habit_id=h.id, cycle_number=2, date=today))
+    await db.commit()
+
+    logs_map = await load_habit_logs_map(db, habits)
+    assert len(logs_map) == 5
+    assert (today - timedelta(days=1)).isoformat() in logs_map[habits[0].id]
+    assert today.isoformat() in logs_map[habits[3].id]
+    assert today.isoformat() not in logs_map[habits[0].id]
+
+
+@pytest.mark.asyncio
+async def test_dashboard_does_not_run_rollover_on_get(client):
+    """GET / не вызывает rollover — только startup + cron."""
+    mock_rollover = AsyncMock(return_value={"moved": 0})
+
+    with patch("app.services.rollover_service.rollover_overdue_tasks", mock_rollover):
+        resp = await client.get("/")
+
+    assert resp.status_code == 200
+    assert mock_rollover.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_dashboard_habits_use_batch_logs(db):
+    """5 привычек — habits + один batch logs, без N+1."""
+    from app.api.habits import load_habit_logs_map
+    from app.models.habit import Habit
+    from app.models.habit_log import HabitLog
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    today = date.today()
+    habits = []
+    for i in range(5):
+        h = Habit(title=f"H{i}", start_date=today)
+        db.add(h)
+        habits.append(h)
+    await db.flush()
+    for h in habits:
+        db.add(HabitLog(habit_id=h.id, cycle_number=1, date=today))
+    await db.commit()
+
+    execute_calls = {"n": 0}
+    original_execute = AsyncSession.execute
+
+    async def counting_execute(self, *args, **kwargs):
+        execute_calls["n"] += 1
+        return await original_execute(self, *args, **kwargs)
+
+    with patch.object(AsyncSession, "execute", counting_execute):
+        await load_habit_logs_map(db, habits)
+
+    assert execute_calls["n"] == 1
+
+
+@pytest.mark.asyncio
 async def test_jinja_template_cache_enabled():
     """Шаблоны кэшируются — повторный get_template не читает с диска."""
     from app.web.deps import templates

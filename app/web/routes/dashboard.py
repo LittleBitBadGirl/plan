@@ -38,56 +38,34 @@ from app.web.deps import (
 
 router = APIRouter()
 
-from app.services.rollover_service import rollover_overdue_tasks
 from app.services.ai_service import ai_service
 
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """Дашборд — задачи на сегодня"""
     from app.models.recurring import RecurringTask
+    from app.api.habits import build_habit_cycle_grid, load_habit_logs_map
+    from app.models.habit import Habit
+
     today = date.today()
 
-    # Автоматический перенос просроченных задач при открытии дашборда
-    rollover_result = await rollover_overdue_tasks()
-    if rollover_result["moved"] > 0:
-        from app.utils.logger import app_logger
-        app_logger.info(f"🔄 Auto-rollover: перенесено {rollover_result['moved']} задач на сегодня")
-
     async with async_session() as db:
-        # Привычки (Habit Tracker)
-        from app.models.habit import Habit
-        from app.models.habit_log import HabitLog
-        from sqlalchemy import and_
-
         habits_result = await db.execute(
             select(Habit).where(Habit.is_active == True, Habit.is_archived == False)
         )
-        habits = habits_result.scalars().all()
-        
-        # Для каждой привычки формируем сетку из 30 дней от её даты старта
+        habits = list(habits_result.scalars().all())
+        logs_map = await load_habit_logs_map(db, habits)
+
         habits_data = []
         for h in habits:
-            h_start = h.start_date or today
-            h_dates = [(h_start + timedelta(days=i)) for i in range(h.target_days or 30)]
-            
-            # Определяем смещение (день недели начала: 0=Пн, 1=Вт, ... 6=Вс)
-            start_weekday = h_start.weekday()
-            
-            # Логи для этой конкретной привычки и ТЕКУЩЕГО цикла
-            h_logs_result = await db.execute(
-                select(HabitLog.date).where(
-                    HabitLog.habit_id == h.id,
-                    HabitLog.cycle_number == h.current_cycle
-                )
-            )
-            h_logs = {log_date.isoformat() for log_date in h_logs_result.scalars().all()}
-            
+            grid = build_habit_cycle_grid(h, today)
+            h_logs = logs_map.get(h.id, set())
             habits_data.append({
                 "habit": h,
-                "dates": h_dates,
+                "dates": grid["dates"],
                 "logs": h_logs,
                 "progress": len(h_logs),
-                "start_weekday": start_weekday
+                "start_weekday": grid["start_weekday"],
             })
 
         # Period tracker data (последние 120 дней — достаточно для фазы и календаря)
