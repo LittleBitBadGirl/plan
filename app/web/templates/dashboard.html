@@ -100,7 +100,7 @@
             </div>
 
             {% if subtask_progress.parent_total > 0 %}
-            <div class="flex-1">
+            <div id="today-subtask-stats-block" class="flex-1">
                 <div class="flex justify-between items-center mb-1 px-1">
                     <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Подзадачи</span>
                     <span id="today-subtask-counter" class="font-bold text-sm text-amber-600">{{ subtask_progress.parent_done }}/{{ subtask_progress.parent_total }}</span>

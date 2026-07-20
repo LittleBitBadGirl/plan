@@ -409,11 +409,60 @@ async def repair_archived_subtasks(db: AsyncSession) -> None:
     await db.flush()
 
 
-def _completed_on_day(completed_at: Optional[datetime], day: date) -> bool:
-    """Задача закрыта в указанный календарный день (UTC, как completed_at в БД)."""
+def _completed_at_local_day(completed_at: Optional[datetime]) -> Optional[date]:
+    """Локальный календарный день закрытия (completed_at в БД — UTC)."""
     if not completed_at:
+        return None
+    if completed_at.tzinfo is None:
+        completed_at = completed_at.replace(tzinfo=timezone.utc)
+    return completed_at.astimezone().date()
+
+
+def _completed_on_day(completed_at: Optional[datetime], day: date) -> bool:
+    """Задача закрыта в указанный локальный календарный день."""
+    local_day = _completed_at_local_day(completed_at)
+    return local_day == day if local_day else False
+
+
+def _is_actionable_subtask(sub: Task, today: date) -> bool:
+    """Подзадача входит в дневную нагрузку баннера «Сегодня N задач»."""
+    if sub.item_kind != "task":
         return False
-    return completed_at.date() == day
+    if sub.deadline is not None and sub.deadline > today:
+        return False
+    if sub.status != "выполнена":
+        return True
+    return _completed_on_day(sub.completed_at, today)
+
+
+async def _today_roots_with_sub_completions(db: AsyncSession, today: date) -> list[Task]:
+    """Корневые задачи на сегодня + родители с подзадачами, закрытыми сегодня."""
+    roots_result = await db.execute(select(Task).where(*_today_roots_filter(today)))
+    roots = list(roots_result.scalars().all())
+    seen = {r.id for r in roots}
+
+    extra_result = await db.execute(
+        select(Task).where(
+            Task.parent_task_id.isnot(None),
+            Task.status == "выполнена",
+            Task.completed_at.isnot(None),
+        )
+    )
+    extra_parent_ids: set[int] = set()
+    for sub in extra_result.scalars().all():
+        if sub.parent_task_id and _completed_on_day(sub.completed_at, today):
+            extra_parent_ids.add(sub.parent_task_id)
+
+    if extra_parent_ids:
+        extra_roots_result = await db.execute(
+            select(Task).where(Task.id.in_(extra_parent_ids))
+        )
+        for parent in extra_roots_result.scalars().all():
+            if parent.id not in seen:
+                roots.append(parent)
+                seen.add(parent.id)
+
+    return roots
 
 
 def _today_roots_filter(today: date) -> list:
@@ -488,32 +537,7 @@ async def get_subtask_today_progress(db: AsyncSession) -> dict:
     """
     today = date.today()
 
-    roots_result = await db.execute(select(Task).where(*_today_roots_filter(today)))
-    roots = roots_result.scalars().all()
-
-    # Also include parents whose subtasks were completed today (future due_date)
-    extra_result = await db.execute(
-        select(Task)
-        .where(
-            Task.parent_task_id.isnot(None),
-            Task.status == "выполнена",
-            Task.completed_at.isnot(None),
-            func.date(Task.completed_at) == today.isoformat(),
-        )
-    )
-    extra_subs = extra_result.scalars().all()
-    extra_parent_ids = set()
-    for sub in extra_subs:
-        if sub.parent_task_id:
-            extra_parent_ids.add(sub.parent_task_id)
-    
-    if extra_parent_ids:
-        extra_roots_result = await db.execute(
-            select(Task).where(Task.id.in_(extra_parent_ids))
-        )
-        for r in extra_roots_result.scalars().all():
-            if r.id not in {p.id for p in roots}:
-                roots.append(r)
+    roots = await _today_roots_with_sub_completions(db, today)
 
     if not roots:
         return {"parent_total": 0, "parent_done": 0, "subtask_total": 0, "subtask_done": 0}
@@ -559,23 +583,6 @@ async def get_today_stats(db: AsyncSession):
     return await get_today_progress(db)
 
 
-def _actionable_subtask_filters(today: date, parent_ids: list[int]) -> list:
-    """Подзадачи для баннера: у родителей на сегодня, без DL или DL <= сегодня."""
-    return [
-        Task.parent_task_id.in_(parent_ids),
-        Task.item_kind == "task",
-        or_(Task.deadline.is_(None), Task.deadline <= today),
-        or_(
-            Task.status != "выполнена",
-            and_(
-                Task.status == "выполнена",
-                Task.completed_at.isnot(None),
-                func.date(Task.completed_at) == today.isoformat(),
-            ),
-        ),
-    ]
-
-
 async def get_today_actionable_stats(db: AsyncSession) -> tuple[int, int]:
     """Реальная дневная нагрузка для баннера: standalone + подзадачи родителей на сегодня.
 
@@ -587,21 +594,20 @@ async def get_today_actionable_stats(db: AsyncSession) -> tuple[int, int]:
     today = date.today()
     completed, total = await get_today_progress(db)
 
-    roots_result = await db.execute(select(Task).where(*_today_roots_filter(today)))
-    roots = roots_result.scalars().all()
+    roots = await _today_roots_with_sub_completions(db, today)
     if not roots:
         return completed, total
 
     root_ids = [r.id for r in roots]
     subs_result = await db.execute(
-        select(Task).where(*_actionable_subtask_filters(today, root_ids))
+        select(Task).where(
+            Task.parent_task_id.in_(root_ids),
+            Task.item_kind == "task",
+        )
     )
-    subs = subs_result.scalars().all()
+    subs = [s for s in subs_result.scalars().all() if _is_actionable_subtask(s, today)]
 
-    sub_completed = sum(
-        1 for s in subs
-        if s.status == "выполнена" and _completed_on_day(s.completed_at, today)
-    )
+    sub_completed = sum(1 for s in subs if s.status == "выполнена")
     return completed + sub_completed, total + len(subs)
 
 
