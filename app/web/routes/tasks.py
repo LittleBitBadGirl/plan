@@ -363,6 +363,12 @@ async def task_create_htmx(
 
 
 
+async def _hide_root_task_oob(db: AsyncSession, task_id: int) -> str:
+    """HTMX: скрыть карточку root-задачи + обновить stats OOB."""
+    hide = f'<div id="task-{task_id}" hx-swap-oob="true"></div>'
+    return await append_today_stats_oob(hide, db)
+
+
 async def _sync_parent(db: AsyncSession, parent_id: int):
     subs_res = await db.execute(
         select(Task).where(Task.parent_task_id == parent_id, Task.is_archived == False)
@@ -463,11 +469,10 @@ async def complete_task(request: Request, task_id: int):
                     child.is_archived = False
             await db.commit()
 
-            target = request.headers.get("HX-Target", "")
-            if target.startswith("task-") or is_backlog:
+            if is_backlog:
                 return HTMLResponse(content="✅ выполнено")
 
-            return HTMLResponse(content=await get_tasks_today(db, request))
+            return HTMLResponse(content=await _hide_root_task_oob(db, task.id))
     raise HTTPException(status_code=404, detail="Задача не найдена")
 
 
@@ -484,7 +489,7 @@ async def delete_task(request: Request, task_id: int):
 
             target = request.headers.get("HX-Target", "")
             if target.startswith("task-"):
-                return HTMLResponse("")
+                return HTMLResponse(content=await _hide_root_task_oob(db, task.id))
 
             return HTMLResponse(content=await get_tasks_today(db, request))
     raise HTTPException(status_code=404, detail="Задача не найдена")

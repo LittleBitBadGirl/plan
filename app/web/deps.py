@@ -506,6 +506,7 @@ async def _today_roots_with_sub_completions(db: AsyncSession, today: date) -> li
 
 def _today_roots_filter(today: date) -> list:
     """Корневые задачи на сегодня: открытые или закрытые сегодня."""
+    start_utc, end_utc = _utc_day_bounds(today)
     return [
         *_today_task_base_filter(today),
         or_(
@@ -513,7 +514,8 @@ def _today_roots_filter(today: date) -> list:
             and_(
                 Task.status == "выполнена",
                 Task.completed_at.isnot(None),
-                func.date(Task.completed_at) == today.isoformat(),
+                Task.completed_at >= start_utc,
+                Task.completed_at <= end_utc,
             ),
         ),
     ]
@@ -735,11 +737,13 @@ async def append_today_stats_oob(content: str, db: AsyncSession) -> str:
 
 def _completed_tasks_base_filter(start: date, end: date):
     """Корневые задачи, закрытые в интервале дат (без recurring)."""
+    range_start_utc, _ = _utc_day_bounds(start)
+    _, range_end_utc = _utc_day_bounds(end)
     return (
         Task.status == "выполнена",
         Task.completed_at.isnot(None),
-        func.date(Task.completed_at) >= start.isoformat(),
-        func.date(Task.completed_at) <= end.isoformat(),
+        Task.completed_at >= range_start_utc,
+        Task.completed_at <= range_end_utc,
         Task.parent_task_id == None,
         or_(Task.source != "recurring", Task.source == None),
         Task.item_kind == "task",

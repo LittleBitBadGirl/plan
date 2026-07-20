@@ -102,6 +102,46 @@ async def test_today_roots_includes_sub_completed_today(db):
 
 
 @pytest.mark.asyncio
+async def test_complete_task_returns_oob_not_full_list(client, db):
+    """Complete root task — OOB hide + stats, без re-render всего списка."""
+    today = date.today()
+    task = Task(title="Complete me", due_date=today, status="новая", source="web")
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+
+    resp = await client.post(
+        f"/tasks/{task.id}/complete",
+        headers={"HX-Target": f"task-{task.id}"},
+    )
+    assert resp.status_code == 200
+    assert "Нет задач на сегодня" not in resp.text
+    assert 'hx-swap-oob="true"' in resp.text
+    assert f'id="task-{task.id}"' in resp.text
+    assert 'id="today-stats-counter"' in resp.text
+
+
+@pytest.mark.asyncio
+async def test_delete_task_returns_oob_not_full_list(client, db):
+    """Delete root task с дашборда — OOB hide, без full list."""
+    today = date.today()
+    task = Task(title="Delete me", due_date=today, status="новая", source="web")
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+
+    resp = await client.request(
+        "DELETE",
+        f"/tasks/{task.id}",
+        headers={"HX-Target": f"task-{task.id}"},
+    )
+    assert resp.status_code == 200
+    assert "Нет задач на сегодня" not in resp.text
+    assert f'id="task-{task.id}"' in resp.text
+    assert 'hx-swap-oob="true"' in resp.text
+
+
+@pytest.mark.asyncio
 async def test_dashboard_day_stats_loads_recurring_once(db):
     """Bundle stats — один запрос recurring templates за проход."""
     today = date.today()

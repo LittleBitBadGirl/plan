@@ -41,7 +41,7 @@ async def test_run_migrations_on_fresh_db():
                 text("SELECT version_num FROM alembic_version")
             )
             version = result.scalar_one()
-        assert version == "008_portfolio_analyzer"
+        assert version == "009_perf_indexes"
 
         sync = sqlite3.connect(db_path)
         task_cols = {row[1] for row in sync.execute("PRAGMA table_info(tasks)")}
@@ -52,9 +52,20 @@ async def test_run_migrations_on_fresh_db():
                 "SELECT name FROM sqlite_master WHERE type='table'"
             )
         }
+        task_indexes = {
+            row[1]
+            for row in sync.execute("PRAGMA index_list(tasks)")
+        }
+        habit_indexes = {
+            row[1]
+            for row in sync.execute("PRAGMA index_list(habit_logs)")
+        }
         sync.close()
         assert "estimated_minutes" in task_cols
         assert "portfolio_id" in flow_cols
         assert "portfolios" in tables
+        assert "ix_tasks_dashboard_day" in task_indexes
+        assert "ix_tasks_completed_at" in task_indexes
+        assert "ix_habit_logs_habit_cycle" in habit_indexes
 
         await engine.dispose()

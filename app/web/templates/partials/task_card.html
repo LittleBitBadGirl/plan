@@ -46,8 +46,8 @@
 
         <div class="flex gap-0.5 items-center shrink-0 ml-auto">
             <form hx-post="/tasks/{{ task.id }}/complete"
-                  hx-target="#tasks-list"
-                  hx-swap="innerHTML"
+                  hx-target="#task-{{ task.id }}"
+                  hx-swap="outerHTML"
                   class="inline">
                 <button type="submit" class="icon-action icon-action--success" title="Выполнить">
                     {{ icon_check() }}
