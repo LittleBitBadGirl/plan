@@ -14,3 +14,5 @@ from .goal_history import GoalHistory
 from .period_entry import PeriodEntry
 from .calendar_event import CalendarEvent
 from .calendar_ignore_rule import CalendarIgnoreRule
+from .portfolio import Portfolio, PortfolioGoal, Instrument, Position, ImportLog
+from .investment import InvestmentSnapshot, InvestmentFlow

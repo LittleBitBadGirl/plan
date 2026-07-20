@@ -30,6 +30,24 @@ Auth: если задан `API_TOKEN` — cookie после `/login` или за
 | `/recurring` | Периодические |
 | `/shopping` | Список покупок |
 | `/finance` | Финансы + диаграмма расходов |
+| `/portfolio` | Портфель: tabs (ИИС, Подушка, Брокерский 1/2), KPI, cashflow, состав |
+
+---
+
+## REST API — портфель
+
+Auth: `Authorization: Bearer $API_TOKEN` для import.
+
+| Метод | URL | Описание |
+|-------|-----|----------|
+| GET | `/api/portfolios` | Список портфелей (id, name, slug, type, legacy_goal_id) |
+| GET | `/api/portfolios/{id}/analytics` | Аналитика: snapshots, flows, monthly_cashflow, summary |
+| GET | `/api/portfolios/{id}/composition` | Последний состав позиций |
+| GET | `/api/portfolios/{id}/payments?instrument=&year=` | Drill-down выплат по инструменту |
+| POST | `/api/portfolios/{id}/import` | Hermes JSON import (409 при дубликате report_date) |
+| GET | `/api/goals/{goal_id}/analytics` | Backward-compat alias → portfolio по legacy_goal_id |
+
+Контракт import: `docs/portfolio-hermes-contract.md`, fixture: `tests/fixtures/sample_import.json`.
 
 ---
 

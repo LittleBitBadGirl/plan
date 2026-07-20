@@ -1,0 +1,70 @@
+{
+  "report_date": "2025-05-31",
+  "snapshot": {
+    "date": "2025-05-31",
+    "total_balance": 205992.31
+  },
+  "positions": [
+    {
+      "isin": "RU0009029557",
+      "name": "Акции привилегированные ПАО Сбербанк",
+      "asset_type": "stock",
+      "quantity": 80,
+      "market_value": 24488.8,
+      "avg_price": 306.11
+    },
+    {
+      "isin": "RU000A0DKVS5",
+      "name": "Акции обыкновенные ПАО \"НОВАТЭК\"",
+      "asset_type": "stock",
+      "quantity": 3,
+      "market_value": 3305.4,
+      "avg_price": 1101.8
+    },
+    {
+      "isin": "RU000A106Z61",
+      "name": "Облигации ФЗ перем. купон серия 29025RMFS",
+      "asset_type": "bond",
+      "quantity": 1,
+      "market_value": 944.46,
+      "avg_price": 94.275
+    }
+  ],
+  "flows": [
+    {
+      "date": "2025-05-19",
+      "type": "dividend",
+      "amount": 139.95,
+      "isin": "RU000A0DKVS5",
+      "description": "Выплата дивидендов, ПАО \"НОВАТЭК\", ISIN: RU000A0DKVS5, 1 ЦБ=46.65RUB"
+    },
+    {
+      "date": "2025-05-19",
+      "type": "tax",
+      "amount": -18.0,
+      "isin": "RU000A0DKVS5",
+      "description": "Списание НДФЛ"
+    },
+    {
+      "date": "2025-05-23",
+      "type": "dividend",
+      "amount": 44.0,
+      "isin": "RU000A108KL3",
+      "description": "Выплата дивидендов, МКПАО \"МД Медикал Груп\", ISIN: RU000A108KL3, 1 ЦБ=22RUB"
+    },
+    {
+      "date": "2025-05-28",
+      "type": "coupon",
+      "amount": 52.64,
+      "isin": "RU000A106Z61",
+      "description": "Выплата купона, Минфин России, ISIN: RU000A106Z61, 1 ЦБ=52.640RUB"
+    },
+    {
+      "date": "2025-05-07",
+      "type": "redemption",
+      "amount": 1806.6,
+      "isin": "RU000A0DJ9B4",
+      "description": "Выкуп бумаг эмитентом, ПАО \"ИНГРАД\", ISIN RU000A0DJ9B4"
+    }
+  ]
+}

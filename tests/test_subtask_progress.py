@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -122,6 +122,48 @@ async def test_actionable_subs_future_deadline_not_counted(db):
     completed, total = await get_today_actionable_stats(db)
     assert total == 1
     assert completed == 0
+
+
+@pytest.mark.asyncio
+async def test_actionable_overdue_sub_completed_today(db):
+    """Закрытие просроченной подзадачи сегодня увеличивает completed в баннере."""
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    parent = Task(title="Проект", due_date=today, status="новая", source="web")
+    db.add(parent)
+    await db.flush()
+
+    sub = Task(
+        title="Просроченная",
+        parent_task_id=parent.id,
+        deadline=yesterday,
+        status="выполнена",
+        completed_at=datetime.now(timezone.utc),
+        source="web",
+    )
+    db.add(sub)
+    db.add(Task(title="Ещё одна", parent_task_id=parent.id, deadline=yesterday, status="новая", source="web"))
+    await db.commit()
+
+    completed, total = await get_today_actionable_stats(db)
+    assert total == 2
+    assert completed == 1
+
+
+@pytest.mark.asyncio
+async def test_completed_on_day_uses_local_calendar(db):
+    """UTC-метка «вчера» не считается сегодняшним закрытием при локальной полночи."""
+    from app.web.deps import _completed_on_day
+
+    today = date.today()
+    # 23:00 UTC вчера = уже «сегодня» в UTC+3, но в UTC ещё вчера
+    utc_yesterday_late = datetime.combine(today - timedelta(days=1), datetime.min.time()).replace(
+        hour=23, tzinfo=timezone.utc
+    )
+    # Локально это может быть today — проверяем согласованность с _completed_at_local_day
+    local_day = utc_yesterday_late.astimezone().date()
+    assert _completed_on_day(utc_yesterday_late, local_day) is True
+    assert _completed_on_day(utc_yesterday_late, today) is (local_day == today)
 
 
 @pytest.mark.asyncio

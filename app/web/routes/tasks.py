@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Resp
 from sqlalchemy import select, func, delete
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import List, Optional
 import re
 import json
@@ -385,7 +385,7 @@ async def _sync_parent(db: AsyncSession, parent_id: int):
 async def _complete_subtask_impl(db: AsyncSession, subtask: Task) -> None:
     """Закрыть подзадачу — остаётся в списке зачёркнутой."""
     subtask.status = "выполнена"
-    subtask.completed_at = datetime.utcnow()
+    subtask.completed_at = datetime.now(timezone.utc)
     subtask.is_archived = False
     if subtask.parent_task_id:
         await _sync_parent(db, subtask.parent_task_id)

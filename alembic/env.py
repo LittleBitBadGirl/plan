@@ -15,7 +15,9 @@ from app.config import settings  # noqa: E402
 from app.models import (  # noqa: E402, F401
     calendar_event,
     calendar_ignore_rule,
+    investment,
     period_entry,
+    portfolio,
     recurring_completion,
 )
 from app.models.base import Base  # noqa: E402
