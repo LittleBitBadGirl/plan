@@ -613,6 +613,8 @@ async def update_transaction_category(
 # Goal History API
 @router.post("/api/goals/{goal_id}/update")
 async def update_goal_amount(goal_id: int, new_amount: float = Form(...)):
+    from app.services.portfolio_service import sync_manual_balance_to_portfolio
+
     async with async_session() as db:
         res = await db.execute(select(FinancialGoal).where(FinancialGoal.id == goal_id))
         goal = res.scalar_one_or_none()
@@ -622,6 +624,8 @@ async def update_goal_amount(goal_id: int, new_amount: float = Form(...)):
         goal.current_amount = new_amount
         hist = GoalHistory(goal_id=goal_id, new_amount=new_amount, delta=delta)
         db.add(hist)
+        # Write-through into portfolio analytics (snapshot + portfolio_goals)
+        await sync_manual_balance_to_portfolio(db, goal_id, new_amount)
         await db.commit()
     return JSONResponse({"ok": True, "new_amount": new_amount, "delta": delta})
 

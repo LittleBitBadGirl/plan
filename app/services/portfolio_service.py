@@ -12,8 +12,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.goal import FinancialGoal
 from app.models.investment import InvestmentFlow, InvestmentSnapshot
-from app.models.portfolio import ImportLog, Instrument, Portfolio, Position
+from app.models.portfolio import ImportLog, Instrument, Portfolio, PortfolioGoal, Position
 from app.services.instrument_normalize import resolve_instrument
 
 VALID_FLOW_TYPES = {
@@ -122,6 +123,66 @@ async def _upsert_snapshot(
     )
 
 
+async def _sync_portfolio_goal_amounts(
+    db: AsyncSession,
+    portfolio_id: int,
+    total_balance: float,
+) -> None:
+    """Keep portfolio_goals.current_amount aligned with NAV."""
+    goals = (
+        await db.execute(
+            select(PortfolioGoal).where(PortfolioGoal.portfolio_id == portfolio_id)
+        )
+    ).scalars().all()
+    for goal in goals:
+        goal.current_amount = total_balance
+
+
+async def sync_manual_balance_to_portfolio(
+    db: AsyncSession,
+    goal_id: int,
+    new_amount: float,
+    *,
+    as_of: date | None = None,
+) -> Portfolio | None:
+    """Write-through from /finance goal edit into portfolio analytics tables.
+
+    Upserts today's (or as_of) InvestmentSnapshot and syncs PortfolioGoal rows.
+    No-op when the goal is not linked to a Portfolio via legacy_goal_id.
+    """
+    portfolio = await get_portfolio_by_legacy_goal_id(db, goal_id)
+    if portfolio is None:
+        return None
+
+    snapshot_date = as_of or date.today()
+    await _upsert_snapshot(db, portfolio, snapshot_date, float(new_amount))
+    await _sync_portfolio_goal_amounts(db, portfolio.id, float(new_amount))
+    return portfolio
+
+
+async def sync_snapshot_to_goals(
+    db: AsyncSession,
+    portfolio: Portfolio,
+    total_balance: float,
+) -> None:
+    """Reverse sync: Hermes snapshot → financial_goals + portfolio_goals.
+
+    Does not write GoalHistory (import is bulk/authoritative; history stays
+    for manual edits on /finance).
+    """
+    amount = float(total_balance)
+    if portfolio.legacy_goal_id is not None:
+        goal = (
+            await db.execute(
+                select(FinancialGoal).where(FinancialGoal.id == portfolio.legacy_goal_id)
+            )
+        ).scalar_one_or_none()
+        if goal is not None:
+            goal.current_amount = amount
+
+    await _sync_portfolio_goal_amounts(db, portfolio.id, amount)
+
+
 async def _upsert_position(
     db: AsyncSession,
     portfolio_id: int,
@@ -214,6 +275,7 @@ async def import_report(
         )
 
     await _upsert_snapshot(db, portfolio, snapshot_date, total_balance)
+    await sync_snapshot_to_goals(db, portfolio, total_balance)
 
     positions_payload = payload.get("positions") or []
     total_market_value = sum(float(item.get("market_value") or 0) for item in positions_payload)
