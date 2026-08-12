@@ -526,7 +526,6 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
             "income": total_income, 
             "expense": total_expense, 
             "savings": total_savings,
-            "balance": total_income - total_expense - total_savings
         },
         "month_name": f"{MONTH_NAMES[view_month]} {view_year}",
         "month_short": MONTH_NAMES[view_month],

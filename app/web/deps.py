@@ -444,14 +444,18 @@ def _completed_on_day(completed_at: Optional[datetime], day: date) -> bool:
 
 
 def _is_actionable_subtask(sub: Task, today: date) -> bool:
-    """Подзадача входит в дневную нагрузку баннера «Сегодня N задач»."""
+    """Подзадача входит в дневную нагрузку баннера «Сегодня N задач».
+
+    Открытые с DL в будущем не считаются (ещё не сегодняшняя работа).
+    Закрытые сегодня считаются всегда — в том числе сделанные раньше DL.
+    """
     if sub.item_kind != "task":
         return False
+    if sub.status == "выполнена":
+        return _completed_on_day(sub.completed_at, today)
     if sub.deadline is not None and sub.deadline > today:
         return False
-    if sub.status != "выполнена":
-        return True
-    return _completed_on_day(sub.completed_at, today)
+    return True
 
 
 def _utc_day_bounds(day: date) -> tuple[datetime, datetime]:

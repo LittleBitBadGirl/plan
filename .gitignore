@@ -46,3 +46,7 @@ CONTEXT.md
 .env.bak
 uploads/
 __pycache__/
+
+# Local virtualenv (named .venv312) and test artifacts
+.venv312/
+data/

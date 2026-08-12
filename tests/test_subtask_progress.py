@@ -108,7 +108,7 @@ async def test_actionable_subs_with_deadline_today(db):
 
 @pytest.mark.asyncio
 async def test_actionable_subs_future_deadline_not_counted(db):
-    """Подзадачи с deadline в будущем не портят статистику."""
+    """Открытые подзадачи с deadline в будущем не портят статистику."""
     today = date.today()
     future = today + timedelta(days=7)
     parent = Task(title="Проект", due_date=today, status="новая", source="web")
@@ -122,6 +122,31 @@ async def test_actionable_subs_future_deadline_not_counted(db):
     completed, total = await get_today_actionable_stats(db)
     assert total == 1
     assert completed == 0
+
+
+@pytest.mark.asyncio
+async def test_actionable_future_deadline_sub_completed_today(db):
+    """Подзадача с DL в будущем, закрытая сегодня, идёт в выполненные."""
+    today = date.today()
+    future = today + timedelta(days=7)
+    parent = Task(title="Проект", due_date=today, status="новая", source="web")
+    db.add(parent)
+    await db.flush()
+
+    db.add(Task(title="Сегодня", parent_task_id=parent.id, deadline=today, status="новая", source="web"))
+    db.add(Task(
+        title="Сделала заранее",
+        parent_task_id=parent.id,
+        deadline=future,
+        status="выполнена",
+        completed_at=datetime.now(timezone.utc),
+        source="web",
+    ))
+    await db.commit()
+
+    completed, total = await get_today_actionable_stats(db)
+    assert total == 2
+    assert completed == 1
 
 
 @pytest.mark.asyncio

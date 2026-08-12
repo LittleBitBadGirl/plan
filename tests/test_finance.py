@@ -38,9 +38,10 @@ async def test_finance_page_renders(client, db):
     response = await client.get("/finance")
     assert response.status_code == 200
     assert "Финансы" in response.text
-    assert "Остаток" in response.text
-    assert "Сводка" in response.text
-    assert "Расходы по категориям" in response.text
+    assert "Доход" in response.text
+    assert "Расход" in response.text
+    assert "Остаток" not in response.text
+    assert "Аналитика" in response.text
 
 
 @pytest.mark.asyncio
@@ -94,3 +95,31 @@ async def test_financial_goals_init(db):
     
     res = await db.execute(select(FinancialGoal).where(FinancialGoal.name == "Тестовая Цель"))
     assert res.scalar_one_or_none() is not None
+
+
+@pytest.mark.asyncio
+async def test_other_goal_ok_button_saves_amount(client, db):
+    """OK на карточке цели без портфеля должен вызывать saveGoal без битого @click."""
+    goal = FinancialGoal(name="Зимовка", target_amount=200_000, current_amount=20_000)
+    db.add(goal)
+    await db.commit()
+    await db.refresh(goal)
+    goal_id = goal.id
+
+    page = await client.get("/finance")
+    assert page.status_code == 200
+    assert f'@click="saveGoal({goal_id})" :disabled="saving"' in page.text
+    assert f'saveGoal({goal_id})\\"' not in page.text
+
+    response = await client.post(
+        f"/api/goals/{goal_id}/update",
+        data={"new_amount": 40_000},
+    )
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+
+    db.expire_all()
+    saved = (
+        await db.execute(select(FinancialGoal).where(FinancialGoal.id == goal_id))
+    ).scalar_one()
+    assert saved.current_amount == 40_000
