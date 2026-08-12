@@ -465,10 +465,10 @@
             }
 
             var h = "<table class='w-full text-[10px] border-collapse min-w-[640px]'><thead><tr class='border-b border-dark-700'>";
-            h += "<th class='sticky left-0 bg-dark-800 px-2 py-1.5 text-left text-gray-500'>Инструмент</th>";
-            h += "<th class='px-1.5 py-1.5 text-right text-gray-500 w-14'>∑</th>";
+            h += "<th class='sticky left-0 top-0 z-20 bg-dark-800 px-2 py-1.5 text-left text-gray-500'>Инструмент</th>";
+            h += "<th class='sticky top-0 z-10 bg-dark-800 px-1.5 py-1.5 text-right text-gray-500 w-14'>∑</th>";
             for (var mi = 1; mi <= 12; mi++) {
-                h += "<th class='px-1.5 py-1.5 text-right text-gray-500'>" + MONTHS[mi - 1] + '</th>';
+                h += "<th class='sticky top-0 z-10 bg-dark-800 px-1.5 py-1.5 text-right text-gray-500'>" + MONTHS[mi - 1] + '</th>';
             }
             h += '</tr></thead><tbody>';
 
