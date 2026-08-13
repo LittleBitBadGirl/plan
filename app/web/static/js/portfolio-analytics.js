@@ -6,6 +6,13 @@
     'use strict';
 
     var MONTHS = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+    var ASSET_GROUPS = [
+        { key: 'stock', label: 'Акции', cls: 'text-amber-400/90' },
+        { key: 'bond', label: 'Облигации', cls: 'text-emerald-400/90' },
+        { key: 'pif', label: 'БПИФ / ПИФ', cls: 'text-sky-400/90' },
+        { key: 'etf', label: 'ETF', cls: 'text-violet-400/90' },
+        { key: 'other', label: 'Другое', cls: 'text-gray-500' },
+    ];
     var FLOW_LABELS = {
         deposit: 'Пополнения',
         withdrawal: 'Выводы',
@@ -49,6 +56,7 @@
         composition: null,
         cfYear: null,
         cfSearch: '',
+        cfShowExited: false,
         period: 'prevMonth',
         yoy: false,
         selectedInstrument: null,
@@ -415,6 +423,7 @@
 
         renderCashflowTable: function () {
             var container = document.getElementById('paCashflowTable');
+            var summaryEl = document.getElementById('paCashflowSummary');
             var section = document.getElementById('paCashflow');
             if (!container || !this.data) return;
             var cf = this.data.monthly_cashflow;
@@ -436,13 +445,53 @@
             var year = this.cfYear;
             var summary = cf.summary || {};
             var self = this;
+            var visible = this._instrumentsForYear(instruments, year);
+            var held = visible.filter(function (i) { return i.active !== false; });
+            var exited = visible.filter(function (i) { return i.active === false; });
+            var showExited = this.cfShowExited || (this.cfSearch && exited.length > 0);
 
+            var html = '';
             if (year === 'all') {
-                container.innerHTML = this._buildAllYearsTable(instruments, summary);
+                if (held.length) html += this._buildAllYearsTable(held, false);
+                else if (!exited.length) html += '<p class="text-[11px] text-gray-500 py-3">Нет выплат</p>';
+                else html += '<p class="text-[11px] text-gray-500 mb-2">В текущем составе нет выплат</p>';
             } else {
-                container.innerHTML = this._buildYearTable(instruments, summary, year);
+                if (held.length) html += this._buildYearTable(held, year, false);
+                else if (!exited.length) html += '<p class="text-[11px] text-gray-500 py-3">Нет выплат за этот год</p>';
+                else html += '<p class="text-[11px] text-gray-500 mb-2">В текущем составе нет выплат за этот год</p>';
             }
 
+            if (exited.length) {
+                html += '<button type="button" id="paExitedToggle" class="mt-2 mb-1 px-2.5 py-1 text-[10px] rounded-lg border font-medium transition ';
+                html += showExited
+                    ? 'bg-yellow-600/15 border-yellow-700/40 text-yellow-300"'
+                    : 'bg-dark-700 border-dark-600 text-gray-400 hover:text-gray-200"';
+                html += '>' + (showExited ? '▾' : '▸') + ' Проданные и погашенные · ' + exited.length + '</button>';
+                if (showExited) {
+                    html += '<div id="paExitedWrap" class="opacity-70">';
+                    html += year === 'all'
+                        ? this._buildAllYearsTable(exited, true)
+                        : this._buildYearTable(exited, year, true);
+                    html += '</div>';
+                }
+            }
+
+            container.innerHTML = html;
+
+            if (summaryEl) {
+                var summaryHtml = this._buildCashflowSummary(summary, year);
+                summaryEl.innerHTML = summaryHtml;
+                summaryEl.classList.toggle('hidden', !summaryHtml);
+            }
+
+            var toggle = document.getElementById('paExitedToggle');
+            if (toggle) {
+                toggle.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    self.cfShowExited = !self.cfShowExited;
+                    self.renderCashflowTable();
+                });
+            }
             container.querySelectorAll('[data-instrument]').forEach(function (row) {
                 row.addEventListener('click', function () {
                     self.openDrilldown(row.getAttribute('data-instrument'));
@@ -450,20 +499,170 @@
             });
         },
 
-        _buildYearTable: function (instruments, summary, year) {
-            var yrSummary = { deposits: 0, withdrawals: 0, coupons: 0, dividends: 0, taxes: 0, redemptions: 0 };
+        _instrumentsForYear: function (instruments, year) {
+            if (year === 'all') return instruments;
+            var self = this;
+            return instruments.filter(function (instr) {
+                return self._yearInstrumentTotal(instr, year) !== 0;
+            });
+        },
+
+        _groupedCashflow: function (instruments) {
+            var buckets = {};
+            instruments.forEach(function (item) {
+                var key = item.asset_type || 'other';
+                if (!buckets[key]) buckets[key] = [];
+                buckets[key].push(item);
+            });
+            var groups = [];
+            var known = {};
+            ASSET_GROUPS.forEach(function (meta) {
+                known[meta.key] = true;
+                if (buckets[meta.key] && buckets[meta.key].length) {
+                    groups.push({
+                        key: meta.key,
+                        label: meta.label,
+                        cls: meta.cls,
+                        items: buckets[meta.key],
+                    });
+                }
+            });
+            Object.keys(buckets).forEach(function (key) {
+                if (known[key]) return;
+                groups.push({
+                    key: key,
+                    label: key,
+                    cls: 'text-gray-500',
+                    items: buckets[key],
+                });
+            });
+            return groups;
+        },
+
+        _assetGroupHeaderRow: function (group, colCount) {
+            return (
+                '<tr class="border-b border-dark-600/40">' +
+                '<td colspan="' + colCount + '" class="sticky left-0 z-[2] bg-dark-800 px-2 pt-2.5 pb-1">' +
+                '<span class="text-[9px] font-bold uppercase tracking-widest ' + group.cls + '">' +
+                esc(group.label) + '</span>' +
+                '<span class="text-[9px] text-gray-600 ml-1.5">' + group.items.length + '</span>' +
+                '</td></tr>'
+            );
+        },
+
+        _sumCashflow: function (summary, year) {
+            var totals = { deposits: 0, withdrawals: 0, coupons: 0, dividends: 0, taxes: 0, redemptions: 0 };
+            Object.keys(summary).forEach(function (ym) {
+                if (year !== 'all' && ym.substring(0, 4) !== String(year)) return;
+                var row = summary[ym] || {};
+                totals.deposits += row.deposits || 0;
+                totals.withdrawals += row.withdrawals || 0;
+                totals.coupons += row.coupons || 0;
+                totals.dividends += row.dividends || 0;
+                totals.taxes += row.taxes || 0;
+                totals.redemptions += row.redemptions || 0;
+            });
+            return totals;
+        },
+
+        _cashflowBreakdownChips: function (summary, year, key) {
+            var chips = [];
+            if (year === 'all') {
+                var byYear = {};
+                Object.keys(summary).forEach(function (ym) {
+                    var y = ym.substring(0, 4);
+                    byYear[y] = (byYear[y] || 0) + ((summary[ym] && summary[ym][key]) || 0);
+                });
+                Object.keys(byYear).sort().forEach(function (y) {
+                    if (!byYear[y]) return;
+                    chips.push(
+                        '<span class="inline-flex items-center gap-1 rounded-md bg-dark-900 border border-dark-600/70 px-1.5 py-0.5">' +
+                        '<span class="text-gray-500">' + y + '</span>' +
+                        '<span class="text-gray-200 tabular-nums">' + fmtPlain(byYear[y]) + '</span></span>'
+                    );
+                });
+                return chips.join('');
+            }
             for (var m = 1; m <= 12; m++) {
                 var ym = year + '-' + String(m).padStart(2, '0');
-                if (summary[ym]) {
-                    yrSummary.deposits += summary[ym].deposits || 0;
-                    yrSummary.withdrawals += summary[ym].withdrawals || 0;
-                    yrSummary.coupons += summary[ym].coupons || 0;
-                    yrSummary.dividends += summary[ym].dividends || 0;
-                    yrSummary.taxes += summary[ym].taxes || 0;
-                    yrSummary.redemptions += summary[ym].redemptions || 0;
-                }
+                var v = summary[ym] ? (summary[ym][key] || 0) : 0;
+                if (!v) continue;
+                chips.push(
+                    '<span class="inline-flex items-center gap-1 rounded-md bg-dark-900 border border-dark-600/70 px-1.5 py-0.5">' +
+                    '<span class="text-gray-500">' + MONTHS[m - 1] + '</span>' +
+                    '<span class="text-gray-200 tabular-nums">' + fmtPlain(v) + '</span></span>'
+                );
             }
+            return chips.join('');
+        },
 
+        _summaryMetricRow: function (summary, year, totals, spec) {
+            var raw = totals[spec.key] || 0;
+            if (!raw) return '';
+            var shown = spec.abs ? Math.abs(raw) : raw;
+            return (
+                '<div class="grid grid-cols-[7.5rem_6.5rem_1fr] sm:grid-cols-[8.5rem_7.5rem_1fr] gap-x-3 gap-y-1 items-baseline py-2 border-b border-dark-700/50 last:border-0">' +
+                '<div class="min-w-0">' +
+                '<p class="text-[11px] font-semibold leading-tight ' + spec.cls + '">' + spec.label + '</p>' +
+                '<p class="text-[9px] text-gray-600 leading-tight">' + spec.hint + '</p></div>' +
+                '<p class="text-sm font-bold tabular-nums text-right ' + spec.cls + '">' +
+                shown.toLocaleString('ru-RU') + ' ₽</p>' +
+                '<div class="flex flex-wrap gap-1 col-span-3 sm:col-span-1">' +
+                this._cashflowBreakdownChips(summary, year, spec.key) +
+                '</div></div>'
+            );
+        },
+
+        _buildCashflowSummary: function (summary, year) {
+            var totals = this._sumCashflow(summary, year);
+            var hasAny = totals.deposits || totals.withdrawals || totals.coupons ||
+                totals.dividends || totals.taxes || totals.redemptions;
+            if (!hasAny) return '';
+
+            var title = year === 'all' ? 'Итоги за всё время' : 'Итоги ' + year;
+            var incomeHtml = [
+                this._summaryMetricRow(summary, year, totals, {
+                    key: 'coupons', label: 'Купоны', hint: 'выплаты по облигациям', cls: 'text-emerald-400'
+                }),
+                this._summaryMetricRow(summary, year, totals, {
+                    key: 'dividends', label: 'Дивиденды', hint: 'выплаты по акциям', cls: 'text-amber-400'
+                }),
+                this._summaryMetricRow(summary, year, totals, {
+                    key: 'taxes', label: 'Налоги', hint: 'удержано с выплат', cls: 'text-red-400', abs: true
+                }),
+            ].join('');
+            var cashHtml = [
+                this._summaryMetricRow(summary, year, totals, {
+                    key: 'deposits', label: 'Пополнения', hint: 'внесено на счёт', cls: 'text-blue-400'
+                }),
+                this._summaryMetricRow(summary, year, totals, {
+                    key: 'withdrawals', label: 'Выводы', hint: 'снято со счёта', cls: 'text-red-400', abs: true
+                }),
+                this._summaryMetricRow(summary, year, totals, {
+                    key: 'redemptions', label: 'Погашения', hint: 'возврат номинала', cls: 'text-purple-400'
+                }),
+            ].join('');
+
+            var net = (totals.coupons || 0) + (totals.dividends || 0) - Math.abs(totals.taxes || 0);
+            var h = '<p class="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">' + title + '</p>';
+            if (incomeHtml) {
+                h += '<p class="text-[9px] text-gray-600 mb-1">Доход с бумаг</p>';
+                h += '<div class="mb-2">' + incomeHtml + '</div>';
+                h += '<div class="rounded-lg bg-dark-900 border border-yellow-700/35 px-3 py-2 mb-3 flex flex-wrap items-baseline justify-between gap-2">';
+                h += '<div><p class="text-[10px] font-bold uppercase tracking-widest text-yellow-500/90">Чистый доход с выплат</p>';
+                h += '<p class="text-[9px] text-gray-600">купоны + дивиденды − налоги</p></div>';
+                h += '<p class="text-lg font-bold tabular-nums text-yellow-300">' + net.toLocaleString('ru-RU') + ' ₽</p></div>';
+            }
+            if (cashHtml) {
+                h += '<p class="text-[9px] text-gray-600 mb-1">Движение денег</p>';
+                h += '<div>' + cashHtml + '</div>';
+            }
+            return h;
+        },
+
+        _buildYearTable: function (instruments, year, dimmed) {
+            var groups = this._groupedCashflow(instruments);
+            var self = this;
             var h = "<table class='w-full text-[10px] border-collapse min-w-[640px]'><thead><tr class='border-b border-dark-700'>";
             h += "<th class='sticky left-0 top-0 z-20 bg-dark-800 px-2 py-1.5 text-left text-gray-500'>Инструмент</th>";
             h += "<th class='sticky top-0 z-10 bg-dark-800 px-1.5 py-1.5 text-right text-gray-500 w-14'>∑</th>";
@@ -472,42 +671,26 @@
             }
             h += '</tr></thead><tbody>';
 
-            for (var i = 0; i < instruments.length; i++) {
-                var instr = instruments[i];
-                h += "<tr class='border-b border-dark-700/30 hover:bg-dark-700/30 cursor-pointer' data-instrument=\"" + esc(instr.name) + '">';
-                var sn = instr.name.length > 24 ? instr.name.substring(0, 21) + '...' : instr.name;
-                h += "<td class='sticky left-0 bg-dark-800 px-2 py-1.5 text-gray-300 whitespace-nowrap' title=\"" + esc(instr.name) + '">' + esc(sn) + '</td>';
-                h += "<td class='px-1.5 py-1.5 text-right font-semibold text-emerald-400'>" + this._yearInstrumentTotal(instr, year).toLocaleString('ru-RU') + '</td>';
-                for (var mj = 1; mj <= 12; mj++) {
-                    var ym2 = year + '-' + String(mj).padStart(2, '0');
-                    var val = (instr.months && instr.months[ym2]) || 0;
-                    h += "<td class='px-1.5 py-1.5 text-right " + (val > 0 ? 'text-emerald-400' : 'text-gray-600') + "'>" +
-                        (val > 0 ? val.toLocaleString('ru-RU') : '') + '</td>';
-                }
-                h += '</tr>';
-            }
-
-            var rows = [
-                { key: 'deposits', label: 'Пополнения', cls: 'text-blue-400' },
-                { key: 'coupons', label: 'Купоны', cls: 'text-emerald-400' },
-                { key: 'dividends', label: 'Дивиденды', cls: 'text-amber-400' },
-                { key: 'redemptions', label: 'Погашения', cls: 'text-purple-400' },
-                { key: 'taxes', label: 'Налоги', cls: 'text-red-400' },
-                { key: 'withdrawals', label: 'Выводы', cls: 'text-red-400' },
-            ];
-            for (var j = 0; j < rows.length; j++) {
-                var sr = rows[j];
-                if (!yrSummary[sr.key]) continue;
-                h += "<tr class='border-t border-dark-600/50 bg-dark-700/30 font-semibold'>";
-                h += "<td class='sticky left-0 bg-dark-700/30 px-2 py-1.5 " + sr.cls + '">' + sr.label + '</td>';
-                h += "<td class='px-1.5 py-1.5 text-right " + sr.cls + '">' + Math.abs(yrSummary[sr.key]).toLocaleString('ru-RU') + '</td>';
-                for (var mk = 1; mk <= 12; mk++) {
-                    var ym3 = year + '-' + String(mk).padStart(2, '0');
-                    var sv = summary[ym3] ? (summary[ym3][sr.key] || 0) : 0;
-                    h += "<td class='px-1.5 py-1.5 text-right " + clr(sv) + '">' + (sv !== 0 ? fmtPlain(sv) : '') + '</td>';
-                }
-                h += '</tr>';
-            }
+            groups.forEach(function (group) {
+                h += self._assetGroupHeaderRow(group, 14);
+                group.items.forEach(function (instr) {
+                    var rowCls = dimmed
+                        ? "border-b border-dark-700/20 hover:bg-dark-700/20 cursor-pointer"
+                        : "border-b border-dark-700/30 hover:bg-dark-700/30 cursor-pointer";
+                    h += "<tr class='" + rowCls + "' data-instrument=\"" + esc(instr.name) + '">';
+                    var sn = instr.name.length > 24 ? instr.name.substring(0, 21) + '...' : instr.name;
+                    var nameCls = dimmed ? 'text-gray-500' : 'text-gray-300';
+                    h += "<td class='sticky left-0 z-[1] bg-dark-800 px-2 py-1.5 " + nameCls + " whitespace-nowrap' title=\"" + esc(instr.name) + '">' + esc(sn) + '</td>';
+                    h += "<td class='px-1.5 py-1.5 text-right font-semibold " + (dimmed ? 'text-emerald-400/60' : 'text-emerald-400') + "'>" + self._yearInstrumentTotal(instr, year).toLocaleString('ru-RU') + '</td>';
+                    for (var mj = 1; mj <= 12; mj++) {
+                        var ym2 = year + '-' + String(mj).padStart(2, '0');
+                        var val = (instr.months && instr.months[ym2]) || 0;
+                        h += "<td class='px-1.5 py-1.5 text-right " + (val > 0 ? (dimmed ? 'text-emerald-400/50' : 'text-emerald-400') : 'text-gray-600') + "'>" +
+                            (val > 0 ? val.toLocaleString('ru-RU') : '') + '</td>';
+                    }
+                    h += '</tr>';
+                });
+            });
             h += '</tbody></table>';
             return h;
         },
@@ -521,18 +704,27 @@
             return total;
         },
 
-        _buildAllYearsTable: function (instruments, summary) {
+        _buildAllYearsTable: function (instruments, dimmed) {
+            var groups = this._groupedCashflow(instruments);
             var h = "<table class='w-full text-[10px] border-collapse'><thead><tr class='border-b border-dark-700'>";
             h += "<th class='px-2 py-1.5 text-left text-gray-500'>Инструмент</th>";
             h += "<th class='px-2 py-1.5 text-right text-gray-500'>∑ за всё время</th>";
             h += '</tr></thead><tbody>';
-            for (var i = 0; i < instruments.length; i++) {
-                var instr = instruments[i];
-                h += "<tr class='border-b border-dark-700/30 hover:bg-dark-700/30 cursor-pointer' data-instrument=\"" + esc(instr.name) + '">';
-                h += "<td class='px-2 py-1.5 text-gray-300'>" + esc(instr.name) + '</td>';
-                h += "<td class='px-2 py-1.5 text-right font-semibold text-emerald-400'>" +
-                    (instr.total || 0).toLocaleString('ru-RU') + ' ₽</td></tr>';
-            }
+            var self = this;
+            groups.forEach(function (group) {
+                h += self._assetGroupHeaderRow(group, 2);
+                group.items.forEach(function (instr) {
+                    var rowCls = dimmed
+                        ? "border-b border-dark-700/20 hover:bg-dark-700/20 cursor-pointer"
+                        : "border-b border-dark-700/30 hover:bg-dark-700/30 cursor-pointer";
+                    var nameCls = dimmed ? 'text-gray-500' : 'text-gray-300';
+                    var sumCls = dimmed ? 'text-emerald-400/60' : 'text-emerald-400';
+                    h += "<tr class='" + rowCls + "' data-instrument=\"" + esc(instr.name) + '">';
+                    h += "<td class='px-2 py-1.5 " + nameCls + "'>" + esc(instr.name) + '</td>';
+                    h += "<td class='px-2 py-1.5 text-right font-semibold " + sumCls + "'>" +
+                        (instr.total || 0).toLocaleString('ru-RU') + ' ₽</td></tr>';
+                });
+            });
             h += '</tbody></table>';
             return h;
         },

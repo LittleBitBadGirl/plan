@@ -81,6 +81,7 @@ async def test_portfolio_page_ui_shell_elements(client, portfolio_page_db):
     assert 'data-portfolio-id="' in html
     assert 'id="paKpi"' in html
     assert 'id="paCashflow"' in html
+    assert 'id="paCashflowSummary"' in html
     assert 'id="paComposition"' in html
     assert 'id="paDrilldown"' in html
     assert "/web/static/js/portfolio-analytics.js" in html

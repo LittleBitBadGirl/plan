@@ -498,6 +498,7 @@ async def build_portfolio_analytics(
     )
 
     instruments: dict[str, dict[str, int]] = {}
+    name_flow_types: dict[str, set[str]] = {}
     summary: dict[str, dict[str, int]] = {}
 
     for row in cashflow_res:
@@ -512,12 +513,22 @@ async def build_portfolio_analytics(
             name = row.description
             instruments.setdefault(name, {})
             instruments[name][ym] = instruments[name].get(ym, 0) + amt
+            name_flow_types.setdefault(name, set()).add(row.type)
 
     sorted_instruments = sorted(
         [{"name": name, "months": months, "total": sum(months.values())}
          for name, months in instruments.items()],
         key=lambda item: item["total"],
         reverse=True,
+    )
+
+    catalog = await _portfolio_instrument_catalog(db, portfolio_id)
+    held = await _latest_held_instruments(db, portfolio_id)
+    _annotate_cashflow_instruments(
+        sorted_instruments,
+        name_flow_types=name_flow_types,
+        catalog=catalog,
+        held=held,
     )
 
     return {
@@ -635,14 +646,137 @@ async def _resolve_instrument_filter(
     return None
 
 
-def _flow_matches_instrument(flow: InvestmentFlow, instrument: Instrument) -> bool:
-    description = (flow.description or "").lower()
+_CF_NAME_PREFIXES = (
+    "купон:",
+    "дивиденды:",
+    "дивиденды ",
+    "погашение:",
+    "погашения:",
+    "пиф начисления:",
+    "начисления:",
+)
+
+
+def _instrument_needles(instrument: Instrument) -> set[str]:
     needles = {instrument.name.lower()}
     if instrument.ticker:
         needles.add(instrument.ticker.lower())
     for alias in instrument.aliases or []:
         needles.add(str(alias).lower())
-    return any(needle in description for needle in needles)
+    return {n.strip() for n in needles if n and n.strip()}
+
+
+def _normalize_cashflow_name(name: str) -> str:
+    text = (name or "").lower().strip()
+    for prefix in _CF_NAME_PREFIXES:
+        if text.startswith(prefix):
+            text = text[len(prefix):].strip()
+            break
+    return text.replace('"', "").replace("«", "").replace("»", "")
+
+
+def _text_matches_instrument(text: str, instrument: Instrument) -> bool:
+    hay = (text or "").lower()
+    if not hay:
+        return False
+    needles = _instrument_needles(instrument)
+    if any(needle in hay for needle in needles):
+        return True
+    stripped = _normalize_cashflow_name(text)
+    if stripped and stripped != hay:
+        if any(needle in stripped for needle in needles):
+            return True
+        if len(stripped) >= 6 and any(stripped in needle for needle in needles):
+            return True
+    return False
+
+
+def _flow_matches_instrument(flow: InvestmentFlow, instrument: Instrument) -> bool:
+    return _text_matches_instrument(flow.description or "", instrument)
+
+
+def _cashflow_name_is_held(name: str, held: list[Instrument]) -> bool:
+    return any(_text_matches_instrument(name, instrument) for instrument in held)
+
+
+def _asset_type_from_flow_types(types: set[str]) -> str:
+    if "pif_accrual" in types:
+        return "pif"
+    if "coupon" in types or "redemption" in types:
+        return "bond"
+    if "dividend" in types:
+        return "stock"
+    return "other"
+
+
+def _resolve_cashflow_asset_type(
+    name: str, types: set[str], catalog: list[Instrument]
+) -> str:
+    matched = [inst for inst in catalog if _text_matches_instrument(name, inst)]
+    for inst in matched:
+        if inst.asset_type and inst.asset_type != "other":
+            return inst.asset_type
+    if matched:
+        return matched[0].asset_type or "other"
+    return _asset_type_from_flow_types(types)
+
+
+def _annotate_cashflow_instruments(
+    items: list[dict],
+    *,
+    name_flow_types: dict[str, set[str]],
+    catalog: list[Instrument],
+    held: list[Instrument] | None,
+) -> None:
+    for item in items:
+        name = item["name"]
+        item["asset_type"] = _resolve_cashflow_asset_type(
+            name, name_flow_types.get(name, set()), catalog
+        )
+        if held:
+            item["active"] = _cashflow_name_is_held(name, held)
+        else:
+            item["active"] = True
+    if held and items and not any(item["active"] for item in items):
+        for item in items:
+            item["active"] = True
+
+
+async def _portfolio_instrument_catalog(
+    db: AsyncSession, portfolio_id: int
+) -> list[Instrument]:
+    result = await db.execute(
+        select(Instrument)
+        .join(Position, Position.instrument_id == Instrument.id)
+        .where(Position.portfolio_id == portfolio_id)
+        .distinct()
+    )
+    return list(result.scalars().all())
+
+
+async def _latest_held_instruments(
+    db: AsyncSession, portfolio_id: int
+) -> list[Instrument] | None:
+    """Инструменты из последнего снимка с ненулевым остатком. None — снимка нет."""
+    latest_date = (
+        await db.execute(
+            select(func.max(Position.snapshot_date)).where(
+                Position.portfolio_id == portfolio_id
+            )
+        )
+    ).scalar_one_or_none()
+    if not latest_date:
+        return None
+    result = await db.execute(
+        select(Instrument)
+        .join(Position, Position.instrument_id == Instrument.id)
+        .where(
+            Position.portfolio_id == portfolio_id,
+            Position.snapshot_date == latest_date,
+            Position.quantity != 0,
+        )
+    )
+    return list(result.scalars().all())
 
 
 async def build_portfolio_payments(
