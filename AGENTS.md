@@ -152,6 +152,15 @@ pytest tests/ -q
 
 ---
 
+## Git-воркфлоу (обязательно)
+
+- **Пушь напрямую в `main`.** НЕ создавай feature-ветки (`cursor/...`, `fix/...` и т.п.), если Вера явно не попросила отдельную ветку.
+- Порядок: `git checkout main` → `git pull` → правки → `git add -A` → `git commit -m "..."` → `git push origin main`.
+- Если оказался не на `main` — сначала `git checkout main`.
+- Перед началом работы всегда `git pull origin main`, чтобы не конфликтовать.
+
+---
+
 ## Деплой (VPS)
 
 ```
