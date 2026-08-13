@@ -19,6 +19,24 @@ class TestPages:
         assert "text/html" in response.headers["content-type"]
         assert "Task Planner" in response.text or "Дашборд" in response.text
 
+    async def test_dashboard_quick_add_mobile_first_desktop_in_column(self, client):
+        """Мобильный quick-add — первый в контенте; десктопный остаётся в колонке задач."""
+        html = (await client.get("/")).text
+        mobile_mark = 'id="dashboard-quick-add-mobile"'
+        desktop_mark = 'id="dashboard-quick-add-desktop"'
+        h1_mark = 'text-2xl sm:text-3xl font-bold text-white">Дашборд</h1>'
+        heading_mark = 'text-xl font-bold text-white px-1">Задачи на сегодня</h2>'
+        placeholder = 'placeholder="Что нужно сделать?"'
+
+        assert html.count(placeholder) == 2
+        assert 'id="dashboard-quick-add-mobile" class="lg:hidden mb-4"' in html
+        assert 'id="dashboard-quick-add-desktop" class="hidden lg:block' in html
+        assert "lg:grid lg:grid-cols-3" in html
+        assert html.index(mobile_mark) < html.index(h1_mark)
+        assert html.index(h1_mark) < html.index(heading_mark)
+        assert html.index(heading_mark) < html.index(desktop_mark)
+        assert html.index(desktop_mark) < html.index('id="tasks-list"')
+
     async def test_dashboard_today_stats_fragment(self, client, db):
         """OOB-фрагмент прогресса дня для HTMX"""
         from app.models.task import Task
