@@ -75,8 +75,9 @@ from sqlalchemy import desc, case
 from app.models.goal import FinancialGoal
 from app.models.portfolio import Portfolio
 
-# ID категорий-сбережений (не считаются расходами)
-SAVINGS_CATEGORY_IDS = [37, 61, 157]  # ИИС, Подушка, Переводы между счетами
+# ID категорий-сбережений и кредитов (не считаются расходами)
+# ИИС, Подушка, Переводы между счетами, Сбережения, Цели + Ипотека (кредит, отдельная плоскость)
+SAVINGS_CATEGORY_IDS = [37, 61, 157, 144, 159, 36]
 
 @router.get("/finance", response_class=HTMLResponse)
 async def finance_page(request: Request, month: Optional[int] = None, year: Optional[int] = None):
