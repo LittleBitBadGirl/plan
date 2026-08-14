@@ -331,6 +331,7 @@ def _today_date() -> date:
 templates.env.globals["today_date"] = _today_date
 
 _URL_IN_TEXT = re.compile(r"((?:https?://|www\.)[^\s<>\"']+)")
+_URL_TRAILING_PUNCT = re.compile(r"[.,;:!?)\]\}]+$")
 
 
 def _linkify(text: str) -> Markup:
@@ -342,11 +343,17 @@ def _linkify(text: str) -> Markup:
     for match in _URL_IN_TEXT.finditer(text):
         parts.append(str(escape(text[pos:match.start()])))
         url = match.group(1)
+        punct = ""
+        trimmed = _URL_TRAILING_PUNCT.search(url)
+        if trimmed:
+            punct = trimmed.group(0)
+            url = url[: trimmed.start()]
         href = url if url.startswith("http") else f"https://{url}"
         parts.append(
             f'<a href="{escape(href)}" target="_blank" rel="noopener noreferrer" '
             f'class="text-amber-400 hover:text-amber-300 hover:underline break-all">{escape(url)}</a>'
         )
+        parts.append(str(escape(punct)))
         pos = match.end()
     parts.append(str(escape(text[pos:])))
     return Markup("".join(parts))

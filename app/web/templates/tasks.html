@@ -83,7 +83,7 @@
                 {% for task in tasks %}
                 <tr class="table-row priority-{{ task.priority }} hover:bg-dark-700/50">
                     <td class="px-6 py-4">
-                        <span class="text-white font-medium">{{ task.title }}</span>
+                        <span class="text-white font-medium break-words [overflow-wrap:anywhere]">{{ task.title | linkify }}</span>
                         {% if task.size == 'XL' %}
                         <span class="bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-red-700/50">XL</span>
                         {% elif task.size == 'L' %}

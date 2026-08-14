@@ -19,6 +19,52 @@ class TestPages:
         assert "text/html" in response.headers["content-type"]
         assert "Task Planner" in response.text or "Дашборд" in response.text
 
+    async def test_dashboard_quick_add_mobile_first_desktop_in_column(self, client):
+        """Мобильный quick-add — первый в контенте; десктопный остаётся в колонке задач."""
+        html = (await client.get("/")).text
+        mobile_mark = 'id="dashboard-quick-add-mobile"'
+        desktop_mark = 'id="dashboard-quick-add-desktop"'
+        h1_mark = 'text-2xl sm:text-3xl font-bold text-white">Дашборд</h1>'
+        heading_mark = 'text-xl font-bold text-white px-1">Задачи на сегодня</h2>'
+        placeholder = 'placeholder="Что нужно сделать?"'
+
+        assert html.count(placeholder) == 2
+        assert 'id="dashboard-quick-add-mobile" class="lg:hidden mb-4"' in html
+        assert 'id="dashboard-quick-add-desktop" class="hidden lg:block' in html
+        assert "lg:grid lg:grid-cols-3" in html
+        assert html.index(mobile_mark) < html.index(h1_mark)
+        assert html.index(h1_mark) < html.index(heading_mark)
+        assert html.index(heading_mark) < html.index(desktop_mark)
+        assert html.index(desktop_mark) < html.index('id="tasks-list"')
+
+    async def test_dashboard_task_url_is_linkified(self, client, db):
+        """Длинный URL в названии — кликабельная ссылка, не сырой текст."""
+        from app.models.task import Task
+
+        db.add(
+            Task(
+                title="https://tracker.dalee.ru/secure/Dashboard.jspa почистить",
+                due_date=date.today(),
+                status="новая",
+                source="web",
+            )
+        )
+        await db.commit()
+
+        html = (await client.get("/")).text
+        assert 'href="https://tracker.dalee.ru/secure/Dashboard.jspa"' in html
+        assert "target=\"_blank\"" in html
+        assert "rel=\"noopener noreferrer\"" in html
+        assert "text-amber-400" in html
+
+    async def test_linkify_makes_url_clickable_and_keeps_trailing_punct(self):
+        from app.web.deps import _linkify
+
+        html = str(_linkify("см. https://tracker.dalee.ru/secure/Dashboard.jspa."))
+        assert 'href="https://tracker.dalee.ru/secure/Dashboard.jspa"' in html
+        assert "target=\"_blank\"" in html
+        assert html.endswith(".")
+
     async def test_dashboard_today_stats_fragment(self, client, db):
         """OOB-фрагмент прогресса дня для HTMX"""
         from app.models.task import Task

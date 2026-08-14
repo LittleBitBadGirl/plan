@@ -14,7 +14,7 @@
     {% else %}
     <span class="icon-action icon-action--success !p-1 opacity-40 cursor-default">{{ icon_check('w-4 h-4') }}</span>
     {% endif %}
-    <span class="flex-1 min-w-0 break-words text-gray-300 leading-snug">{{ sub.title }}</span>
+    <span class="flex-1 min-w-0 break-words [overflow-wrap:anywhere] text-gray-300 leading-snug">{{ sub.title | linkify }}</span>
     {{ deadline_badge(sub.deadline, _today) }}
     {% if sub.status != 'выполнена' %}
     <form hx-post="/tasks/{{ sub.id }}/deadline"

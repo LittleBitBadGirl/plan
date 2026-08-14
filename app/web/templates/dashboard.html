@@ -71,6 +71,13 @@
 {% block content %}
 {% from 'partials/icons_macros.html' import icon_folder, icon_check %}
 <div class="max-w-6xl mx-auto">
+    <!-- Quick add — mobile: first thing on the page. Desktop form stays in the tasks column. -->
+    <div id="dashboard-quick-add-mobile" class="lg:hidden mb-4">
+        <div class="bg-dark-800 rounded-xl border border-dark-600 p-2.5 shadow-lg">
+            {% include "partials/dashboard_quick_add_form.html" %}
+        </div>
+    </div>
+
     <!-- Header -->
     <div class="mb-6 lg:mb-8 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div class="flex items-center justify-between gap-3 min-w-0">
@@ -134,8 +141,8 @@
         <div class="order-1 lg:order-none space-y-6">
             <h2 class="text-xl font-bold text-white px-1">Задачи на сегодня</h2>
 
-            <!-- Quick Add -->
-            <div class="bg-dark-800 rounded-xl border border-dark-600 p-2.5 lg:p-3 shadow-lg">
+            <!-- Quick Add — desktop: stays in the tasks column. Mobile form is at page top. -->
+            <div id="dashboard-quick-add-desktop" class="hidden lg:block bg-dark-800 rounded-xl border border-dark-600 p-3 shadow-lg">
                 {% include "partials/dashboard_quick_add_form.html" %}
             </div>
 
