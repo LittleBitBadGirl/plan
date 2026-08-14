@@ -42,7 +42,7 @@ Auth: `Authorization: Bearer $API_TOKEN` для import.
 |-------|-----|----------|
 | GET | `/api/portfolios` | Список портфелей (id, name, slug, type, legacy_goal_id) |
 | GET | `/api/portfolios/{id}/analytics` | Аналитика: snapshots, flows, monthly_cashflow, summary |
-| GET | `/api/portfolios/{id}/composition` | Последний состав + `closed[]` (итог закрытых бумаг) |
+| GET | `/api/portfolios/{id}/composition` | Последний состав; `closed[]` пока пустой (заготовка UI) |
 | GET | `/api/portfolios/{id}/payments?instrument=&year=` | Drill-down выплат по инструменту |
 | POST | `/api/portfolios/{id}/import` | Hermes JSON import (409 при дубликате report_date) |
 | GET | `/api/goals/{goal_id}/analytics` | Backward-compat alias → portfolio по legacy_goal_id |

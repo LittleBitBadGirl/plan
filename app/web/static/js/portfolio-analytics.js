@@ -497,7 +497,9 @@
             if (year === 'all') {
                 container.innerHTML = this._buildAllYearsTable(instruments, summary);
             } else {
-                container.innerHTML = this._buildYearTable(instruments, summary, year);
+                container.innerHTML =
+                    '<div class="pa-cf-grid">' + this._buildYearTable(instruments, summary, year) + '</div>' +
+                    this._buildYearTotals(summary, year);
             }
 
             container.querySelectorAll('[data-instrument]').forEach(function (row) {
@@ -532,9 +534,9 @@
 
         _groupHeader: function (label, colCount) {
             return "<tr class='border-b border-dark-700/50'>" +
-                "<td class='sticky left-0 bg-dark-800 px-2 py-1 text-[9px] uppercase tracking-wide text-gray-500 font-semibold'>" +
+                "<td class='px-2 py-1 text-[9px] uppercase tracking-wide text-gray-500 font-semibold'>" +
                 esc(label) + '</td>' +
-                "<td colspan='" + (colCount - 1) + "' class='bg-dark-800'></td></tr>";
+                "<td colspan='" + (colCount - 1) + "'></td></tr>";
         },
 
         _incomeGroupHeader: function (type, colCount) {
@@ -542,24 +544,11 @@
         },
 
         _buildYearTable: function (instruments, summary, year) {
-            var yrSummary = { deposits: 0, withdrawals: 0, coupons: 0, dividends: 0, taxes: 0, redemptions: 0 };
-            for (var m = 1; m <= 12; m++) {
-                var ym = year + '-' + String(m).padStart(2, '0');
-                if (summary[ym]) {
-                    yrSummary.deposits += summary[ym].deposits || 0;
-                    yrSummary.withdrawals += summary[ym].withdrawals || 0;
-                    yrSummary.coupons += summary[ym].coupons || 0;
-                    yrSummary.dividends += summary[ym].dividends || 0;
-                    yrSummary.taxes += summary[ym].taxes || 0;
-                    yrSummary.redemptions += summary[ym].redemptions || 0;
-                }
-            }
-
-            var h = "<table class='w-full text-[10px] border-collapse min-w-[640px]'><thead><tr class='border-b border-dark-700'>";
-            h += "<th class='sticky left-0 top-0 z-20 bg-dark-800 px-2 py-1.5 text-left text-gray-500'>Инструмент</th>";
-            h += "<th class='sticky top-0 z-10 bg-dark-800 px-1.5 py-1.5 text-right text-gray-500 w-14'>∑</th>";
+            var h = "<table class='w-full text-[10px] min-w-[640px]'><thead><tr>";
+            h += "<th class='px-2 py-1.5 text-left text-gray-500'>Инструмент</th>";
+            h += "<th class='px-1.5 py-1.5 text-right text-gray-500 w-14'>∑</th>";
             for (var mi = 1; mi <= 12; mi++) {
-                h += "<th class='sticky top-0 z-10 bg-dark-800 px-1.5 py-1.5 text-right text-gray-500'>" + MONTHS[mi - 1] + '</th>';
+                h += "<th class='px-1.5 py-1.5 text-right text-gray-500'>" + MONTHS[mi - 1] + '</th>';
             }
             h += '</tr></thead><tbody>';
 
@@ -577,7 +566,7 @@
                     ? fmtMaturityMonthYear(instr.maturity_date)
                     : '';
                 var title = mat ? shown + ' · ' + mat : shown;
-                h += "<td class='sticky left-0 bg-dark-800 px-2 py-1.5 text-gray-300 whitespace-nowrap' title=\"" + esc(title) + '">';
+                h += "<td class='px-2 py-1.5 text-gray-300 whitespace-nowrap' title=\"" + esc(title) + '">';
                 h += esc(shortenName(shown, 22));
                 if (mat) {
                     h += " <span class='text-gray-500'>" + esc(mat) + '</span>';
@@ -592,29 +581,74 @@
                 }
                 h += '</tr>';
             }
+            h += '</tbody></table>';
+            return h;
+        },
 
+        _yearSummary: function (summary, year) {
+            var yr = { deposits: 0, withdrawals: 0, coupons: 0, dividends: 0, taxes: 0, redemptions: 0 };
+            for (var m = 1; m <= 12; m++) {
+                var ym = year + '-' + String(m).padStart(2, '0');
+                if (summary[ym]) {
+                    yr.deposits += summary[ym].deposits || 0;
+                    yr.withdrawals += summary[ym].withdrawals || 0;
+                    yr.coupons += summary[ym].coupons || 0;
+                    yr.dividends += summary[ym].dividends || 0;
+                    yr.taxes += summary[ym].taxes || 0;
+                    yr.redemptions += summary[ym].redemptions || 0;
+                }
+            }
+            return yr;
+        },
+
+        _buildYearTotals: function (summary, year) {
+            var yr = this._yearSummary(summary, year);
             var rows = [
-                { key: 'deposits', label: 'Пополнения', cls: 'text-blue-400' },
-                { key: 'coupons', label: 'Купоны', cls: 'text-emerald-400' },
-                { key: 'dividends', label: 'Дивиденды', cls: 'text-amber-400' },
-                { key: 'redemptions', label: 'Погашения', cls: 'text-purple-400' },
-                { key: 'taxes', label: 'Налоги', cls: 'text-red-400' },
-                { key: 'withdrawals', label: 'Выводы', cls: 'text-red-400' },
+                { key: 'deposits', label: 'Пополнения', hint: 'деньги, которые внесла на счёт', cls: 'text-blue-400' },
+                { key: 'coupons', label: 'Купоны', hint: 'выплаты по облигациям', cls: 'text-emerald-400' },
+                { key: 'dividends', label: 'Дивиденды', hint: 'выплаты по акциям', cls: 'text-amber-400' },
+                { key: 'redemptions', label: 'Погашения', hint: 'номинал вернулся на счёт', cls: 'text-purple-400' },
+                { key: 'taxes', label: 'Налоги', hint: 'НДФЛ с выплат', cls: 'text-red-400' },
+                { key: 'withdrawals', label: 'Выводы', hint: 'сняла со счёта', cls: 'text-red-400' },
             ];
-            for (var j = 0; j < rows.length; j++) {
-                var sr = rows[j];
-                if (!yrSummary[sr.key]) continue;
-                h += "<tr class='border-t border-dark-600/50 bg-dark-700/30 font-semibold'>";
-                h += "<td class='sticky left-0 bg-dark-700/30 px-2 py-1.5 " + sr.cls + '">' + sr.label + '</td>';
-                h += "<td class='px-1.5 py-1.5 text-right " + sr.cls + '">' + Math.abs(yrSummary[sr.key]).toLocaleString('ru-RU') + '</td>';
+            var visible = rows.filter(function (sr) { return yr[sr.key]; });
+            if (visible.length === 0) return '';
+
+            var cards = visible.map(function (sr) {
+                return '<div class="rounded-lg bg-dark-900 border border-dark-700 px-3 py-2">' +
+                    '<p class="text-[9px] uppercase tracking-wide text-gray-500">' + esc(sr.label) + '</p>' +
+                    '<p class="text-sm font-semibold tabular-nums ' + sr.cls + '">' +
+                    Math.abs(yr[sr.key]).toLocaleString('ru-RU') + ' ₽</p>' +
+                    '<p class="text-[9px] text-gray-600 mt-0.5">' + esc(sr.hint) + '</p></div>';
+            }).join('');
+
+            var h = '<div class="mt-4 pt-4 border-t border-dark-600">';
+            h += '<p class="text-[10px] font-semibold text-gray-300 mb-2">Итого по счёту за ' + year +
+                ' <span class="font-normal text-gray-600">— не бумаги, а весь счёт</span></p>';
+            h += '<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-3">' + cards + '</div>';
+            h += "<div class='overflow-x-auto'><table class='w-full text-[10px] min-w-[640px]'>";
+            h += "<thead><tr class='border-b border-dark-700'>";
+            h += "<th class='px-2 py-1.5 text-left text-gray-500'>Тип</th>";
+            h += "<th class='px-1.5 py-1.5 text-right text-gray-500'>за год</th>";
+            for (var mi = 1; mi <= 12; mi++) {
+                h += "<th class='px-1.5 py-1.5 text-right text-gray-500'>" + MONTHS[mi - 1] + '</th>';
+            }
+            h += '</tr></thead><tbody>';
+            for (var j = 0; j < visible.length; j++) {
+                var sr = visible[j];
+                h += "<tr class='border-b border-dark-700/40'>";
+                h += "<td class='px-2 py-1.5 " + sr.cls + "'>" + esc(sr.label) + '</td>';
+                h += "<td class='px-1.5 py-1.5 text-right font-semibold " + sr.cls + "'>" +
+                    Math.abs(yr[sr.key]).toLocaleString('ru-RU') + '</td>';
                 for (var mk = 1; mk <= 12; mk++) {
                     var ym3 = year + '-' + String(mk).padStart(2, '0');
                     var sv = summary[ym3] ? (summary[ym3][sr.key] || 0) : 0;
-                    h += "<td class='px-1.5 py-1.5 text-right " + clr(sv) + '">' + (sv !== 0 ? fmtPlain(sv) : '') + '</td>';
+                    h += "<td class='px-1.5 py-1.5 text-right " + clr(sv) + "'>" +
+                        (sv !== 0 ? fmtPlain(sv) : '') + '</td>';
                 }
                 h += '</tr>';
             }
-            h += '</tbody></table>';
+            h += '</tbody></table></div></div>';
             return h;
         },
 
@@ -628,7 +662,7 @@
         },
 
         _buildAllYearsTable: function (instruments, summary) {
-            var h = "<table class='w-full text-[10px] border-collapse'><thead><tr class='border-b border-dark-700'>";
+            var h = "<table class='w-full text-[10px]'><thead><tr>";
             h += "<th class='px-2 py-1.5 text-left text-gray-500'>Инструмент</th>";
             h += "<th class='px-2 py-1.5 text-right text-gray-500'>∑ за всё время</th>";
             h += '</tr></thead><tbody>';
@@ -751,7 +785,7 @@
                 el.innerHTML =
                     '<div class="rounded-lg border border-dashed border-dark-600 px-4 py-5 text-center">' +
                     '<p class="text-[11px] text-gray-400 tracking-wide">покупка → выплаты → выход = итог</p>' +
-                    '<p class="text-[11px] text-gray-600 mt-2">Пока ни одна бумага не закрыта. Продажа акции или погашение облигации появится здесь.</p>' +
+                    '<p class="text-[11px] text-gray-600 mt-2">Пока пусто. Заполнится после продажи или погашения.</p>' +
                     '</div>';
                 return;
             }

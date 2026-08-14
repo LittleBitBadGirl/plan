@@ -477,24 +477,6 @@ def sort_composition_positions(items: list[dict[str, Any]]) -> list[dict[str, An
     )
 
 
-CLOSED_INCOME_TYPES = ("coupon", "dividend", "pif_accrual", "tax")
-CLOSED_EXIT_TYPES = ("redemption", "sale")
-
-
-def estimate_position_cost(
-    quantity: float,
-    avg_price: float | None,
-    market_value: float | None = None,
-) -> float | None:
-    """Стоимость покупки. Если avg_price похожа на % от номинала 1000 — переводим в рубли."""
-    if not quantity or avg_price is None:
-        return None
-    naive = avg_price * quantity
-    if market_value and naive > 0 and naive * 4 < market_value:
-        return round(avg_price / 100.0 * 1000.0 * quantity, 2)
-    return round(naive, 2)
-
-
 def _empty_summary_row() -> dict[str, int]:
     return {"deposits": 0, "withdrawals": 0, "coupons": 0, "dividends": 0, "taxes": 0}
 
@@ -647,33 +629,19 @@ async def build_portfolio_analytics(
     }
 
 
-async def _latest_snapshot_date(db: AsyncSession, portfolio_id: int) -> date | None:
-    snap = (
-        await db.execute(
-            select(func.max(InvestmentSnapshot.date)).where(
-                InvestmentSnapshot.portfolio_id == portfolio_id
-            )
-        )
-    ).scalar_one_or_none()
-    pos = (
-        await db.execute(
-            select(func.max(Position.snapshot_date)).where(
-                Position.portfolio_id == portfolio_id
-            )
-        )
-    ).scalar_one_or_none()
-    if snap and pos:
-        return max(snap, pos)
-    return snap or pos
-
-
 async def build_portfolio_composition(
     db: AsyncSession,
     portfolio_id: int,
 ) -> dict[str, Any]:
     await _get_portfolio(db, portfolio_id)
 
-    latest_date = await _latest_snapshot_date(db, portfolio_id)
+    latest_date = (
+        await db.execute(
+            select(func.max(Position.snapshot_date)).where(
+                Position.portfolio_id == portfolio_id
+            )
+        )
+    ).scalar_one_or_none()
 
     if not latest_date:
         return {
@@ -734,143 +702,13 @@ async def build_portfolio_composition(
 
     upcoming_maturities.sort(key=lambda row: row["maturity_date"])
     positions = sort_composition_positions(positions)
-    closed = await build_closed_positions(db, portfolio_id)
 
     return {
         "portfolio_id": portfolio_id,
         "snapshot_date": latest_date.isoformat(),
         "positions": positions,
         "upcoming_maturities": upcoming_maturities,
-        "closed": closed,
-    }
-
-
-async def build_closed_positions(
-    db: AsyncSession,
-    portfolio_id: int,
-) -> list[dict[str, Any]]:
-    """Бумаги, которых уже нет в последнем снимке: выплаты + выход − покупка."""
-    await _get_portfolio(db, portfolio_id)
-
-    latest_date = await _latest_snapshot_date(db, portfolio_id)
-    if not latest_date:
-        return []
-
-    rows = (
-        await db.execute(
-            select(Position, Instrument)
-            .join(Instrument, Position.instrument_id == Instrument.id)
-            .where(Position.portfolio_id == portfolio_id)
-            .order_by(Position.snapshot_date.asc())
-        )
-    ).all()
-
-    by_id: dict[int, dict[str, Any]] = {}
-    for position, instrument in rows:
-        entry = by_id.setdefault(
-            instrument.id,
-            {"instrument": instrument, "snapshots": []},
-        )
-        entry["snapshots"].append(position)
-
-    held_now = {
-        instrument.id
-        for position, instrument in rows
-        if position.snapshot_date == latest_date and position.quantity > 0
-    }
-
-    flows = (
-        await db.execute(
-            select(InvestmentFlow).where(
-                InvestmentFlow.portfolio_id == portfolio_id,
-                InvestmentFlow.type.in_(CLOSED_INCOME_TYPES + CLOSED_EXIT_TYPES),
-            )
-        )
-    ).scalars().all()
-
-    closed: list[dict[str, Any]] = []
-    for instrument_id, entry in by_id.items():
-        if instrument_id in held_now:
-            continue
-        instrument: Instrument = entry["instrument"]
-        holdings = [snap for snap in entry["snapshots"] if snap.quantity > 0]
-        if not holdings:
-            continue
-        last = holdings[-1]
-        related = [flow for flow in flows if _flow_matches_instrument(flow, instrument)]
-        closed.append(
-            _closed_position_row(instrument, last, related, closed_on=latest_date)
-        )
-
-    closed.sort(
-        key=lambda row: (
-            row.get("closed_on") or "",
-            -(abs(row.get("result") or 0)),
-        ),
-        reverse=True,
-    )
-    return closed
-
-
-def _closed_position_row(
-    instrument: Instrument,
-    last_holding: Position,
-    flows: list[InvestmentFlow],
-    *,
-    closed_on: date,
-) -> dict[str, Any]:
-    income = round(
-        sum(flow.amount for flow in flows if flow.type in CLOSED_INCOME_TYPES),
-        2,
-    )
-    exit_flows = [flow for flow in flows if flow.type in CLOSED_EXIT_TYPES]
-    if exit_flows:
-        exit_amount = round(sum(flow.amount for flow in exit_flows), 2)
-        exit_source = "flow"
-        if any(flow.type == "redemption" for flow in exit_flows):
-            exit_kind = "redemption"
-        else:
-            exit_kind = "sale"
-    else:
-        exit_amount = round(last_holding.market_value or 0, 2)
-        exit_source = "last_snapshot"
-        asset = effective_composition_type(
-            instrument.asset_type,
-            maturity_date=instrument.maturity_date,
-            coupon_rate=instrument.coupon_rate,
-            name=instrument.name,
-        )
-        exit_kind = "redemption" if asset == "bond" else "sale"
-
-    cost = estimate_position_cost(
-        last_holding.quantity,
-        last_holding.avg_price,
-        last_holding.market_value,
-    )
-    result = None
-    if cost is not None:
-        result = round(income + exit_amount - cost, 2)
-
-    asset_type = effective_composition_type(
-        instrument.asset_type,
-        maturity_date=instrument.maturity_date,
-        coupon_rate=instrument.coupon_rate,
-        name=instrument.name,
-    )
-    return {
-        "instrument_id": instrument.id,
-        "name": instrument.name,
-        "ticker": instrument.ticker,
-        "asset_type": asset_type,
-        "closed_on": closed_on.isoformat(),
-        "held_until": last_holding.snapshot_date.isoformat(),
-        "quantity": last_holding.quantity,
-        "cost": cost,
-        "income": income,
-        "exit": exit_amount,
-        "exit_source": exit_source,
-        "exit_kind": exit_kind,
-        "result": result,
+        "closed": [],
     }
 
 

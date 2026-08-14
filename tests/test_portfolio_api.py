@@ -13,7 +13,6 @@ from datetime import date
 
 from app.services.ofz_calendar import lookup_ofz_maturity
 from app.services.portfolio_service import (
-    estimate_position_cost,
     import_report,
     sort_cashflow_instruments,
     sort_composition_positions,
@@ -75,12 +74,6 @@ def test_sort_composition_positions_bonds_before_stocks():
     ]
     names = [row["name"] for row in sort_composition_positions(items)]
     assert names == ["ОФЗ", "Сбер", "Полюс", "Денежный рынок"]
-
-
-def test_estimate_position_cost_stock_and_bond_percent():
-    assert estimate_position_cost(50, 1200, 72000) == 60000
-    assert estimate_position_cost(1, 94.275, 944.46) == 942.75
-    assert estimate_position_cost(50, None, 72000) is None
 
 
 def test_lookup_ofz_maturity_series_and_cny():
@@ -271,7 +264,9 @@ async def test_composition_after_import(client, portfolio_api_db):
 
 
 @pytest.mark.asyncio
-async def test_closed_position_result_after_sale(client, portfolio_api_db):
+async def test_composition_keeps_last_positions_if_later_snapshot_empty(
+    client, portfolio_api_db
+):
     first = {
         "report_date": "2025-07-31",
         "snapshot": {"date": "2025-07-31", "total_balance": 850000},
@@ -285,44 +280,22 @@ async def test_closed_position_result_after_sale(client, portfolio_api_db):
                 "avg_price": 1200,
             }
         ],
-        "flows": [
-            {
-                "date": "2025-07-15",
-                "type": "dividend",
-                "amount": 10200,
-                "instrument": "TRNFP",
-                "description": "Дивиденды TRNFP",
-            }
-        ],
+        "flows": [],
     }
     second = {
         "report_date": "2025-08-31",
         "snapshot": {"date": "2025-08-31", "total_balance": 800000},
         "positions": [],
-        "flows": [
-            {
-                "date": "2025-08-10",
-                "type": "sale",
-                "amount": 75000,
-                "instrument": "TRNFP",
-                "description": "Продажа Транснефть (п)",
-            }
-        ],
+        "flows": [],
     }
     await import_report(portfolio_api_db, 1, first)
     await import_report(portfolio_api_db, 1, second)
     await portfolio_api_db.commit()
 
     data = (await client.get("/api/portfolios/1/composition")).json()
-    assert data["positions"] == []
-    assert len(data["closed"]) == 1
-    row = data["closed"][0]
-    assert row["ticker"] == "TRNFP"
-    assert row["cost"] == 60000
-    assert row["income"] == 10200
-    assert row["exit"] == 75000
-    assert row["exit_kind"] == "sale"
-    assert row["result"] == 25200
+    assert data["snapshot_date"] == "2025-07-31"
+    assert data["positions"][0]["ticker"] == "TRNFP"
+    assert data["closed"] == []
 
 
 @pytest.mark.asyncio
