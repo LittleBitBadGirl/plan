@@ -16,7 +16,15 @@ from sqlalchemy.orm import selectinload
 from app.models.goal import FinancialGoal
 from app.models.investment import InvestmentFlow, InvestmentSnapshot
 from app.models.portfolio import ImportLog, Instrument, Portfolio, PortfolioGoal, Position
-from app.services.instrument_normalize import resolve_instrument
+from app.services.instrument_normalize import (
+    core_issuer_token,
+    display_name_from_description,
+    instrument_match_needles,
+    is_isin,
+    isins_in_text,
+    normalize_name,
+    resolve_instrument,
+)
 from app.services.ofz_calendar import effective_bond_maturity
 
 VALID_FLOW_TYPES = {
@@ -335,6 +343,8 @@ async def import_report(
         instrument_name = item.get("name")
         if not instrument_name and item.get("instrument"):
             instrument_name = str(item["instrument"])
+        if not instrument_name and (item.get("isin") or flow_type in CLOSED_EXIT_TYPES):
+            instrument_name = display_name_from_description(item.get("description"))
         if not instrument_name and item.get("isin"):
             instrument_name = str(item["isin"])
 
@@ -475,6 +485,48 @@ def sort_composition_positions(items: list[dict[str, Any]]) -> list[dict[str, An
             item.get("name") or "",
         ),
     )
+
+
+CLOSED_INCOME_TYPES = ("coupon", "dividend", "pif_accrual", "tax")
+CLOSED_EXIT_TYPES = ("redemption", "sale")
+
+
+def estimate_position_cost(
+    quantity: float,
+    avg_price: float | None,
+    market_value: float | None = None,
+) -> float | None:
+    """Стоимость покупки. Если avg_price похожа на % от номинала 1000 — переводим в рубли."""
+    if not quantity or avg_price is None:
+        return None
+    naive = avg_price * quantity
+    if market_value and naive > 0 and naive * 4 < market_value:
+        return round(avg_price / 100.0 * 1000.0 * quantity, 2)
+    return round(naive, 2)
+
+
+def closed_display_name(
+    instrument: Instrument | None,
+    flows: list[InvestmentFlow],
+) -> str:
+    parsed = None
+    for flow in flows:
+        parsed = display_name_from_description(flow.description)
+        if parsed:
+            break
+    if instrument and instrument.name and not is_isin(instrument.name):
+        if not instrument.name.lower().startswith("выкуп"):
+            return instrument.name
+    return parsed or (instrument.name if instrument else "Неизвестный инструмент")
+
+
+def _closed_exit_kind(exits: list[InvestmentFlow]) -> str:
+    if any(flow.type == "redemption" for flow in exits):
+        blob = " ".join((flow.description or "") for flow in exits).lower()
+        if "выкуп" in blob:
+            return "buyback"
+        return "redemption"
+    return "sale"
 
 
 def _empty_summary_row() -> dict[str, int]:
@@ -649,7 +701,9 @@ async def build_portfolio_composition(
             "snapshot_date": None,
             "positions": [],
             "upcoming_maturities": [],
-            "closed": [],
+            "closed": await build_closed_positions(
+                db, portfolio_id, held_instrument_ids=set()
+            ),
         }
 
     result = await db.execute(
@@ -664,9 +718,12 @@ async def build_portfolio_composition(
 
     positions = []
     upcoming_maturities = []
+    held_ids: set[int] = set()
     today = date.today()
 
     for position, instrument in result:
+        if position.quantity > 0:
+            held_ids.add(instrument.id)
         maturity = effective_bond_maturity(
             instrument.maturity_date,
             instrument.name,
@@ -702,13 +759,163 @@ async def build_portfolio_composition(
 
     upcoming_maturities.sort(key=lambda row: row["maturity_date"])
     positions = sort_composition_positions(positions)
+    closed = await build_closed_positions(db, portfolio_id, held_instrument_ids=held_ids)
 
     return {
         "portfolio_id": portfolio_id,
         "snapshot_date": latest_date.isoformat(),
         "positions": positions,
         "upcoming_maturities": upcoming_maturities,
-        "closed": [],
+        "closed": closed,
+    }
+
+
+async def build_closed_positions(
+    db: AsyncSession,
+    portfolio_id: int,
+    *,
+    held_instrument_ids: set[int],
+) -> list[dict[str, Any]]:
+    """Закрытые бумаги: sale/redemption, которых уже нет в текущем составе.
+
+    Пустой снимок без продажи не закрывает позицию.
+    Нет цены покупки → прибыль = все полученные деньги.
+    """
+    instruments = list((await db.execute(select(Instrument))).scalars().all())
+    flows = (
+        await db.execute(
+            select(InvestmentFlow).where(
+                InvestmentFlow.portfolio_id == portfolio_id,
+                InvestmentFlow.type.in_(CLOSED_INCOME_TYPES + CLOSED_EXIT_TYPES),
+            )
+        )
+    ).scalars().all()
+
+    exit_flows = [flow for flow in flows if flow.type in CLOSED_EXIT_TYPES]
+    if not exit_flows:
+        return []
+
+    groups: dict[str, dict[str, Any]] = {}
+    for flow in exit_flows:
+        instrument = _match_closed_instrument(flow, instruments)
+        if instrument and instrument.id in held_instrument_ids:
+            continue
+        key = (
+            f"id:{instrument.id}"
+            if instrument
+            else f"name:{normalize_name(closed_display_name(None, [flow]))}"
+        )
+        entry = groups.setdefault(key, {"instrument": instrument, "exits": [], "related": []})
+        if instrument and not entry["instrument"]:
+            entry["instrument"] = instrument
+        entry["exits"].append(flow)
+
+    if not groups:
+        return []
+
+    for flow in flows:
+        if flow.type not in CLOSED_INCOME_TYPES:
+            continue
+        instrument = _match_closed_instrument(flow, instruments)
+        if instrument:
+            key = f"id:{instrument.id}"
+            if key in groups:
+                groups[key]["related"].append(flow)
+            continue
+        name_key = f"name:{normalize_name(closed_display_name(None, [flow]))}"
+        if name_key in groups:
+            groups[name_key]["related"].append(flow)
+
+    holdings = (
+        await db.execute(
+            select(Position)
+            .where(Position.portfolio_id == portfolio_id)
+            .order_by(Position.snapshot_date.asc())
+        )
+    ).scalars().all()
+    last_holding: dict[int, Position] = {}
+    for position in holdings:
+        if position.quantity > 0:
+            last_holding[position.instrument_id] = position
+
+    closed = [
+        _closed_position_row(entry["instrument"], entry["exits"], entry["related"], last_holding)
+        for entry in groups.values()
+        if entry["exits"]
+    ]
+    closed.sort(
+        key=lambda row: (row.get("closed_on") or "", -(abs(row.get("result") or 0))),
+        reverse=True,
+    )
+    return closed
+
+
+def _match_closed_instrument(
+    flow: InvestmentFlow,
+    instruments: list[Instrument],
+) -> Instrument | None:
+    hits = [item for item in instruments if _flow_matches_instrument(flow, item)]
+    if hits:
+        return max(hits, key=lambda item: len(item.name or ""))
+    issuer = display_name_from_description(flow.description)
+    if not issuer:
+        return None
+    named = [item for item in instruments if normalize_name(item.name) == normalize_name(issuer)]
+    if named:
+        return named[0]
+    return None
+
+
+def _closed_position_row(
+    instrument: Instrument | None,
+    exits: list[InvestmentFlow],
+    related: list[InvestmentFlow],
+    last_holding: dict[int, Position],
+) -> dict[str, Any]:
+    income = round(sum(flow.amount for flow in related), 2)
+    exit_amount = round(sum(flow.amount for flow in exits), 2)
+    last_exit = max(exits, key=lambda flow: flow.date)
+    exit_kind = _closed_exit_kind(exits)
+
+    cost = None
+    if instrument:
+        holding = last_holding.get(instrument.id)
+        if holding:
+            cost = estimate_position_cost(
+                holding.quantity,
+                holding.avg_price,
+                holding.market_value,
+            )
+
+    received = round(income + exit_amount, 2)
+    result = received if cost is None else round(received - cost, 2)
+
+    asset_type = "other"
+    if instrument:
+        asset_type = effective_composition_type(
+            instrument.asset_type,
+            maturity_date=instrument.maturity_date,
+            coupon_rate=instrument.coupon_rate,
+            name=instrument.name,
+        )
+    if asset_type == "other":
+        blob = " ".join((flow.description or "") for flow in exits).lower()
+        if "выкуп" in blob or "акци" in blob:
+            asset_type = "stock"
+        elif "погашен" in blob or "облигац" in blob:
+            asset_type = "bond"
+
+    return {
+        "instrument_id": instrument.id if instrument else None,
+        "name": closed_display_name(instrument, exits),
+        "ticker": instrument.ticker if instrument else None,
+        "asset_type": asset_type,
+        "closed_on": last_exit.date.isoformat(),
+        "cost": cost,
+        "income": income,
+        "exit": exit_amount,
+        "exit_kind": exit_kind,
+        "result": result,
     }
 
 
@@ -720,37 +927,70 @@ async def _resolve_instrument_filter(
     if not ref:
         return None
 
-    by_ticker = (
-        await db.execute(select(Instrument).where(Instrument.ticker == ref))
-    ).scalar_one_or_none()
-    if by_ticker:
-        return by_ticker
-
-    by_name = (
-        await db.execute(select(Instrument).where(Instrument.name == ref))
-    ).scalar_one_or_none()
-    if by_name:
-        return by_name
-
-    all_instruments = (await db.execute(select(Instrument))).scalars().all()
+    instruments = list((await db.execute(select(Instrument))).scalars().all())
     ref_lower = ref.lower()
-    for instrument in all_instruments:
-        aliases = instrument.aliases or []
-        if ref_lower in {alias.lower() for alias in aliases}:
+    ref_isins = {isin.lower() for isin in isins_in_text(ref)}
+    ref_core = (core_issuer_token(ref) or "").lower()
+
+    scored: list[tuple[int, Instrument]] = []
+    for instrument in instruments:
+        name_lower = (instrument.name or "").lower()
+        ticker_lower = (instrument.ticker or "").lower()
+        aliases = {str(alias).lower() for alias in (instrument.aliases or []) if alias}
+
+        if ticker_lower and ticker_lower == ref_lower:
             return instrument
-        if ref_lower in instrument.name.lower():
+        if name_lower == ref_lower or ref_lower in aliases:
             return instrument
-    return None
+
+        score = 0
+        if ref_isins & (aliases | {ticker_lower, name_lower}):
+            score = max(score, 100)
+        if any(isin in ref_lower for isin in aliases if len(isin) >= 10):
+            score = max(score, 90)
+        if len(name_lower) >= 5 and name_lower in ref_lower:
+            score = max(score, 40 + len(name_lower))
+        if len(ref_lower) >= 8 and ref_lower in name_lower:
+            score = max(score, 30 + len(ref_lower))
+        inst_core = (core_issuer_token(instrument.name) or "").lower()
+        if ref_core and inst_core and ref_core == inst_core:
+            score = max(score, 50 + len(ref_core))
+        if score:
+            scored.append((score, instrument))
+
+    if not scored:
+        return None
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return scored[0][1]
 
 
 def _flow_matches_instrument(flow: InvestmentFlow, instrument: Instrument) -> bool:
     description = (flow.description or "").lower()
-    needles = {instrument.name.lower()}
-    if instrument.ticker:
-        needles.add(instrument.ticker.lower())
-    for alias in instrument.aliases or []:
-        needles.add(str(alias).lower())
-    return any(needle in description for needle in needles)
+    if not description:
+        return False
+    return any(needle in description for needle in instrument_match_needles(instrument))
+
+
+def _payment_matches_filter(
+    flow: InvestmentFlow,
+    instrument_ref: str,
+    resolved: Instrument | None,
+) -> bool:
+    description = flow.description or ""
+    if not description:
+        return False
+    desc_lower = description.lower()
+    ref_lower = instrument_ref.strip().lower()
+    if desc_lower == ref_lower:
+        return True
+    if resolved and _flow_matches_instrument(flow, resolved):
+        return True
+    if any(isin.lower() in desc_lower for isin in isins_in_text(instrument_ref)):
+        return True
+    core = core_issuer_token(instrument_ref)
+    if core and len(core) >= 4 and core.lower() in desc_lower:
+        return True
+    return False
 
 
 def _match_instrument_by_name(
@@ -810,8 +1050,11 @@ async def build_portfolio_payments(
     resolved = None
     if instrument:
         resolved = await _resolve_instrument_filter(db, instrument)
-        if resolved:
-            flows = [flow for flow in flows if _flow_matches_instrument(flow, resolved)]
+        flows = [
+            flow
+            for flow in flows
+            if _payment_matches_filter(flow, instrument, resolved)
+        ]
 
     payments = [
         {

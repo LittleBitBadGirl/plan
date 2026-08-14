@@ -13,6 +13,44 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.portfolio import Instrument
 
 _ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
+_ISIN_IN_TEXT_RE = re.compile(r"\b([A-Z]{2}[A-Z0-9]{9}\d)\b", re.I)
+_ISIN_TAIL_RE = re.compile(r",?\s*ISIN[:\s]+[A-Z0-9]+.*$", re.I)
+_FLOW_PREFIX_RE = re.compile(
+    r"^(выкуп бумаг эмитентом|выплата дивидендов|выплата купонного дохода|"
+    r"выплата купона|дивиденды|купон)\s*[,:—–-]?\s*",
+    re.I,
+)
+_ASSET_PREFIX_RE = re.compile(
+    r"^(акции|облигации|паи)\s+(обыкновенные|привилегированные)?\s*",
+    re.I,
+)
+_QUOTED_ISSUER_RE = re.compile(r'[«"„\'](.+?)[»"“\']')
+_LEGAL_FORM_RE = re.compile(r"^(МКПАО|ПАО|АО|ООО)\s+", re.I)
+_ISSUER_HINT_RE = re.compile(r"ISIN|эмитентом|дивиденд|купон", re.I)
+_NEEDLE_STOPWORDS = frozenset(
+    {
+        "пао",
+        "ао",
+        "ооо",
+        "мкпао",
+        "нк",
+        "анк",
+        "isin",
+        "акции",
+        "облигации",
+        "обыкновенные",
+        "привилегированные",
+        "купон",
+        "дивиденды",
+        "выплата",
+        "эмитентом",
+        "бумаг",
+        "выкуп",
+        "серия",
+        "перем",
+        "фз",
+    }
+)
 
 
 def normalize_name(value: str) -> str:
@@ -25,6 +63,73 @@ def is_isin(value: str | None) -> bool:
     if not value:
         return False
     return bool(_ISIN_RE.match(value.strip().upper()))
+
+
+def isins_in_text(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [match.group(1).upper() for match in _ISIN_IN_TEXT_RE.finditer(value)]
+
+
+def core_issuer_token(name: str | None) -> str | None:
+    """Устойчивое ядро имени: Роснефть, НОВАТЭК, ИНГРАД — не ПАО/НК."""
+    if not name:
+        return None
+    text = _ISIN_TAIL_RE.sub("", name)
+    text = _FLOW_PREFIX_RE.sub("", text)
+    text = _ASSET_PREFIX_RE.sub("", text)
+    text = re.sub(r'[«»"„“\']', " ", text)
+    text = _LEGAL_FORM_RE.sub("", text)
+    text = re.sub(r"[^\w\s-]", " ", text, flags=re.UNICODE)
+    parts = [part for part in re.split(r"\s+", text.strip()) if part]
+    distinctive = [
+        part
+        for part in parts
+        if part.lower() not in _NEEDLE_STOPWORDS and len(part) >= 4
+    ]
+    if not distinctive:
+        distinctive = [
+            part
+            for part in parts
+            if part.lower() not in _NEEDLE_STOPWORDS and len(part) >= 3
+        ]
+    if not distinctive:
+        return None
+    return max(distinctive, key=len)
+
+
+def instrument_match_needles(instrument: Instrument) -> set[str]:
+    """Подстроки, по которым выплата принадлежит инструменту."""
+    values = [instrument.name, instrument.ticker, *_alias_values(instrument.aliases)]
+    needles: set[str] = set()
+    ticker = (instrument.ticker or "").strip().lower()
+    for raw in values:
+        if not raw:
+            continue
+        lowered = str(raw).strip().lower()
+        if not lowered or lowered in _NEEDLE_STOPWORDS:
+            continue
+        if len(lowered) >= 4 or (ticker and lowered == ticker):
+            needles.add(lowered)
+        for isin in isins_in_text(str(raw)):
+            needles.add(isin.lower())
+        core = core_issuer_token(str(raw))
+        if core:
+            needles.add(core.lower())
+    return {needle for needle in needles if needle and needle not in _NEEDLE_STOPWORDS}
+
+
+def display_name_from_description(description: str | None) -> str | None:
+    """Короткое имя эмитента из брокерской примечания: ИНГРАД, НОВАТЭК."""
+    if not description or not _ISSUER_HINT_RE.search(description):
+        return None
+    text = _ISIN_TAIL_RE.sub("", description).strip().strip(",")
+    text = _FLOW_PREFIX_RE.sub("", text).strip().strip(",")
+    quoted = _QUOTED_ISSUER_RE.search(text)
+    if quoted:
+        return quoted.group(1).strip()
+    text = _LEGAL_FORM_RE.sub("", text).strip()
+    return text or None
 
 
 def _alias_values(aliases: Any) -> list[str]:

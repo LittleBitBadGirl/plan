@@ -60,20 +60,25 @@ Spec: `docs/superpowers/specs/2026-07-19-portfolio-analyzer-spec.md`
 
 **positions[]** (optional but recommended)
 - `ticker` — MOEX ticker if known (`TRNFP`, `SU26207`), else null
-- `name` — as in broker report
+- `name` — as in broker report (human name, **not** ISIN)
+- `isin` — **required when the report has it** (primary match key)
 - `asset_type` — `stock` | `bond` | `etf` | `pif` | `other`
-- `quantity` — units/shares
+- `quantity` — units/shares at report date
 - `market_value` — RUB
-- `avg_price` — optional
-- `maturity_date` — ISO date for bonds
+- `avg_price` — **send if the report has it** (needed for closed P&L)
+- `maturity_date` — ISO date for bonds (enrich from MOEX/OFZ calendar if missing)
 - `coupon_rate` — optional, annual %
 
 **flows[]** (optional)
 - `date` — payment date
 - `type` — see table below
-- `amount` — RUB, positive for income, negative for outflows if applicable
-- `instrument` — ticker or name for matching
-- `description` — raw text from broker
+- `amount` — RUB; income/inflow positive; `tax` negative
+- `isin` — **required when the note has ISIN**
+- `name` — short issuer (`ИНГРАД`, `НОВАТЭК`), not the full legal line if you can parse it
+- `instrument` — ticker or short name (alias of `name`)
+- `ticker` — optional
+- `asset_type` — `stock` | `bond` | `pif` | `other` (set on sale/redemption)
+- `description` — raw broker note; **must keep issuer + ISIN** (Planner filters the paper popup by this text)
 
 ### Flow types
 
@@ -83,10 +88,19 @@ Spec: `docs/superpowers/specs/2026-07-19-portfolio-analyzer-spec.md`
 | `withdrawal` | Вывод |
 | `dividend` | Дивиденды по акциям |
 | `coupon` | Купоны по облигациям |
-| `redemption` | Погашение облигации |
+| `redemption` | Погашение облигации **или выкуп эмитентом** (BIDS / «Выкуп бумаг эмитентом») |
+| `sale` | Продажа бумаги на рынке (не выкуп) |
 | `pif_accrual` | Начисление ПИФ (ден. рынок, подушка) |
-| `tax` | Налог у источника / НДФЛ |
+| `tax` | Налог у источника / НДФЛ (amount отрицательный) |
 | `commission` | Комиссия брокера |
+
+### Closed positions (Planner logic — parser must feed it)
+
+Planner shows **Закрытые позиции** only from `sale` / `redemption` flows whose paper is **not** in the latest non-empty `positions[]`.
+
+- Empty `positions: []` on a later report **does not** mean everything was sold. Omit a paper from positions **and** emit `sale` or `redemption`.
+- No `avg_price` ever seen → profit = all cash received (exit + coupons/dividends/taxes matched to that paper).
+- Bond maturity → `redemption`. Issuer buyback → `redemption`. Market sell → `sale`.
 
 ---
 

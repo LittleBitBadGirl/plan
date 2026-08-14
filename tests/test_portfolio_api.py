@@ -11,8 +11,10 @@ from app.models.investment import InvestmentFlow, InvestmentSnapshot
 from app.models.portfolio import ImportLog, Instrument, Portfolio, PortfolioGoal, Position
 from datetime import date
 
+from app.services.instrument_normalize import core_issuer_token, display_name_from_description
 from app.services.ofz_calendar import lookup_ofz_maturity
 from app.services.portfolio_service import (
+    estimate_position_cost,
     import_report,
     sort_cashflow_instruments,
     sort_composition_positions,
@@ -74,6 +76,24 @@ def test_sort_composition_positions_bonds_before_stocks():
     ]
     names = [row["name"] for row in sort_composition_positions(items)]
     assert names == ["ОФЗ", "Сбер", "Полюс", "Денежный рынок"]
+
+
+def test_display_name_from_ingrad_buyback():
+    assert display_name_from_description(
+        'Выкуп бумаг эмитентом, ПАО "ИНГРАД", ISIN RU000A0DJ9B4'
+    ) == "ИНГРАД"
+    assert display_name_from_description("Списание НДФЛ") is None
+
+
+def test_core_issuer_token_nested_quotes():
+    assert core_issuer_token('ПАО "НК "Роснефть"') == "Роснефть"
+    assert core_issuer_token('Акции обыкновенные ПАО "НОВАТЭК"') == "НОВАТЭК"
+
+
+def test_estimate_position_cost_stock_and_bond_percent():
+    assert estimate_position_cost(50, 1200, 72000) == 60000
+    assert estimate_position_cost(1, 94.275, 944.46) == 942.75
+    assert estimate_position_cost(50, None, 72000) is None
 
 
 def test_lookup_ofz_maturity_series_and_cny():
@@ -299,6 +319,88 @@ async def test_composition_keeps_last_positions_if_later_snapshot_empty(
 
 
 @pytest.mark.asyncio
+async def test_closed_ingrad_redemption_unknown_cost_is_profit(client, portfolio_api_db):
+    payload = _load_fixture("sample_sovcombank_import.json")
+    await import_report(portfolio_api_db, 1, payload)
+    await portfolio_api_db.commit()
+
+    data = (await client.get("/api/portfolios/1/composition")).json()
+    assert len(data["closed"]) == 1
+    row = data["closed"][0]
+    assert row["name"] == "ИНГРАД"
+    assert row["cost"] is None
+    assert row["exit"] == 1806.6
+    assert row["income"] == 0
+    assert row["result"] == 1806.6
+    assert row["exit_kind"] == "buyback"
+    assert row["closed_on"] == "2025-05-07"
+    assert "ИНГРАД" not in {item["name"] for item in data["positions"]}
+
+
+@pytest.mark.asyncio
+async def test_closed_sale_with_known_cost(client, portfolio_api_db):
+    first = {
+        "report_date": "2025-07-31",
+        "snapshot": {"date": "2025-07-31", "total_balance": 850000},
+        "positions": [
+            {
+                "ticker": "TRNFP",
+                "name": "Транснефть (п)",
+                "asset_type": "stock",
+                "quantity": 50,
+                "market_value": 72000,
+                "avg_price": 1200,
+            }
+        ],
+        "flows": [
+            {
+                "date": "2025-07-15",
+                "type": "dividend",
+                "amount": 10200,
+                "instrument": "TRNFP",
+                "description": "Дивиденды TRNFP",
+            }
+        ],
+    }
+    second = {
+        "report_date": "2025-08-31",
+        "snapshot": {"date": "2025-08-31", "total_balance": 800000},
+        "positions": [
+            {
+                "ticker": "SBER",
+                "name": "Сбербанк",
+                "asset_type": "stock",
+                "quantity": 10,
+                "market_value": 3000,
+            }
+        ],
+        "flows": [
+            {
+                "date": "2025-08-10",
+                "type": "sale",
+                "amount": 75000,
+                "instrument": "TRNFP",
+                "description": "Продажа Транснефть (п)",
+            }
+        ],
+    }
+    await import_report(portfolio_api_db, 1, first)
+    await import_report(portfolio_api_db, 1, second)
+    await portfolio_api_db.commit()
+
+    data = (await client.get("/api/portfolios/1/composition")).json()
+    assert data["positions"][0]["ticker"] == "SBER"
+    assert len(data["closed"]) == 1
+    row = data["closed"][0]
+    assert row["ticker"] == "TRNFP"
+    assert row["cost"] == 60000
+    assert row["income"] == 10200
+    assert row["exit"] == 75000
+    assert row["exit_kind"] == "sale"
+    assert row["result"] == 25200
+
+
+@pytest.mark.asyncio
 async def test_composition_groups_bonds_before_stocks(client, portfolio_api_db):
     payload = _load_fixture("sample_sovcombank_import.json")
     await import_report(portfolio_api_db, 1, payload)
@@ -329,6 +431,42 @@ async def test_payments_drilldown(client, portfolio_api_db):
     assert len(data["payments"]) == 1
     assert data["payments"][0]["type"] == "dividend"
     assert data["payments"][0]["amount"] == 10200
+
+
+@pytest.mark.asyncio
+async def test_payments_unknown_instrument_is_empty_not_dump(client, portfolio_api_db):
+    payload = _load_fixture("sample_sovcombank_import.json")
+    await import_report(portfolio_api_db, 1, payload)
+    await portfolio_api_db.commit()
+
+    data = (
+        await client.get(
+            "/api/portfolios/1/payments",
+            params={"instrument": "НесуществующаяБумагаXYZ"},
+        )
+    ).json()
+    assert data["payments"] == []
+
+
+@pytest.mark.asyncio
+async def test_payments_filters_to_clicked_issuer(client, portfolio_api_db):
+    payload = _load_fixture("sample_sovcombank_import.json")
+    await import_report(portfolio_api_db, 1, payload)
+    await portfolio_api_db.commit()
+
+    clicked = 'Выплата дивидендов, ПАО "НОВАТЭК", ISIN: RU000A0DKVS5, 1 ЦБ=46.65RUB'
+    data = (
+        await client.get(
+            "/api/portfolios/1/payments",
+            params={"instrument": clicked},
+        )
+    ).json()
+    assert data["payments"]
+    blobs = " ".join(row["description"] or "" for row in data["payments"])
+    assert "НОВАТЭК" in blobs
+    assert "ИНГРАД" not in blobs
+    assert "Минфин" not in blobs
+    assert "Медикал" not in blobs
 
 
 @pytest.mark.asyncio

@@ -110,7 +110,7 @@
             <h2 class="text-sm font-semibold text-white">Закрытые позиции</h2>
             <span id="paClosedMeta" class="text-[10px] text-gray-500"></span>
         </div>
-        <p class="text-[11px] text-gray-500 mb-4">Выплаты + продажа или погашение − покупка. Появится, когда бумагу продашь или она погасится.</p>
+        <p class="text-[11px] text-gray-500 mb-4">Выплаты + продажа или выкуп − покупка. Если цены покупки нет — всё полученное считается прибылью.</p>
         <div id="paClosedBody">
             <div class="animate-pulse space-y-2">
                 <div class="h-16 bg-dark-800 rounded"></div>
@@ -153,9 +153,31 @@
     box-shadow: 6px 0 8px -4px rgba(0,0,0,.55);
     min-width: 11rem; max-width: 15rem;
   }
+  .pa-comp-table {
+    table-layout: fixed;
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 640px;
+  }
+  .pa-comp-col-ticker { width: 5.5rem; }
+  .pa-comp-col-pct { width: 4.25rem; }
+  .pa-comp-col-qty { width: 5rem; }
+  .pa-comp-col-value { width: 7.75rem; }
+  .pa-comp-col-mat { width: 6.5rem; }
+  .pa-comp-table th:nth-child(2),
+  .pa-comp-table td:nth-child(2) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pa-comp-table td:nth-child(3),
+  .pa-comp-table td:nth-child(4),
+  .pa-comp-table td:nth-child(5) {
+    white-space: nowrap;
+  }
 </style>
 {% endblock %}
 
 {% block extra_scripts %}
-<script src="/web/static/js/portfolio-analytics.js?v=20260814-cf-totals"></script>
+<script src="/web/static/js/portfolio-analytics.js?v=20260814-pay-filter"></script>
 {% endblock %}

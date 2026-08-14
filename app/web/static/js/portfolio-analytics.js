@@ -729,12 +729,17 @@
                 return ga - gb;
             });
 
-            var html = '';
+            var html = '<div class="pa-comp overflow-x-auto">';
             var self = this;
             groups.forEach(function (group, idx) {
                 html += self._buildCompositionGroupTable(group, byType[group], idx > 0);
             });
-            el.innerHTML = html;
+            el.innerHTML = html + '</div>';
+            el.querySelectorAll('[data-instrument]').forEach(function (row) {
+                row.addEventListener('click', function () {
+                    self.openDrilldown(row.getAttribute('data-instrument'), true);
+                });
+            });
         },
 
         _buildCompositionGroupTable: function (group, rows, spaced) {
@@ -742,34 +747,34 @@
             var label = COMPOSITION_GROUP_LABELS[group] || COMPOSITION_GROUP_LABELS.other;
             var h = "<p class='text-[9px] uppercase tracking-wide text-gray-500 font-semibold px-2 pb-1" +
                 (spaced ? " pt-4" : "") + "'>" + esc(label) + '</p>';
-            h += "<div class='overflow-x-auto'><table class='w-full text-[11px] border-collapse min-w-[480px]'>";
+            h += "<table class='pa-comp-table w-full text-[11px]'>";
+            h += "<colgroup><col class='pa-comp-col-ticker'><col class='pa-comp-col-name'>" +
+                "<col class='pa-comp-col-pct'><col class='pa-comp-col-qty'>" +
+                "<col class='pa-comp-col-value'><col class='pa-comp-col-mat'></colgroup>";
             h += "<thead><tr class='border-b border-dark-700 text-gray-500'>";
             h += '<th class="px-2 py-2 text-left">Ticker</th>';
             h += '<th class="px-2 py-2 text-left">Название</th>';
             h += '<th class="px-2 py-2 text-right">Доля</th>';
             h += '<th class="px-2 py-2 text-right">Кол-во</th>';
             h += '<th class="px-2 py-2 text-right">Стоимость</th>';
-            if (showMaturity) {
-                h += '<th class="px-2 py-2 text-left">Погашение</th>';
-            }
+            h += '<th class="px-2 py-2 text-left">' + (showMaturity ? 'Погашение' : '') + '</th>';
             h += '</tr></thead><tbody>';
             rows.forEach(function (p) {
-                h += "<tr class='border-b border-dark-700/30 hover:bg-dark-700/20'>";
+                h += "<tr class='border-b border-dark-700/30 hover:bg-dark-700/20 cursor-pointer' data-instrument=\"" +
+                    esc(p.name) + '">';
                 h += '<td class="px-2 py-1.5 text-yellow-300/80 font-mono">' + esc(p.ticker || '—') + '</td>';
                 h += '<td class="px-2 py-1.5 text-gray-300">' + esc(p.name) + '</td>';
-                h += '<td class="px-2 py-1.5 text-right text-gray-400">' +
+                h += '<td class="px-2 py-1.5 text-right text-gray-400 tabular-nums">' +
                     (p.weight_pct != null ? p.weight_pct.toFixed(1) + '%' : '—') + '</td>';
                 h += '<td class="px-2 py-1.5 text-right text-gray-300 tabular-nums">' +
                     (p.quantity != null ? p.quantity.toLocaleString('ru-RU') : '—') + '</td>';
                 h += '<td class="px-2 py-1.5 text-right text-white tabular-nums">' +
                     (p.market_value != null ? fmtPlain(p.market_value) + ' ₽' : '—') + '</td>';
-                if (showMaturity) {
-                    h += '<td class="px-2 py-1.5 text-gray-500">' +
-                        esc(fmtMaturityMonthYear(p.maturity_date) || '—') + '</td>';
-                }
+                h += '<td class="px-2 py-1.5 text-gray-500">' +
+                    (showMaturity ? esc(fmtMaturityMonthYear(p.maturity_date) || '—') : '') + '</td>';
                 h += '</tr>';
             });
-            h += '</tbody></table></div>';
+            h += '</tbody></table>';
             return h;
         },
 
@@ -790,15 +795,17 @@
                 return;
             }
 
-            var kindLabel = { sale: 'продажа', redemption: 'погашение' };
+            var kindLabel = { sale: 'продажа', redemption: 'погашение', buyback: 'выкуп' };
             var typeLabel = { stock: 'акция', bond: 'облигация', pif: 'ПИФ', other: '' };
             var self = this;
             var html = '<div class="space-y-2">';
             rows.forEach(function (row) {
                 var result = row.result;
                 var resultCls = result == null ? 'text-gray-500' : result >= 0 ? 'text-emerald-400' : 'text-red-400';
-                var resultText = result == null ? 'нет цены покупки' : fmtRub(result);
+                var resultText = result == null ? '—' : fmtRub(result);
                 var accent = row.asset_type === 'bond' ? 'border-l-yellow-600/70' : 'border-l-amber-500/70';
+                var exitLabel = row.exit_kind === 'buyback' ? 'выкуп'
+                    : row.exit_kind === 'redemption' ? 'погашение' : 'продажа';
                 html += '<button type="button" class="w-full text-left rounded-lg bg-dark-800 border border-dark-700 border-l-2 ' +
                     accent + ' px-4 py-3 hover:border-dark-500 transition" data-closed="' + esc(row.name) + '">';
                 html += '<div class="flex items-baseline justify-between gap-2 mb-2">';
@@ -811,7 +818,7 @@
                 html += '<div class="grid grid-cols-4 gap-2">';
                 html += self._closedCell('покупка', row.cost, 'text-gray-300');
                 html += self._closedCell('выплаты', row.income, 'text-amber-400');
-                html += self._closedCell(row.exit_kind === 'redemption' ? 'погашение' : 'продажа', row.exit, 'text-gray-200');
+                html += self._closedCell(exitLabel, row.exit, 'text-gray-200');
                 html += '<div><p class="text-[9px] uppercase tracking-wider text-gray-600 mb-0.5">итог</p>' +
                     '<p class="text-sm font-semibold tabular-nums ' + resultCls + '">' + resultText + '</p></div>';
                 html += '</div></button>';
