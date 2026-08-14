@@ -2,7 +2,7 @@
 
 **Source:** `open_doc.xlsx` — cumulative report from T-Bank app/export  
 **Account:** `2132867011` от 07.02.2024  
-**Portfolio:** id=4, tab «Бrokerский 2»
+**Portfolio:** id=4, tab «Брокерский 2»
 
 Unlike Sovcombank (password zip monthly), T-Bank exports a **single wide xlsx** covering a long period (example: 07.02.2024 – 08.07.2026).
 

@@ -122,7 +122,7 @@ GET /portfolio  +  GET /api/portfolios/{id}/analytics
 | current_amount | Float | Sync from goal or snapshot |
 | created_at | DateTime | |
 
-Seed: portfolio 1 (ИИС) → `broker_contract='9248208'`; portfolio 3 (Бrokerский 1) → `broker_contract='1149213'` + goal «Автомобиль» from legacy financial_goals id=6.
+Seed: portfolio 1 (ИИС) → `broker_contract='9248208'`; portfolio 3 (Брокерский 1) → `broker_contract='1149213'` + goal «Автомобиль» from legacy financial_goals id=6.
 
 ### `instruments`
 

@@ -22,7 +22,7 @@ Planner **не парсит** xlsx/zip сам — только принимае�
 ## Конфиг (.env Hermes)
 
 ```env
-PLANNER_URL=https://planner.ВАШ-ДОМЕН
+PLANNER_URL=https://planner.ваш-домен.ru   # как в docs/DEPLOY.md (NPM)
 PLANNER_API_TOKEN=...   # тот же API_TOKEN что в planner/.env
 ```
 
@@ -63,7 +63,7 @@ Content-Type: application/json
 4. Извлечь: snapshot, positions[], flows[]
 5. Сохранить JSON локально (audit): reports/parsed/{slug}-{report_date}.json
 6. POST import
-7. Лог: import_id, flows_inserted, errors
+7. Лог: import_id, positions_upserted, flows_inserted, flows_skipped_duplicate
 8. При 409 (duplicate) — OK, отчёт уже был
 ```
 

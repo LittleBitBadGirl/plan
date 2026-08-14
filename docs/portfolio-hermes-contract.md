@@ -1,7 +1,7 @@
 # Hermes → Planner: Portfolio Import Contract
 
 **Endpoint:** `POST /api/portfolios/{portfolio_id}/import`  
-**Auth:** `Authorization: Bearer {API_TOKEN}`  
+**Auth:** `Authorization: Bearer {PLANNER_API_TOKEN}`
 **Content-Type:** `application/json`
 
 Spec: `docs/superpowers/specs/2026-07-19-portfolio-analyzer-spec.md`
@@ -62,7 +62,7 @@ Spec: `docs/superpowers/specs/2026-07-19-portfolio-analyzer-spec.md`
 - `ticker` — MOEX ticker if known (`TRNFP`, `SU26207`), else null
 - `name` — as in broker report (human name, **not** ISIN)
 - `isin` — **required when the report has it** (primary match key)
-- `asset_type` — `stock` | `bond` | `etf` | `pif` | `other`
+- `asset_type` — `stock` | `bond` | `etf` | `pif` | `other`. Группировка состава: bond → stock → pif (в этом порядке); `etf` и неизвестные значения валидации нет — код примет, но в составе они окажутся после ПИФ (сортировка `other`)
 - `quantity` — units/shares at report date
 - `market_value` — RUB
 - `avg_price` — **send if the report has it** (needed for closed P&L)
@@ -161,7 +161,7 @@ Import payload: add optional `isin` field on positions and flows.
 ## TODO
 
 - [x] **Подушка** — БКС `1226101/21-л`, `docs/portfolio-bcs-report-format.md`
-- [x] **Бrokerский 2** — T-Broker, без отчётов (manual/sparse only)
+- [x] **Брокерский 2** — T-Broker, без отчётов (manual/sparse only)
 - [ ] ISIN → ticker lookup table (MOEX)
 - [ ] Bond maturity enrichment (MOEX/CBONDS)
 - [ ] Monthly job: unzip → parse → POST per portfolio
