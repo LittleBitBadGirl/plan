@@ -17,7 +17,8 @@ _ISIN_IN_TEXT_RE = re.compile(r"\b([A-Z]{2}[A-Z0-9]{9}\d)\b", re.I)
 _ISIN_TAIL_RE = re.compile(r",?\s*ISIN[:\s]+[A-Z0-9]+.*$", re.I)
 _FLOW_PREFIX_RE = re.compile(
     r"^(выкуп бумаг эмитентом|выплата дивидендов|выплата купонного дохода|"
-    r"выплата купона|дивиденды|купон)\s*[,:—–-]?\s*",
+    r"выплата купона|дивиденды|купон|redemption|income|coupon|dividend|"
+    r"deposit|withdrawal|tax|sale)\s*[,:—–-]?\s*",
     re.I,
 )
 _ASSET_PREFIX_RE = re.compile(
@@ -26,7 +27,7 @@ _ASSET_PREFIX_RE = re.compile(
 )
 _QUOTED_ISSUER_RE = re.compile(r'[«"„\'](.+?)[»"“\']')
 _LEGAL_FORM_RE = re.compile(r"^(МКПАО|ПАО|АО|ООО)\s+", re.I)
-_ISSUER_HINT_RE = re.compile(r"ISIN|эмитентом|дивиденд|купон", re.I)
+_ISSUER_HINT_RE = re.compile(r"ISIN|эмитентом|дивиденд|купон|redemption|income|coupon|dividend", re.I)
 _NEEDLE_STOPWORDS = frozenset(
     {
         "пао",
