@@ -36,10 +36,12 @@
     function inferIncomeType(instr) {
         if (instr && instr.type) return instr.type;
         var n = String((instr && instr.name) || '').toLowerCase();
-        if (n.indexOf('купон') === 0) return 'coupon';
-        if (n.indexOf('дивиденд') === 0) return 'dividend';
-        if (n.indexOf('пиф') === 0) return 'pif_accrual';
-        if (n.indexOf('выкуп') === 0 || n.indexOf('погашен') !== -1) return 'redemption';
+        if (n.indexOf('coupon') === 0 || n.indexOf('купон') === 0) return 'coupon';
+        if (n.indexOf('dividend') === 0 || n.indexOf('дивиденд') === 0) return 'dividend';
+        if (n.indexOf('pif') === 0 || n.indexOf('пиф') === 0) return 'pif_accrual';
+        if (n.indexOf('redemption') === 0 || n.indexOf('выкуп') === 0 || n.indexOf('погашен') !== -1) {
+            return 'redemption';
+        }
         return 'other';
     }
 
@@ -50,9 +52,13 @@
 
     function displayInstrumentName(name) {
         var raw = String(name || '').trim();
-        var cleaned = raw.replace(/^(дивиденды|дивиденд|купоны|купон)\s*[:—–-]\s*/i, '');
+        var prefix = /^(coupon|dividend|redemption|pif_accrual|sale|tax|дивиденды|дивиденд|купоны|купон|погашения|погашение|выкуп)\s*[:—–-]\s*/i;
+        var cleaned = raw.replace(prefix, '');
         if (cleaned === raw) {
-            cleaned = raw.replace(/^(дивиденды|дивиденд|купоны|купон)\s+/i, '');
+            cleaned = raw.replace(
+                /^(coupon|dividend|redemption|pif_accrual|sale|tax|дивиденды|дивиденд|купоны|купон)\s+/i,
+                ''
+            );
         }
         return cleaned || raw;
     }
@@ -63,12 +69,6 @@
         var d = parseDate(raw);
         if (isNaN(d.getTime())) return '';
         return MONTHS[d.getMonth()] + ' ' + d.getFullYear();
-    }
-
-    function shortenName(name, max) {
-        max = max || 24;
-        if (name.length <= max) return name;
-        return name.substring(0, max - 3) + '...';
     }
 
     function fmtRub(v) {
@@ -566,12 +566,12 @@
                     ? fmtMaturityMonthYear(instr.maturity_date)
                     : '';
                 var title = mat ? shown + ' · ' + mat : shown;
-                h += "<td class='px-2 py-1.5 text-gray-300 whitespace-nowrap' title=\"" + esc(title) + '">';
-                h += esc(shortenName(shown, 22));
+                h += "<td class='px-2 py-1.5 text-gray-300' title=\"" + esc(title) + '">';
+                h += "<span class='pa-cf-name'>" + esc(shown);
                 if (mat) {
-                    h += " <span class='text-gray-500'>" + esc(mat) + '</span>';
+                    h += " <span class='text-gray-500 whitespace-nowrap'>" + esc(mat) + '</span>';
                 }
-                h += '</td>';
+                h += '</span></td>';
                 h += "<td class='px-1.5 py-1.5 text-right font-semibold text-emerald-400'>" + this._yearInstrumentTotal(instr, year).toLocaleString('ru-RU') + '</td>';
                 for (var mj = 1; mj <= 12; mj++) {
                     var ym2 = year + '-' + String(mj).padStart(2, '0');
@@ -679,11 +679,12 @@
                 var matAll = (instrType === 'coupon' || instrType === 'redemption')
                     ? fmtMaturityMonthYear(instr.maturity_date)
                     : '';
-                h += "<td class='px-2 py-1.5 text-gray-300'>" + esc(shownAll);
+                h += "<td class='px-2 py-1.5 text-gray-300'>";
+                h += "<span class='pa-cf-name'>" + esc(shownAll);
                 if (matAll) {
-                    h += " <span class='text-gray-500'>" + esc(matAll) + '</span>';
+                    h += " <span class='text-gray-500 whitespace-nowrap'>" + esc(matAll) + '</span>';
                 }
-                h += '</td>';
+                h += '</span></td>';
                 h += "<td class='px-2 py-1.5 text-right font-semibold text-emerald-400'>" +
                     (instr.total || 0).toLocaleString('ru-RU') + ' ₽</td></tr>';
             }
