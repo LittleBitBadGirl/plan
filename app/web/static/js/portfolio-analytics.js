@@ -15,7 +15,61 @@
         commission: 'Комиссии',
         redemption: 'Погашения',
         pif_accrual: 'ПИФ начисления',
+        sale: 'Продажа',
     };
+    var INCOME_GROUP_ORDER = { coupon: 0, dividend: 1, pif_accrual: 2, redemption: 3 };
+    var INCOME_GROUP_LABELS = {
+        coupon: 'Купоны',
+        dividend: 'Дивиденды',
+        pif_accrual: 'ПИФ',
+        redemption: 'Погашения / выкупы',
+        other: 'Прочее',
+    };
+    var COMPOSITION_GROUP_ORDER = { bond: 0, stock: 1, pif: 2 };
+    var COMPOSITION_GROUP_LABELS = {
+        bond: 'Облигации',
+        stock: 'Акции',
+        pif: 'ПИФ',
+        other: 'Прочее',
+    };
+
+    function inferIncomeType(instr) {
+        if (instr && instr.type) return instr.type;
+        var n = String((instr && instr.name) || '').toLowerCase();
+        if (n.indexOf('купон') === 0) return 'coupon';
+        if (n.indexOf('дивиденд') === 0) return 'dividend';
+        if (n.indexOf('пиф') === 0) return 'pif_accrual';
+        if (n.indexOf('выкуп') === 0 || n.indexOf('погашен') !== -1) return 'redemption';
+        return 'other';
+    }
+
+    function incomeGroupRank(instr) {
+        var t = inferIncomeType(instr);
+        return INCOME_GROUP_ORDER.hasOwnProperty(t) ? INCOME_GROUP_ORDER[t] : 9;
+    }
+
+    function displayInstrumentName(name) {
+        var raw = String(name || '').trim();
+        var cleaned = raw.replace(/^(дивиденды|дивиденд|купоны|купон)\s*[:—–-]\s*/i, '');
+        if (cleaned === raw) {
+            cleaned = raw.replace(/^(дивиденды|дивиденд|купоны|купон)\s+/i, '');
+        }
+        return cleaned || raw;
+    }
+
+    function fmtMaturityMonthYear(iso) {
+        if (!iso) return '';
+        var raw = String(iso).substring(0, 10);
+        var d = parseDate(raw);
+        if (isNaN(d.getTime())) return '';
+        return MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+    }
+
+    function shortenName(name, max) {
+        max = max || 24;
+        if (name.length <= max) return name;
+        return name.substring(0, max - 3) + '...';
+    }
 
     function fmtRub(v) {
         if (v == null || isNaN(v)) return '—';
@@ -257,6 +311,7 @@
             this.renderYearTabButtons();
             this.renderCashflowTable();
             this.renderComposition();
+            this.renderClosed();
         },
 
         renderFilterButtons: function () {
@@ -423,7 +478,8 @@
             var instruments = (cf.instruments || []).slice();
             if (this.cfSearch) {
                 instruments = instruments.filter(function (i) {
-                    return i.name.toLowerCase().indexOf(this.cfSearch) !== -1;
+                    var hay = (i.name + ' ' + displayInstrumentName(i.name)).toLowerCase();
+                    return hay.indexOf(this.cfSearch) !== -1;
                 }.bind(this));
             }
 
@@ -436,6 +492,7 @@
             var year = this.cfYear;
             var summary = cf.summary || {};
             var self = this;
+            instruments = this._sortIncomeInstruments(instruments, year);
 
             if (year === 'all') {
                 container.innerHTML = this._buildAllYearsTable(instruments, summary);
@@ -448,6 +505,40 @@
                     self.openDrilldown(row.getAttribute('data-instrument'));
                 });
             });
+        },
+
+        _sortIncomeInstruments: function (instruments, year) {
+            var self = this;
+            var list = instruments.slice();
+            if (year && year !== 'all') {
+                list = list.filter(function (instr) {
+                    return self._yearInstrumentTotal(instr, year) > 0;
+                });
+            }
+            return list.sort(function (a, b) {
+                var ga = incomeGroupRank(a);
+                var gb = incomeGroupRank(b);
+                if (ga !== gb) return ga - gb;
+                var ta = (year && year !== 'all')
+                    ? self._yearInstrumentTotal(a, year)
+                    : (a.total || 0);
+                var tb = (year && year !== 'all')
+                    ? self._yearInstrumentTotal(b, year)
+                    : (b.total || 0);
+                if (tb !== ta) return tb - ta;
+                return String(a.name || '').localeCompare(String(b.name || ''), 'ru');
+            });
+        },
+
+        _groupHeader: function (label, colCount) {
+            return "<tr class='border-b border-dark-700/50'>" +
+                "<td class='sticky left-0 bg-dark-800 px-2 py-1 text-[9px] uppercase tracking-wide text-gray-500 font-semibold'>" +
+                esc(label) + '</td>' +
+                "<td colspan='" + (colCount - 1) + "' class='bg-dark-800'></td></tr>";
+        },
+
+        _incomeGroupHeader: function (type, colCount) {
+            return this._groupHeader(INCOME_GROUP_LABELS[type] || INCOME_GROUP_LABELS.other, colCount);
         },
 
         _buildYearTable: function (instruments, summary, year) {
@@ -472,11 +563,26 @@
             }
             h += '</tr></thead><tbody>';
 
+            var prevType = null;
             for (var i = 0; i < instruments.length; i++) {
                 var instr = instruments[i];
+                var instrType = inferIncomeType(instr);
+                if (instrType !== prevType) {
+                    h += this._incomeGroupHeader(instrType, 14);
+                    prevType = instrType;
+                }
                 h += "<tr class='border-b border-dark-700/30 hover:bg-dark-700/30 cursor-pointer' data-instrument=\"" + esc(instr.name) + '">';
-                var sn = instr.name.length > 24 ? instr.name.substring(0, 21) + '...' : instr.name;
-                h += "<td class='sticky left-0 bg-dark-800 px-2 py-1.5 text-gray-300 whitespace-nowrap' title=\"" + esc(instr.name) + '">' + esc(sn) + '</td>';
+                var shown = displayInstrumentName(instr.name);
+                var mat = (instrType === 'coupon' || instrType === 'redemption')
+                    ? fmtMaturityMonthYear(instr.maturity_date)
+                    : '';
+                var title = mat ? shown + ' · ' + mat : shown;
+                h += "<td class='sticky left-0 bg-dark-800 px-2 py-1.5 text-gray-300 whitespace-nowrap' title=\"" + esc(title) + '">';
+                h += esc(shortenName(shown, 22));
+                if (mat) {
+                    h += " <span class='text-gray-500'>" + esc(mat) + '</span>';
+                }
+                h += '</td>';
                 h += "<td class='px-1.5 py-1.5 text-right font-semibold text-emerald-400'>" + this._yearInstrumentTotal(instr, year).toLocaleString('ru-RU') + '</td>';
                 for (var mj = 1; mj <= 12; mj++) {
                     var ym2 = year + '-' + String(mj).padStart(2, '0');
@@ -526,10 +632,24 @@
             h += "<th class='px-2 py-1.5 text-left text-gray-500'>Инструмент</th>";
             h += "<th class='px-2 py-1.5 text-right text-gray-500'>∑ за всё время</th>";
             h += '</tr></thead><tbody>';
+            var prevType = null;
             for (var i = 0; i < instruments.length; i++) {
                 var instr = instruments[i];
+                var instrType = inferIncomeType(instr);
+                if (instrType !== prevType) {
+                    h += this._incomeGroupHeader(instrType, 2);
+                    prevType = instrType;
+                }
                 h += "<tr class='border-b border-dark-700/30 hover:bg-dark-700/30 cursor-pointer' data-instrument=\"" + esc(instr.name) + '">';
-                h += "<td class='px-2 py-1.5 text-gray-300'>" + esc(instr.name) + '</td>';
+                var shownAll = displayInstrumentName(instr.name);
+                var matAll = (instrType === 'coupon' || instrType === 'redemption')
+                    ? fmtMaturityMonthYear(instr.maturity_date)
+                    : '';
+                h += "<td class='px-2 py-1.5 text-gray-300'>" + esc(shownAll);
+                if (matAll) {
+                    h += " <span class='text-gray-500'>" + esc(matAll) + '</span>';
+                }
+                h += '</td>';
                 h += "<td class='px-2 py-1.5 text-right font-semibold text-emerald-400'>" +
                     (instr.total || 0).toLocaleString('ru-RU') + ' ₽</td></tr>';
             }
@@ -549,17 +669,57 @@
             }
             if (meta) meta.textContent = 'на ' + (comp.snapshot_date || '—');
 
-            var h = "<div class='overflow-x-auto'><table class='w-full text-[11px] border-collapse min-w-[560px]'>";
+            var positions = (comp.positions || []).slice().sort(function (a, b) {
+                var ga = COMPOSITION_GROUP_ORDER.hasOwnProperty(a.asset_type) ? COMPOSITION_GROUP_ORDER[a.asset_type] : 9;
+                var gb = COMPOSITION_GROUP_ORDER.hasOwnProperty(b.asset_type) ? COMPOSITION_GROUP_ORDER[b.asset_type] : 9;
+                if (ga !== gb) return ga - gb;
+                var wa = a.weight_pct || 0;
+                var wb = b.weight_pct || 0;
+                if (wb !== wa) return wb - wa;
+                return String(a.name || '').localeCompare(String(b.name || ''), 'ru');
+            });
+
+            var byType = {};
+            var groups = [];
+            positions.forEach(function (p) {
+                var group = p.asset_type || 'other';
+                if (!byType[group]) {
+                    byType[group] = [];
+                    groups.push(group);
+                }
+                byType[group].push(p);
+            });
+            groups.sort(function (a, b) {
+                var ga = COMPOSITION_GROUP_ORDER.hasOwnProperty(a) ? COMPOSITION_GROUP_ORDER[a] : 9;
+                var gb = COMPOSITION_GROUP_ORDER.hasOwnProperty(b) ? COMPOSITION_GROUP_ORDER[b] : 9;
+                return ga - gb;
+            });
+
+            var html = '';
+            var self = this;
+            groups.forEach(function (group, idx) {
+                html += self._buildCompositionGroupTable(group, byType[group], idx > 0);
+            });
+            el.innerHTML = html;
+        },
+
+        _buildCompositionGroupTable: function (group, rows, spaced) {
+            var showMaturity = group === 'bond';
+            var label = COMPOSITION_GROUP_LABELS[group] || COMPOSITION_GROUP_LABELS.other;
+            var h = "<p class='text-[9px] uppercase tracking-wide text-gray-500 font-semibold px-2 pb-1" +
+                (spaced ? " pt-4" : "") + "'>" + esc(label) + '</p>';
+            h += "<div class='overflow-x-auto'><table class='w-full text-[11px] border-collapse min-w-[480px]'>";
             h += "<thead><tr class='border-b border-dark-700 text-gray-500'>";
             h += '<th class="px-2 py-2 text-left">Ticker</th>';
             h += '<th class="px-2 py-2 text-left">Название</th>';
             h += '<th class="px-2 py-2 text-right">Доля</th>';
             h += '<th class="px-2 py-2 text-right">Кол-во</th>';
             h += '<th class="px-2 py-2 text-right">Стоимость</th>';
-            h += '<th class="px-2 py-2 text-left">Погашение</th>';
+            if (showMaturity) {
+                h += '<th class="px-2 py-2 text-left">Погашение</th>';
+            }
             h += '</tr></thead><tbody>';
-
-            comp.positions.forEach(function (p) {
+            rows.forEach(function (p) {
                 h += "<tr class='border-b border-dark-700/30 hover:bg-dark-700/20'>";
                 h += '<td class="px-2 py-1.5 text-yellow-300/80 font-mono">' + esc(p.ticker || '—') + '</td>';
                 h += '<td class="px-2 py-1.5 text-gray-300">' + esc(p.name) + '</td>';
@@ -569,21 +729,82 @@
                     (p.quantity != null ? p.quantity.toLocaleString('ru-RU') : '—') + '</td>';
                 h += '<td class="px-2 py-1.5 text-right text-white tabular-nums">' +
                     (p.market_value != null ? fmtPlain(p.market_value) + ' ₽' : '—') + '</td>';
-                h += '<td class="px-2 py-1.5 text-gray-500">' + esc(p.maturity_date || '—') + '</td>';
+                if (showMaturity) {
+                    h += '<td class="px-2 py-1.5 text-gray-500">' +
+                        esc(fmtMaturityMonthYear(p.maturity_date) || '—') + '</td>';
+                }
                 h += '</tr>';
             });
             h += '</tbody></table></div>';
-            el.innerHTML = h;
+            return h;
         },
 
-        openDrilldown: async function (instrumentName) {
+        renderClosed: function () {
+            var el = document.getElementById('paClosedBody');
+            var meta = document.getElementById('paClosedMeta');
+            if (!el) return;
+            var rows = (this.composition && this.composition.closed) || [];
+            if (meta) {
+                meta.textContent = rows.length ? rows.length + ' шт.' : '';
+            }
+            if (rows.length === 0) {
+                el.innerHTML =
+                    '<div class="rounded-lg border border-dashed border-dark-600 px-4 py-5 text-center">' +
+                    '<p class="text-[11px] text-gray-400 tracking-wide">покупка → выплаты → выход = итог</p>' +
+                    '<p class="text-[11px] text-gray-600 mt-2">Пока ни одна бумага не закрыта. Продажа акции или погашение облигации появится здесь.</p>' +
+                    '</div>';
+                return;
+            }
+
+            var kindLabel = { sale: 'продажа', redemption: 'погашение' };
+            var typeLabel = { stock: 'акция', bond: 'облигация', pif: 'ПИФ', other: '' };
+            var self = this;
+            var html = '<div class="space-y-2">';
+            rows.forEach(function (row) {
+                var result = row.result;
+                var resultCls = result == null ? 'text-gray-500' : result >= 0 ? 'text-emerald-400' : 'text-red-400';
+                var resultText = result == null ? 'нет цены покупки' : fmtRub(result);
+                var accent = row.asset_type === 'bond' ? 'border-l-yellow-600/70' : 'border-l-amber-500/70';
+                html += '<button type="button" class="w-full text-left rounded-lg bg-dark-800 border border-dark-700 border-l-2 ' +
+                    accent + ' px-4 py-3 hover:border-dark-500 transition" data-closed="' + esc(row.name) + '">';
+                html += '<div class="flex items-baseline justify-between gap-2 mb-2">';
+                html += '<p class="text-[13px] text-white font-medium truncate">' + esc(row.name) + '</p>';
+                html += '<p class="text-[10px] text-gray-500 shrink-0">' +
+                    esc(typeLabel[row.asset_type] || '') +
+                    (row.exit_kind ? ' · ' + esc(kindLabel[row.exit_kind] || row.exit_kind) : '') +
+                    (row.closed_on ? ' · ' + esc(row.closed_on.substring(0, 7)) : '') +
+                    '</p></div>';
+                html += '<div class="grid grid-cols-4 gap-2">';
+                html += self._closedCell('покупка', row.cost, 'text-gray-300');
+                html += self._closedCell('выплаты', row.income, 'text-amber-400');
+                html += self._closedCell(row.exit_kind === 'redemption' ? 'погашение' : 'продажа', row.exit, 'text-gray-200');
+                html += '<div><p class="text-[9px] uppercase tracking-wider text-gray-600 mb-0.5">итог</p>' +
+                    '<p class="text-sm font-semibold tabular-nums ' + resultCls + '">' + resultText + '</p></div>';
+                html += '</div></button>';
+            });
+            html += '</div>';
+            el.innerHTML = html;
+            el.querySelectorAll('[data-closed]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    self.openDrilldown(btn.getAttribute('data-closed'), true);
+                });
+            });
+        },
+
+        _closedCell: function (label, value, cls) {
+            var text = value == null ? '—' : Math.abs(value).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
+            return '<div><p class="text-[9px] uppercase tracking-wider text-gray-600 mb-0.5">' + esc(label) + '</p>' +
+                '<p class="text-[12px] tabular-nums ' + cls + '">' + text + '</p></div>';
+        },
+
+        openDrilldown: async function (instrumentName, allYears) {
             this.selectedInstrument = instrumentName;
             var panel = document.getElementById('paDrilldown');
             var title = document.getElementById('paDrillTitle');
             var body = document.getElementById('paDrillBody');
             if (!panel || !body) return;
 
-            if (title) title.textContent = instrumentName;
+            if (title) title.textContent = displayInstrumentName(instrumentName);
             body.innerHTML = '<p class="text-gray-500 text-sm">Загрузка...</p>';
             panel.classList.remove('hidden');
 
@@ -591,7 +812,7 @@
             var ref = encodeURIComponent(instrumentName);
             try {
                 var url = '/api/portfolios/' + this.portfolioId + '/payments?instrument=' + ref;
-                if (this.cfYear !== 'all') url += '&year=' + this.cfYear;
+                if (this.cfYear !== 'all' && !allYears) url += '&year=' + this.cfYear;
                 var r = await fetch(url, { credentials: 'same-origin' });
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 var data = await r.json();

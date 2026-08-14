@@ -105,6 +105,19 @@
         </div>
     </div>
 
+    <div id="paClosed" class="bg-dark-900 rounded-xl border border-yellow-700/30 p-4 mb-6">
+        <div class="flex items-baseline justify-between gap-3 mb-1">
+            <h2 class="text-sm font-semibold text-white">Закрытые позиции</h2>
+            <span id="paClosedMeta" class="text-[10px] text-gray-500"></span>
+        </div>
+        <p class="text-[11px] text-gray-500 mb-4">Выплаты + продажа или погашение − покупка. Бумага пропадает из состава — итог появляется здесь.</p>
+        <div id="paClosedBody">
+            <div class="animate-pulse space-y-2">
+                <div class="h-16 bg-dark-800 rounded"></div>
+            </div>
+        </div>
+    </div>
+
     {% else %}
     <p class="text-gray-400">Портфели не найдены. Запустите seed.</p>
     {% endif %}
@@ -122,5 +135,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script src="/web/static/js/portfolio-analytics.js?v=20260813"></script>
+<script src="/web/static/js/portfolio-analytics.js?v=20260814-closed"></script>
 {% endblock %}

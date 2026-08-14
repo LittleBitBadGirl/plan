@@ -6,6 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import date, datetime
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import func, select
@@ -16,6 +17,7 @@ from app.models.goal import FinancialGoal
 from app.models.investment import InvestmentFlow, InvestmentSnapshot
 from app.models.portfolio import ImportLog, Instrument, Portfolio, PortfolioGoal, Position
 from app.services.instrument_normalize import resolve_instrument
+from app.services.ofz_calendar import effective_bond_maturity
 
 VALID_FLOW_TYPES = {
     "deposit",
@@ -26,6 +28,7 @@ VALID_FLOW_TYPES = {
     "commission",
     "redemption",
     "pif_accrual",
+    "sale",
 }
 
 
@@ -389,6 +392,14 @@ CASHFLOW_FLOW_TYPES = (
 
 INCOME_FLOW_TYPES = ("coupon", "dividend", "pif_accrual", "redemption")
 
+# Облигации → акции → прочее. Внутри группы — по сумме, затем по имени.
+INCOME_TYPE_SORT_ORDER = {
+    "coupon": 0,
+    "dividend": 1,
+    "pif_accrual": 2,
+    "redemption": 3,
+}
+
 SUMMARY_TYPE_MAP = {
     "deposit": "deposits",
     "withdrawal": "withdrawals",
@@ -396,6 +407,92 @@ SUMMARY_TYPE_MAP = {
     "dividend": "dividends",
     "tax": "taxes",
 }
+
+
+def primary_income_type(type_amounts: dict[str, int]) -> str:
+    """Тип с наибольшей суммой; при равенстве — более ранний в INCOME_TYPE_SORT_ORDER."""
+    if not type_amounts:
+        return "other"
+    return max(
+        type_amounts,
+        key=lambda flow_type: (
+            type_amounts[flow_type],
+            -INCOME_TYPE_SORT_ORDER.get(flow_type, 9),
+        ),
+    )
+
+
+def sort_cashflow_instruments(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Облигации (купоны), затем акции (дивиденды), затем ПИФ/погашения."""
+    return sorted(
+        items,
+        key=lambda item: (
+            INCOME_TYPE_SORT_ORDER.get(item.get("type") or "", 9),
+            -(item.get("total") or 0),
+            item.get("name") or "",
+        ),
+    )
+
+
+COMPOSITION_TYPE_SORT_ORDER = {
+    "bond": 0,
+    "stock": 1,
+    "pif": 2,
+}
+
+
+def effective_composition_type(
+    asset_type: str | None,
+    *,
+    maturity_date: date | str | None = None,
+    coupon_rate: float | None = None,
+    name: str | None = None,
+) -> str:
+    """Тип для группировки состава: bond / stock / pif / other."""
+    known = (asset_type or "").strip().lower()
+    if known in COMPOSITION_TYPE_SORT_ORDER:
+        return known
+    if maturity_date is not None or coupon_rate is not None:
+        return "bond"
+    lowered = (name or "").lower()
+    if "пиф" in lowered:
+        return "pif"
+    if "облигац" in lowered or "офз" in lowered:
+        return "bond"
+    if "акци" in lowered:
+        return "stock"
+    return known or "other"
+
+
+def sort_composition_positions(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Облигации, затем акции, затем ПИФ. Внутри группы — по доле."""
+    return sorted(
+        items,
+        key=lambda item: (
+            COMPOSITION_TYPE_SORT_ORDER.get(item.get("asset_type") or "", 9),
+            -(item.get("weight_pct") or 0),
+            -(item.get("market_value") or 0),
+            item.get("name") or "",
+        ),
+    )
+
+
+CLOSED_INCOME_TYPES = ("coupon", "dividend", "pif_accrual", "tax")
+CLOSED_EXIT_TYPES = ("redemption", "sale")
+
+
+def estimate_position_cost(
+    quantity: float,
+    avg_price: float | None,
+    market_value: float | None = None,
+) -> float | None:
+    """Стоимость покупки. Если avg_price похожа на % от номинала 1000 — переводим в рубли."""
+    if not quantity or avg_price is None:
+        return None
+    naive = avg_price * quantity
+    if market_value and naive > 0 and naive * 4 < market_value:
+        return round(avg_price / 100.0 * 1000.0 * quantity, 2)
+    return round(naive, 2)
 
 
 def _empty_summary_row() -> dict[str, int]:
@@ -498,6 +595,7 @@ async def build_portfolio_analytics(
     )
 
     instruments: dict[str, dict[str, int]] = {}
+    instrument_types: dict[str, dict[str, int]] = {}
     summary: dict[str, dict[str, int]] = {}
 
     for row in cashflow_res:
@@ -512,12 +610,28 @@ async def build_portfolio_analytics(
             name = row.description
             instruments.setdefault(name, {})
             instruments[name][ym] = instruments[name].get(ym, 0) + amt
+            instrument_types.setdefault(name, {})
+            instrument_types[name][row.type] = (
+                instrument_types[name].get(row.type, 0) + amt
+            )
 
-    sorted_instruments = sorted(
-        [{"name": name, "months": months, "total": sum(months.values())}
-         for name, months in instruments.items()],
-        key=lambda item: item["total"],
-        reverse=True,
+    all_db_instruments = list((await db.execute(select(Instrument))).scalars().all())
+
+    sorted_instruments = sort_cashflow_instruments(
+        [
+            {
+                "name": name,
+                "type": primary_income_type(instrument_types.get(name, {})),
+                "months": months,
+                "total": sum(months.values()),
+                "maturity_date": _cashflow_maturity(
+                    name,
+                    primary_income_type(instrument_types.get(name, {})),
+                    all_db_instruments,
+                ),
+            }
+            for name, months in instruments.items()
+        ]
     )
 
     return {
@@ -533,19 +647,33 @@ async def build_portfolio_analytics(
     }
 
 
-async def build_portfolio_composition(
-    db: AsyncSession,
-    portfolio_id: int,
-) -> dict[str, Any]:
-    await _get_portfolio(db, portfolio_id)
-
-    latest_date = (
+async def _latest_snapshot_date(db: AsyncSession, portfolio_id: int) -> date | None:
+    snap = (
+        await db.execute(
+            select(func.max(InvestmentSnapshot.date)).where(
+                InvestmentSnapshot.portfolio_id == portfolio_id
+            )
+        )
+    ).scalar_one_or_none()
+    pos = (
         await db.execute(
             select(func.max(Position.snapshot_date)).where(
                 Position.portfolio_id == portfolio_id
             )
         )
     ).scalar_one_or_none()
+    if snap and pos:
+        return max(snap, pos)
+    return snap or pos
+
+
+async def build_portfolio_composition(
+    db: AsyncSession,
+    portfolio_id: int,
+) -> dict[str, Any]:
+    await _get_portfolio(db, portfolio_id)
+
+    latest_date = await _latest_snapshot_date(db, portfolio_id)
 
     if not latest_date:
         return {
@@ -553,6 +681,7 @@ async def build_portfolio_composition(
             "snapshot_date": None,
             "positions": [],
             "upcoming_maturities": [],
+            "closed": [],
         }
 
     result = await db.execute(
@@ -570,37 +699,178 @@ async def build_portfolio_composition(
     today = date.today()
 
     for position, instrument in result:
+        maturity = effective_bond_maturity(
+            instrument.maturity_date,
+            instrument.name,
+            instrument.ticker,
+            instrument.aliases,
+        )
         item = {
             "ticker": instrument.ticker,
             "name": instrument.name,
-            "asset_type": instrument.asset_type,
+            "asset_type": effective_composition_type(
+                instrument.asset_type,
+                maturity_date=maturity or instrument.maturity_date,
+                coupon_rate=instrument.coupon_rate,
+                name=instrument.name,
+            ),
             "quantity": position.quantity,
             "market_value": position.market_value,
             "weight_pct": position.weight_pct,
             "avg_price": position.avg_price,
-            "maturity_date": (
-                instrument.maturity_date.isoformat() if instrument.maturity_date else None
-            ),
+            "maturity_date": maturity.isoformat() if maturity else None,
             "coupon_rate": instrument.coupon_rate,
         }
         positions.append(item)
-        if instrument.maturity_date and instrument.maturity_date >= today:
+        if maturity and maturity >= today:
             upcoming_maturities.append(
                 {
                     "ticker": instrument.ticker,
                     "name": instrument.name,
-                    "maturity_date": instrument.maturity_date.isoformat(),
+                    "maturity_date": maturity.isoformat(),
                     "market_value": position.market_value,
                 }
             )
 
     upcoming_maturities.sort(key=lambda row: row["maturity_date"])
+    positions = sort_composition_positions(positions)
+    closed = await build_closed_positions(db, portfolio_id)
 
     return {
         "portfolio_id": portfolio_id,
         "snapshot_date": latest_date.isoformat(),
         "positions": positions,
         "upcoming_maturities": upcoming_maturities,
+        "closed": closed,
+    }
+
+
+async def build_closed_positions(
+    db: AsyncSession,
+    portfolio_id: int,
+) -> list[dict[str, Any]]:
+    """Бумаги, которых уже нет в последнем снимке: выплаты + выход − покупка."""
+    await _get_portfolio(db, portfolio_id)
+
+    latest_date = await _latest_snapshot_date(db, portfolio_id)
+    if not latest_date:
+        return []
+
+    rows = (
+        await db.execute(
+            select(Position, Instrument)
+            .join(Instrument, Position.instrument_id == Instrument.id)
+            .where(Position.portfolio_id == portfolio_id)
+            .order_by(Position.snapshot_date.asc())
+        )
+    ).all()
+
+    by_id: dict[int, dict[str, Any]] = {}
+    for position, instrument in rows:
+        entry = by_id.setdefault(
+            instrument.id,
+            {"instrument": instrument, "snapshots": []},
+        )
+        entry["snapshots"].append(position)
+
+    held_now = {
+        instrument.id
+        for position, instrument in rows
+        if position.snapshot_date == latest_date and position.quantity > 0
+    }
+
+    flows = (
+        await db.execute(
+            select(InvestmentFlow).where(
+                InvestmentFlow.portfolio_id == portfolio_id,
+                InvestmentFlow.type.in_(CLOSED_INCOME_TYPES + CLOSED_EXIT_TYPES),
+            )
+        )
+    ).scalars().all()
+
+    closed: list[dict[str, Any]] = []
+    for instrument_id, entry in by_id.items():
+        if instrument_id in held_now:
+            continue
+        instrument: Instrument = entry["instrument"]
+        holdings = [snap for snap in entry["snapshots"] if snap.quantity > 0]
+        if not holdings:
+            continue
+        last = holdings[-1]
+        related = [flow for flow in flows if _flow_matches_instrument(flow, instrument)]
+        closed.append(
+            _closed_position_row(instrument, last, related, closed_on=latest_date)
+        )
+
+    closed.sort(
+        key=lambda row: (
+            row.get("closed_on") or "",
+            -(abs(row.get("result") or 0)),
+        ),
+        reverse=True,
+    )
+    return closed
+
+
+def _closed_position_row(
+    instrument: Instrument,
+    last_holding: Position,
+    flows: list[InvestmentFlow],
+    *,
+    closed_on: date,
+) -> dict[str, Any]:
+    income = round(
+        sum(flow.amount for flow in flows if flow.type in CLOSED_INCOME_TYPES),
+        2,
+    )
+    exit_flows = [flow for flow in flows if flow.type in CLOSED_EXIT_TYPES]
+    if exit_flows:
+        exit_amount = round(sum(flow.amount for flow in exit_flows), 2)
+        exit_source = "flow"
+        if any(flow.type == "redemption" for flow in exit_flows):
+            exit_kind = "redemption"
+        else:
+            exit_kind = "sale"
+    else:
+        exit_amount = round(last_holding.market_value or 0, 2)
+        exit_source = "last_snapshot"
+        asset = effective_composition_type(
+            instrument.asset_type,
+            maturity_date=instrument.maturity_date,
+            coupon_rate=instrument.coupon_rate,
+            name=instrument.name,
+        )
+        exit_kind = "redemption" if asset == "bond" else "sale"
+
+    cost = estimate_position_cost(
+        last_holding.quantity,
+        last_holding.avg_price,
+        last_holding.market_value,
+    )
+    result = None
+    if cost is not None:
+        result = round(income + exit_amount - cost, 2)
+
+    asset_type = effective_composition_type(
+        instrument.asset_type,
+        maturity_date=instrument.maturity_date,
+        coupon_rate=instrument.coupon_rate,
+        name=instrument.name,
+    )
+    return {
+        "instrument_id": instrument.id,
+        "name": instrument.name,
+        "ticker": instrument.ticker,
+        "asset_type": asset_type,
+        "closed_on": closed_on.isoformat(),
+        "held_until": last_holding.snapshot_date.isoformat(),
+        "quantity": last_holding.quantity,
+        "cost": cost,
+        "income": income,
+        "exit": exit_amount,
+        "exit_source": exit_source,
+        "exit_kind": exit_kind,
+        "result": result,
     }
 
 
@@ -645,6 +915,37 @@ def _flow_matches_instrument(flow: InvestmentFlow, instrument: Instrument) -> bo
     return any(needle in description for needle in needles)
 
 
+def _match_instrument_by_name(
+    name: str,
+    instruments: list[Instrument],
+) -> Instrument | None:
+    flow = SimpleNamespace(description=name)
+    hits = [item for item in instruments if _flow_matches_instrument(flow, item)]
+    if not hits:
+        return None
+    bonds = [item for item in hits if item.asset_type == "bond"]
+    pool = bonds or hits
+    return max(pool, key=lambda item: len(item.name or ""))
+
+
+def _cashflow_maturity(
+    name: str,
+    flow_type: str,
+    instruments: list[Instrument],
+) -> str | None:
+    if flow_type not in {"coupon", "redemption"}:
+        return None
+    matched = _match_instrument_by_name(name, instruments)
+    maturity = effective_bond_maturity(
+        matched.maturity_date if matched else None,
+        name,
+        matched.name if matched else None,
+        matched.ticker if matched else None,
+        matched.aliases if matched else None,
+    )
+    return maturity.isoformat() if maturity else None
+
+
 async def build_portfolio_payments(
     db: AsyncSession,
     portfolio_id: int,
@@ -658,7 +959,7 @@ async def build_portfolio_payments(
         select(InvestmentFlow)
         .where(
             InvestmentFlow.portfolio_id == portfolio_id,
-            InvestmentFlow.type.in_(INCOME_FLOW_TYPES + ("tax",)),
+            InvestmentFlow.type.in_(INCOME_FLOW_TYPES + ("tax", "sale")),
         )
         .order_by(InvestmentFlow.date.desc())
     )
