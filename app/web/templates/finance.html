@@ -422,7 +422,7 @@ document.addEventListener('alpine:init', () => {
 </script>
 
 {% if category_summary or daily_totals.expense > 0 or daily_totals.count > 0 %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/web/static/js/chart.umd.min.js"></script>
 <script>
 (function () {
     if (typeof Chart === 'undefined') return;

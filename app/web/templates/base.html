@@ -15,41 +15,15 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
 
 
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        dark: {
-                            950: '#0c0c11',
-                            900: '#16161d',
-                            800: '#1e1e27',
-                            700: '#2a2a36',
-                            600: '#363645',
-                            500: '#454557',
-                        },
-                        accent: {
-                            DEFAULT: '#b45309',
-                            hover: '#92400e',
-                        },
-                        success: '#b45309',
-                        warning: '#b45309',
-                        danger: '#b45309',
-                    }
-                }
-            }
-        }
-    </script>
+    <!-- Tailwind CSS (локальная сборка, без CDN) -->
+    <link rel="stylesheet" href="/web/static/css/tailwind.css">
 
-    <!-- HTMX CDN -->
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <!-- HTMX (локально) -->
+    <script src="/web/static/js/htmx.min.js"></script>
     <script src="/web/static/js/date-mask.js"></script>
 
-    <!-- Alpine.js CDN -->
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Alpine.js (локально) -->
+    <script defer src="/web/static/js/alpine.min.js"></script>
 
     <style>
         [x-cloak] { display: none !important; }
