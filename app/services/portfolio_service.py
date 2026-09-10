@@ -174,14 +174,26 @@ async def sync_manual_balance_to_portfolio(
 async def sync_snapshot_to_goals(
     db: AsyncSession,
     portfolio: Portfolio,
-    total_balance: float,
 ) -> None:
-    """Reverse sync: Hermes snapshot → financial_goals + portfolio_goals.
+    """Reverse sync: LATEST snapshot → financial_goals + portfolio_goals.
 
+    Always uses the newest snapshot by date (not the just-imported one), so
+    backfilling historical reports never rolls current_amount backwards.
     Does not write GoalHistory (import is bulk/authoritative; history stays
     for manual edits on /finance).
     """
-    amount = float(total_balance)
+    latest_balance = (
+        await db.execute(
+            select(InvestmentSnapshot.total_balance)
+            .where(InvestmentSnapshot.portfolio_id == portfolio.id)
+            .order_by(InvestmentSnapshot.date.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if latest_balance is None:
+        return
+
+    amount = float(latest_balance)
     if portfolio.legacy_goal_id is not None:
         goal = (
             await db.execute(
@@ -286,7 +298,8 @@ async def import_report(
         )
 
     await _upsert_snapshot(db, portfolio, snapshot_date, total_balance)
-    await sync_snapshot_to_goals(db, portfolio, total_balance)
+    await db.flush()
+    await sync_snapshot_to_goals(db, portfolio)
 
     positions_payload = payload.get("positions") or []
     total_market_value = sum(float(item.get("market_value") or 0) for item in positions_payload)

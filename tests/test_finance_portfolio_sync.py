@@ -176,3 +176,41 @@ async def test_import_report_updates_financial_goal(synced_portfolio_db):
         )
     ).scalars().all()
     assert hist == []
+
+
+@pytest.mark.asyncio
+async def test_backfill_older_report_does_not_rollback_current_amount(synced_portfolio_db):
+    """Дозаливка истории: старый отчёт после свежего НЕ откатывает current_amount."""
+    newest = {
+        "report_date": "2025-12-31",
+        "snapshot": {"date": "2025-12-31", "total_balance": 900_000},
+        "positions": [],
+        "flows": [],
+    }
+    await import_report(synced_portfolio_db, 1, newest)
+    await synced_portfolio_db.commit()
+
+    older = {
+        "report_date": "2025-07-31",
+        "snapshot": {"date": "2025-07-31", "total_balance": 400_000},
+        "positions": [],
+        "flows": [],
+    }
+    await import_report(synced_portfolio_db, 1, older)
+    await synced_portfolio_db.commit()
+
+    synced_portfolio_db.expire_all()
+    goal = (
+        await synced_portfolio_db.execute(
+            select(FinancialGoal).where(FinancialGoal.id == 1)
+        )
+    ).scalar_one()
+    assert goal.current_amount == 900_000
+
+    pg = (
+        await synced_portfolio_db.execute(
+            select(PortfolioGoal).where(PortfolioGoal.portfolio_id == 1)
+        )
+    ).scalar_one_or_none()
+    if pg is not None:
+        assert pg.current_amount == 900_000
