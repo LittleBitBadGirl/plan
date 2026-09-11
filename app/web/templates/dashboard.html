@@ -555,23 +555,53 @@ document.addEventListener('keydown', function (evt) {
     }
 });
 
-/* --- Вставка скринов из буфера (Ctrl+V / Cmd+V) --- */
-let mfPasted = [];
+/* --- Вставка скринов из буфера (Ctrl+V / Cmd+V) + правка записей --- */
+function mfFormScope(el) {
+    return (el && el.closest) ? el.closest('[data-mf-form]') : null;
+}
 
-function mfResetPasted() {
-    mfPasted = [];
-    const preview = document.getElementById('mf-paste-preview');
-    if (preview) {
-        preview.innerHTML = '';
-        preview.style.display = 'none';
+function mfPastedFiles(scope) {
+    if (!scope) return [];
+    if (!scope._mfPasted) scope._mfPasted = [];
+    return scope._mfPasted.filter(Boolean);
+}
+
+function mfToggleEdit(feedbackId) {
+    const view = document.getElementById('mf-entry-view-' + feedbackId);
+    const form = document.getElementById('mf-entry-edit-' + feedbackId);
+    if (!form) return;
+    const opening = form.style.display === 'none';
+    form.style.display = opening ? 'flex' : 'none';
+    if (view) view.style.display = opening ? 'none' : 'block';
+    if (opening) {
+        const area = form.querySelector('[data-mf-text]');
+        if (area) area.focus();
+    } else {
+        mfResetPasted(form);
     }
 }
 
-function mfAddPastedFiles(files) {
-    const preview = document.getElementById('mf-paste-preview');
+function mfResetPasted(scope) {
+    const scopes = scope
+        ? [scope]
+        : Array.prototype.slice.call(document.querySelectorAll('[data-mf-form]'));
+    scopes.forEach(function (item) {
+        item._mfPasted = [];
+        const preview = item.querySelector('[data-mf-preview]');
+        if (preview) {
+            preview.innerHTML = '';
+            preview.style.display = 'none';
+        }
+    });
+}
+
+function mfAddPastedFiles(scope, files) {
+    if (!scope) return;
+    if (!scope._mfPasted) scope._mfPasted = [];
+    const preview = scope.querySelector('[data-mf-preview]');
     files.forEach(function (file) {
-        const index = mfPasted.length;
-        mfPasted.push(file);
+        const index = scope._mfPasted.length;
+        scope._mfPasted.push(file);
         if (!preview) return;
         const url = URL.createObjectURL(file);
         const wrap = document.createElement('span');
@@ -586,7 +616,7 @@ function mfAddPastedFiles(files) {
         remove.title = 'Убрать';
         remove.textContent = '\u00d7';
         remove.addEventListener('click', function () {
-            mfPasted[index] = null;
+            scope._mfPasted[index] = null;
             URL.revokeObjectURL(url);
             wrap.remove();
             if (preview && !preview.querySelector('.mf-proof-thumb-wrap')) {
@@ -601,7 +631,8 @@ function mfAddPastedFiles(files) {
 }
 
 document.addEventListener('paste', function (event) {
-    if (!document.getElementById('manager-feedback-content')) return;
+    const modal = document.getElementById('manager-feedback-content');
+    if (!modal) return;
     const items = (event.clipboardData && event.clipboardData.items) || [];
     const files = [];
     for (let i = 0; i < items.length; i++) {
@@ -613,21 +644,27 @@ document.addEventListener('paste', function (event) {
         files.push(new File([blob], 'clip_' + Date.now() + '_' + files.length + '.' + ext, { type: item.type }));
     }
     if (!files.length) return;
+    // Куда лепим: в ту форму, где сейчас курсор; иначе — в форму новой записи.
+    let scope = mfFormScope(document.activeElement);
+    if (!scope) scope = modal.querySelector('[data-mf-form]');
+    if (!scope) return;
     event.preventDefault();
-    mfAddPastedFiles(files);
+    mfAddPastedFiles(scope, files);
 });
 
-function mfMergePasted() {
-    const input = document.getElementById('mf-files-input');
-    const pasted = mfPasted.filter(Boolean);
-    if (!input || !pasted.length) return;
-    const transfer = new DataTransfer();
-    for (let i = 0; i < input.files.length; i++) {
-        transfer.items.add(input.files[i]);
+function mfBeforeSubmit(form) {
+    mfVoiceStop();
+    const pasted = mfPastedFiles(form);
+    const input = form.querySelector('[data-mf-files]');
+    if (input && pasted.length) {
+        const transfer = new DataTransfer();
+        for (let i = 0; i < input.files.length; i++) {
+            transfer.items.add(input.files[i]);
+        }
+        pasted.forEach(function (file) { transfer.items.add(file); });
+        input.files = transfer.files;
     }
-    pasted.forEach(function (file) { transfer.items.add(file); });
-    input.files = transfer.files;
-    mfResetPasted();
+    mfResetPasted(form);
 }
 
 /* --- Менеджеры: попап обратной связи --- */
@@ -673,16 +710,15 @@ function mfVoiceStop() {
         try { mfRecognition.stop(); } catch (e) { /* уже остановлен */ }
         mfRecognition = null;
     }
-    const btn = document.getElementById('mf-voice-btn');
-    if (btn) {
+    Array.prototype.slice.call(document.querySelectorAll('[data-mf-voice]')).forEach(function (btn) {
         btn.classList.remove('mf-rec');
         btn.textContent = 'Голос';
-    }
+    });
 }
 
-function mfVoiceToggle() {
-    const btn = document.getElementById('mf-voice-btn');
-    const area = document.getElementById('mf-text');
+function mfVoiceToggle(btn) {
+    const scope = mfFormScope(btn);
+    const area = scope ? scope.querySelector('[data-mf-text]') : null;
     if (!area) return;
     if (mfRecognition) { mfVoiceStop(); return; }
 

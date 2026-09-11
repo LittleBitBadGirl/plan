@@ -1,5 +1,6 @@
 """Тесты блока «Менеджеры»: виджет на дашборде, попап, записи с пруфами, удаление."""
 
+import json
 from datetime import date
 
 import pytest
@@ -56,16 +57,125 @@ async def test_dashboard_renders_managers_widget_server_side(client):
 
 
 async def test_modal_has_clipboard_paste_affordances(client):
-    """Скрин вставляется из буфера: поле files, зона превью, подсказка."""
+    """Скрин вставляется из буфера: формы с хуками, зона превью, подсказка."""
     manager_id = await _make_manager()
 
     response = await client.get(f"/managers/{manager_id}/modal")
 
     assert response.status_code == 200
-    assert 'id="mf-files-input"' in response.text
-    assert 'id="mf-paste-preview"' in response.text
+    assert 'data-mf-form' in response.text
+    assert 'data-mf-text' in response.text
+    assert 'data-mf-files' in response.text
+    assert 'data-mf-preview' in response.text
     assert "Ctrl+V" in response.text
     assert 'hx-encoding="multipart/form-data"' in response.text
+
+
+async def test_edit_feedback_adds_proof_to_existing_record(client):
+    """К уже созданной записи можно доклеить скрин — не создавая новую."""
+    manager_id = await _make_manager()
+    await client.post(f"{TEST_DB_URL}/{manager_id}/feedback", data={"text": "Запись без пруфа"})
+    async with async_session() as session:
+        result = await session.execute(select(ManagerFeedback))
+        feedback_id = result.scalar_one().id
+
+    response = await client.post(
+        f"{TEST_DB_URL}/feedback/{feedback_id}/edit",
+        data={"text": "Запись без пруфа", "kind": "minus", "fb_date": "2026-09-11"},
+        files={"files": ("proof.png", b"png-bytes", "image/png")},
+    )
+
+    assert response.status_code == 200
+    async with async_session() as session:
+        result = await session.execute(
+            select(ManagerFeedback).where(ManagerFeedback.id == feedback_id)
+        )
+        record = result.scalar_one()
+        assert record.files.count("feedback/") == 1
+        assert record.text == "Запись без пруфа"
+        assert record.period_month == "2026-09"
+
+
+async def test_edit_feedback_changes_text_kind_and_month(client):
+    manager_id = await _make_manager()
+    await client.post(
+        f"{TEST_DB_URL}/{manager_id}/feedback",
+        data={"text": "Опечатка", "kind": "minus", "fb_date": "2026-09-01"},
+    )
+    async with async_session() as session:
+        result = await session.execute(select(ManagerFeedback))
+        feedback_id = result.scalar_one().id
+
+    await client.post(
+        f"{TEST_DB_URL}/feedback/{feedback_id}/edit",
+        data={"text": "Исправлено", "kind": "plus", "project": "Атол", "fb_date": "2026-10-02"},
+    )
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(ManagerFeedback).where(ManagerFeedback.id == feedback_id)
+        )
+        record = result.scalar_one()
+        assert record.text == "Исправлено"
+        assert record.kind == "plus"
+        assert record.project == "Атол"
+        assert record.period_month == "2026-10"
+
+
+async def test_edit_feedback_keeps_proof_unless_marked_for_removal(client):
+    manager_id = await _make_manager()
+    await client.post(
+        f"{TEST_DB_URL}/{manager_id}/feedback",
+        data={"text": "С пруфом"},
+        files={"files": ("keep.png", b"keep", "image/png")},
+    )
+    async with async_session() as session:
+        result = await session.execute(select(ManagerFeedback))
+        record = result.scalar_one()
+        feedback_id = record.id
+        kept_path = json.loads(record.files)[0]
+
+    # Правка без отметок — пруф остаётся на месте
+    await client.post(
+        f"{TEST_DB_URL}/feedback/{feedback_id}/edit",
+        data={"text": "С пруфом (правка)"},
+    )
+    async with async_session() as session:
+        result = await session.execute(
+            select(ManagerFeedback).where(ManagerFeedback.id == feedback_id)
+        )
+        assert json.loads(result.scalar_one().files) == [kept_path]
+
+    # Отмечаем пруф на удаление
+    response = await client.post(
+        f"{TEST_DB_URL}/feedback/{feedback_id}/edit",
+        data={"text": "С пруфом", "remove_files": kept_path},
+    )
+
+    assert response.status_code == 200
+    async with async_session() as session:
+        result = await session.execute(
+            select(ManagerFeedback).where(ManagerFeedback.id == feedback_id)
+        )
+        assert result.scalar_one().files is None
+    assert (await client.get(f"/uploads/{kept_path}")).status_code == 404
+
+
+async def test_edit_form_is_prefilled_per_entry(client):
+    """В попапе у каждой записи есть форма правки с её данными."""
+    manager_id = await _make_manager()
+    await client.post(
+        f"{TEST_DB_URL}/{manager_id}/feedback",
+        data={"text": "Текст для правки", "kind": "note", "fb_date": "2026-09-05"},
+    )
+
+    response = await client.get(f"/managers/{manager_id}/modal")
+
+    assert response.status_code == 200
+    assert "/edit" in response.text
+    assert "Изменить" in response.text
+    assert "Текст для правки" in response.text
+    assert "2026-09-05" in response.text
 
 
 async def test_multiple_proof_files_at_once(client):

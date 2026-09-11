@@ -226,21 +226,25 @@ async def build_modal_context(db, manager_id: int, error: str = "") -> dict:
         for path in load_list(row.files):
             files.append(
                 {
+                    "path": path,
                     "url": f"/uploads/{path}",
                     "name": Path(path).name,
                     "is_image": Path(path).suffix.lower() in IMAGE_SUFFIXES,
                 }
             )
 
+        links = load_list(row.links)
         bucket["entries"].append(
             {
                 "id": row.id,
                 "date_str": row.date.strftime("%d.%m.%Y"),
+                "date_iso": row.date.isoformat(),
                 "kind": row.kind,
                 "kind_label": KIND_LABELS.get(row.kind, row.kind),
                 "project": row.project or "",
                 "text": row.text,
-                "links": load_list(row.links),
+                "links": links,
+                "links_raw": " ".join(links),
                 "files": files,
             }
         )

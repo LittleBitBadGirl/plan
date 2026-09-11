@@ -167,3 +167,68 @@ async def delete_manager_feedback(request: Request, feedback_id: int):
     return templates.TemplateResponse(
         request, "partials/manager_feedback_modal.html", context
     )
+
+
+@router.post("/api/managers/feedback/{feedback_id}/edit", response_class=HTMLResponse)
+async def update_manager_feedback(
+    request: Request,
+    feedback_id: int,
+    text: str = Form(""),
+    kind: str = Form("minus"),
+    project: str = Form(""),
+    links: str = Form(""),
+    fb_date: str = Form(""),
+    remove_files: List[str] = Form(default=[]),
+    files: List[UploadFile] = File(default=[]),
+):
+    """Изменить существующую запись: текст, тип, проект, дата, ссылки, пруфы.
+
+    remove_files — пути пруфов, которые надо убрать (чекбоксы в форме правки).
+    Новые файлы добавляются к оставшимся.
+    """
+    async with async_session() as db:
+        record_res = await db.execute(
+            select(ManagerFeedback).where(ManagerFeedback.id == feedback_id)
+        )
+        record = record_res.scalar_one_or_none()
+        if not record:
+            raise HTTPException(status_code=404, detail="Запись не найдена")
+
+        manager_id = record.manager_id
+        kept_files = load_list(record.files)
+        for relative in remove_files or []:
+            if relative in kept_files:
+                kept_files.remove(relative)
+                target = safe_upload_path(relative)
+                if target and target.is_file():
+                    try:
+                        target.unlink()
+                    except OSError:
+                        pass
+
+        kept_files.extend(await save_uploads(files))
+        clean_text = (text or "").strip()
+        if not clean_text and not kept_files:
+            context = await build_modal_context(
+                db, manager_id, error="Нужен текст или хотя бы один скрин."
+            )
+            context["request"] = request
+            return templates.TemplateResponse(
+                request, "partials/manager_feedback_modal.html", context
+            )
+
+        record_date = parse_record_date(fb_date)
+        record.text = clean_text
+        record.kind = normalize_kind(kind)
+        record.project = (project or "").strip()[:200] or None
+        record.links = dump_list(parse_links(links))
+        record.files = dump_list(kept_files)
+        record.date = record_date
+        record.period_month = record_date.strftime("%Y-%m")
+        await db.commit()
+        context = await build_modal_context(db, manager_id)
+
+    context["request"] = request
+    return templates.TemplateResponse(
+        request, "partials/manager_feedback_modal.html", context
+    )

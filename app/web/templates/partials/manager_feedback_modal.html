@@ -10,15 +10,15 @@
         <button type="button" class="mf-close" onclick="closeManagerFeedback()" title="Закрыть">&times;</button>
     </div>
 
-    <form class="mf-form"
+    <form class="mf-form" id="mf-create-form" data-mf-form
           hx-post="/api/managers/{{ manager.id }}/feedback"
           hx-target="#manager-feedback-content"
           hx-swap="outerHTML"
           hx-encoding="multipart/form-data"
-          hx-on::before-request="mfVoiceStop(); mfMergePasted()"
+          hx-on::before-request="mfBeforeSubmit(this)"
           hx-on::after-request="if (event.detail.successful) { mfRefreshWidget(); }">
-        <textarea id="mf-text" name="text" class="mf-input mf-textarea"
-                  placeholder="Что случилось? Пиши как есть — разберёшься на 1-1. Скрин можно вставить из буфера (Ctrl+V)."></textarea>
+        <textarea name="text" data-mf-text class="mf-input mf-textarea"
+                  placeholder="Что случилось? Пиши как есть — разберёшься на 1-1."></textarea>
 
         <div class="mf-row">
             <div class="mf-kinds">
@@ -43,12 +43,12 @@
         </div>
 
         <div class="mf-row mf-row--files">
-            <input type="file" id="mf-files-input" name="files" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" class="mf-file">
-            <button type="button" id="mf-voice-btn" class="mf-btn mf-btn--voice" onclick="mfVoiceToggle()">Голос</button>
+            <input type="file" data-mf-files name="files" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" class="mf-file">
+            <button type="button" class="mf-btn mf-btn--voice" data-mf-voice onclick="mfVoiceToggle(this)">Голос</button>
             <button type="submit" class="mf-btn mf-btn--accent">Сохранить</button>
         </div>
         <p class="mf-paste-hint">Скрин из скриншотера — просто нажми Ctrl+V (на Mac Cmd+V), картинка прилепится к записи.</p>
-        <div id="mf-paste-preview" class="mf-proofs" style="display:none"></div>
+        <div data-mf-preview class="mf-proofs" style="display:none"></div>
 
         {% if error %}<p class="mf-error">{{ error }}</p>{% endif %}
     </form>
@@ -64,12 +64,13 @@
             <span class="mf-month-count">{{ m.count }} {{ m.word }}</span>
         </div>
         {% for e in m.entries %}
-        <div class="mf-entry mf-entry--{{ e.kind }}">
+        <div class="mf-entry mf-entry--{{ e.kind }}" id="mf-entry-{{ e.id }}">
             <div class="mf-entry-head">
                 <span class="mf-entry-date">{{ e.date_str }}</span>
                 <span class="mf-entry-kind">{{ e.kind_label }}</span>
                 {% if e.project %}<span class="mf-entry-project">{{ e.project }}</span>{% endif %}
                 <span class="mf-spacer"></span>
+                <button type="button" class="mf-entry-edit" onclick="mfToggleEdit({{ e.id }})" title="Изменить запись">Изменить</button>
                 <form hx-post="/api/managers/feedback/{{ e.id }}/delete"
                       hx-target="#manager-feedback-content"
                       hx-swap="outerHTML"
@@ -78,27 +79,87 @@
                     <button type="submit" class="mf-entry-del" title="Удалить">&times;</button>
                 </form>
             </div>
-            {% if e.text %}<p class="mf-entry-text">{{ e.text }}</p>{% endif %}
-            {% if e.files %}
-            <div class="mf-proofs">
-                {% for f in e.files %}
-                    {% if f.is_image %}
-                    <a href="{{ f.url }}" target="_blank" rel="noopener">
+
+            <div class="mf-entry-view" id="mf-entry-view-{{ e.id }}">
+                {% if e.text %}<p class="mf-entry-text">{{ e.text }}</p>{% endif %}
+                {% if e.files %}
+                <div class="mf-proofs">
+                    {% for f in e.files %}
+                        {% if f.is_image %}
+                        <a href="{{ f.url }}" target="_blank" rel="noopener">
+                            <img src="{{ f.url }}" alt="пруф" class="mf-proof-thumb">
+                        </a>
+                        {% else %}
+                        <a href="{{ f.url }}" target="_blank" rel="noopener" class="mf-proof-file">{{ f.name }}</a>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if e.links %}
+                <div class="mf-links">
+                    {% for l in e.links %}
+                    <a href="{{ l }}" target="_blank" rel="noopener" class="mf-link">{{ l }}</a>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <form class="mf-form mf-edit-form" id="mf-entry-edit-{{ e.id }}" data-mf-form style="display:none"
+                  hx-post="/api/managers/feedback/{{ e.id }}/edit"
+                  hx-target="#manager-feedback-content"
+                  hx-swap="outerHTML"
+                  hx-encoding="multipart/form-data"
+                  hx-on::before-request="mfBeforeSubmit(this)"
+                  hx-on::after-request="if (event.detail.successful) { mfRefreshWidget(); }">
+                <textarea name="text" data-mf-text class="mf-input mf-textarea">{{ e.text }}</textarea>
+
+                <div class="mf-row">
+                    <div class="mf-kinds">
+                        {% for k in kinds %}
+                        <label class="mf-kind {{ k.cls }}">
+                            <input type="radio" name="kind" value="{{ k.value }}" {% if k.value == e.kind %}checked{% endif %}>
+                            <span>{{ k.label }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <input type="date" name="fb_date" value="{{ e.date_iso }}" class="mf-input mf-date">
+                </div>
+
+                <div class="mf-row">
+                    <input type="text" name="project" value="{{ e.project }}" class="mf-input"
+                           placeholder="Проект" maxlength="200">
+                </div>
+
+                <div class="mf-row">
+                    <input type="text" name="links" value="{{ e.links_raw }}" class="mf-input"
+                           placeholder="Ссылки на пруфы — через пробел">
+                </div>
+
+                {% if e.files %}
+                <div class="mf-proofs">
+                    {% for f in e.files %}
+                    <label class="mf-proof-thumb-wrap mf-proof-keep" title="Отметь, чтобы убрать этот пруф">
+                        <input type="checkbox" name="remove_files" value="{{ f.path }}" class="mf-remove-cb">
+                        {% if f.is_image %}
                         <img src="{{ f.url }}" alt="пруф" class="mf-proof-thumb">
-                    </a>
-                    {% else %}
-                    <a href="{{ f.url }}" target="_blank" rel="noopener" class="mf-proof-file">{{ f.name }}</a>
-                    {% endif %}
-                {% endfor %}
-            </div>
-            {% endif %}
-            {% if e.links %}
-            <div class="mf-links">
-                {% for l in e.links %}
-                <a href="{{ l }}" target="_blank" rel="noopener" class="mf-link">{{ l }}</a>
-                {% endfor %}
-            </div>
-            {% endif %}
+                        {% else %}
+                        <span class="mf-proof-file">{{ f.name }}</span>
+                        {% endif %}
+                        <span class="mf-remove-badge">убрать</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <div class="mf-row mf-row--files">
+                    <input type="file" data-mf-files name="files" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" class="mf-file">
+                    <button type="button" class="mf-btn mf-btn--voice" data-mf-voice onclick="mfVoiceToggle(this)">Голос</button>
+                    <button type="submit" class="mf-btn mf-btn--accent">Сохранить</button>
+                    <button type="button" class="mf-btn" onclick="mfToggleEdit({{ e.id }})">Отмена</button>
+                </div>
+                <p class="mf-paste-hint">Новый скрин — Ctrl+V (на Mac Cmd+V) прямо в этой форме.</p>
+                <div data-mf-preview class="mf-proofs" style="display:none"></div>
+            </form>
         </div>
         {% endfor %}
     </div>

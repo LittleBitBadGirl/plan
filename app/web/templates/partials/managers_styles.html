@@ -331,4 +331,53 @@
     font-family: inherit;
 }
 .mf-proof-remove:hover { background: #b91c1c; }
+
+.mf-entry-edit {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: none;
+    border: 1px solid #454557;
+    color: #6b7280;
+    border-radius: 6px;
+    padding: 2px 7px;
+    cursor: pointer;
+    font-family: inherit;
+    opacity: 0.55;
+    transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.mf-entry:hover .mf-entry-edit { opacity: 1; }
+.mf-entry-edit:hover { color: #fbbf24; border-color: #b45309; }
+
+.mf-edit-form {
+    margin-top: 8px;
+    margin-bottom: 0;
+    background: rgba(12, 12, 17, 0.6);
+    border-color: #363645;
+}
+.mf-proof-keep { cursor: pointer; }
+.mf-proof-keep .mf-remove-cb { display: none; }
+.mf-proof-keep .mf-remove-badge {
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    background: rgba(127, 29, 29, 0.92);
+    color: #fff;
+    padding: 1px 4px;
+    border-radius: 4px;
+    display: none;
+    white-space: nowrap;
+}
+.mf-proof-keep:has(.mf-remove-cb:checked) img,
+.mf-proof-keep:has(.mf-remove-cb:checked) .mf-proof-file {
+    opacity: 0.35;
+    filter: grayscale(1);
+}
+.mf-proof-keep:has(.mf-remove-cb:checked) .mf-remove-badge { display: block; }
 </style>
