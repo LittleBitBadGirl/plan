@@ -555,11 +555,87 @@ document.addEventListener('keydown', function (evt) {
     }
 });
 
+/* --- Вставка скринов из буфера (Ctrl+V / Cmd+V) --- */
+let mfPasted = [];
+
+function mfResetPasted() {
+    mfPasted = [];
+    const preview = document.getElementById('mf-paste-preview');
+    if (preview) {
+        preview.innerHTML = '';
+        preview.style.display = 'none';
+    }
+}
+
+function mfAddPastedFiles(files) {
+    const preview = document.getElementById('mf-paste-preview');
+    files.forEach(function (file) {
+        const index = mfPasted.length;
+        mfPasted.push(file);
+        if (!preview) return;
+        const url = URL.createObjectURL(file);
+        const wrap = document.createElement('span');
+        wrap.className = 'mf-proof-thumb-wrap';
+        const img = document.createElement('img');
+        img.className = 'mf-proof-thumb';
+        img.src = url;
+        img.alt = 'скрин из буфера';
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'mf-proof-remove';
+        remove.title = 'Убрать';
+        remove.textContent = '\u00d7';
+        remove.addEventListener('click', function () {
+            mfPasted[index] = null;
+            URL.revokeObjectURL(url);
+            wrap.remove();
+            if (preview && !preview.querySelector('.mf-proof-thumb-wrap')) {
+                preview.style.display = 'none';
+            }
+        });
+        wrap.appendChild(img);
+        wrap.appendChild(remove);
+        preview.appendChild(wrap);
+        preview.style.display = 'flex';
+    });
+}
+
+document.addEventListener('paste', function (event) {
+    if (!document.getElementById('manager-feedback-content')) return;
+    const items = (event.clipboardData && event.clipboardData.items) || [];
+    const files = [];
+    for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.kind !== 'file' || !item.type || item.type.indexOf('image/') !== 0) continue;
+        const blob = item.getAsFile();
+        if (!blob) continue;
+        const ext = (item.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+        files.push(new File([blob], 'clip_' + Date.now() + '_' + files.length + '.' + ext, { type: item.type }));
+    }
+    if (!files.length) return;
+    event.preventDefault();
+    mfAddPastedFiles(files);
+});
+
+function mfMergePasted() {
+    const input = document.getElementById('mf-files-input');
+    const pasted = mfPasted.filter(Boolean);
+    if (!input || !pasted.length) return;
+    const transfer = new DataTransfer();
+    for (let i = 0; i < input.files.length; i++) {
+        transfer.items.add(input.files[i]);
+    }
+    pasted.forEach(function (file) { transfer.items.add(file); });
+    input.files = transfer.files;
+    mfResetPasted();
+}
+
 /* --- Менеджеры: попап обратной связи --- */
 function openManagerFeedback(managerId) {
     const modal = document.getElementById('manager-feedback-modal');
     const slot = document.getElementById('manager-feedback-slot');
     if (!modal || !slot) return;
+    mfResetPasted();
     modal.style.display = 'flex';
     document.body.classList.add('overflow-hidden');
     slot.innerHTML = '<div class="mf-modal"><p class="mf-loading">Загрузка...</p></div>';
@@ -571,6 +647,7 @@ function openManagerFeedback(managerId) {
 
 function closeManagerFeedback() {
     mfVoiceStop();
+    mfResetPasted();
     const modal = document.getElementById('manager-feedback-modal');
     const slot = document.getElementById('manager-feedback-slot');
     if (modal) modal.style.display = 'none';

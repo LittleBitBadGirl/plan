@@ -15,10 +15,10 @@
           hx-target="#manager-feedback-content"
           hx-swap="outerHTML"
           hx-encoding="multipart/form-data"
-          hx-on::before-request="mfVoiceStop()"
+          hx-on::before-request="mfVoiceStop(); mfMergePasted()"
           hx-on::after-request="if (event.detail.successful) { mfRefreshWidget(); }">
         <textarea id="mf-text" name="text" class="mf-input mf-textarea"
-                  placeholder="Что случилось? Пиши как есть — разберёшься на 1-1."></textarea>
+                  placeholder="Что случилось? Пиши как есть — разберёшься на 1-1. Скрин можно вставить из буфера (Ctrl+V)."></textarea>
 
         <div class="mf-row">
             <div class="mf-kinds">
@@ -43,10 +43,12 @@
         </div>
 
         <div class="mf-row mf-row--files">
-            <input type="file" name="files" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" class="mf-file">
+            <input type="file" id="mf-files-input" name="files" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" class="mf-file">
             <button type="button" id="mf-voice-btn" class="mf-btn mf-btn--voice" onclick="mfVoiceToggle()">Голос</button>
             <button type="submit" class="mf-btn mf-btn--accent">Сохранить</button>
         </div>
+        <p class="mf-paste-hint">Скрин из скриншотера — просто нажми Ctrl+V (на Mac Cmd+V), картинка прилепится к записи.</p>
+        <div id="mf-paste-preview" class="mf-proofs" style="display:none"></div>
 
         {% if error %}<p class="mf-error">{{ error }}</p>{% endif %}
     </form>

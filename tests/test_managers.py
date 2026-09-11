@@ -55,6 +55,39 @@ async def test_dashboard_renders_managers_widget_server_side(client):
     assert 'hx-trigger="load' not in response.text
 
 
+async def test_modal_has_clipboard_paste_affordances(client):
+    """Скрин вставляется из буфера: поле files, зона превью, подсказка."""
+    manager_id = await _make_manager()
+
+    response = await client.get(f"/managers/{manager_id}/modal")
+
+    assert response.status_code == 200
+    assert 'id="mf-files-input"' in response.text
+    assert 'id="mf-paste-preview"' in response.text
+    assert "Ctrl+V" in response.text
+    assert 'hx-encoding="multipart/form-data"' in response.text
+
+
+async def test_multiple_proof_files_at_once(client):
+    """Несколько пруфов в одной записи (скрин + скрин)."""
+    manager_id = await _make_manager()
+
+    response = await client.post(
+        f"{TEST_DB_URL}/{manager_id}/feedback",
+        data={"text": "Два скрина"},
+        files=[
+            ("files", ("a.png", b"aaa", "image/png")),
+            ("files", ("b.png", b"bbb", "image/png")),
+        ],
+    )
+
+    assert response.status_code == 200
+    async with async_session() as session:
+        result = await session.execute(select(ManagerFeedback))
+        record = result.scalar_one()
+        assert record.files.count("feedback/") == 2
+
+
 async def test_create_manager_returns_widget(client):
     response = await client.post(
         f"{TEST_DB_URL}/create",
