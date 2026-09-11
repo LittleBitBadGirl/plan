@@ -622,6 +622,7 @@ function mfAddPastedFiles(scope, files) {
             if (preview && !preview.querySelector('.mf-proof-thumb-wrap')) {
                 preview.style.display = 'none';
             }
+            mfSyncPastedFiles(scope);
         });
         wrap.appendChild(img);
         wrap.appendChild(remove);
@@ -650,21 +651,38 @@ document.addEventListener('paste', function (event) {
     if (!scope) return;
     event.preventDefault();
     mfAddPastedFiles(scope, files);
+    mfSyncPastedFiles(scope);
+});
+
+/* Файлы из буфера кладём прямо в input.files СРАЗУ: htmx собирает FormData раньше,
+   чем срабатывает hx-on::before-request, поэтому «доклеить» файл в последний момент не работает. */
+function mfSyncPastedFiles(scope) {
+    if (!scope || typeof DataTransfer === 'undefined') return;
+    const input = scope.querySelector('[data-mf-files]');
+    if (!input) return;
+    const transfer = new DataTransfer();
+    (scope._mfPicked || []).forEach(function (file) { transfer.items.add(file); });
+    mfPastedFiles(scope).forEach(function (file) { transfer.items.add(file); });
+    input.files = transfer.files;
+}
+
+document.addEventListener('change', function (event) {
+    const input = event.target;
+    if (!input || !input.matches || !input.matches('[data-mf-files]')) return;
+    const scope = mfFormScope(input);
+    if (scope) scope._mfPicked = Array.prototype.slice.call(input.files);
+});
+
+document.addEventListener('click', function (event) {
+    const btn = (event.target && event.target.closest) ? event.target.closest('.mf-proof-remove') : null;
+    if (!btn) return;
+    const scope = mfFormScope(btn);
+    if (scope) mfSyncPastedFiles(scope);
 });
 
 function mfBeforeSubmit(form) {
     mfVoiceStop();
-    const pasted = mfPastedFiles(form);
-    const input = form.querySelector('[data-mf-files]');
-    if (input && pasted.length) {
-        const transfer = new DataTransfer();
-        for (let i = 0; i < input.files.length; i++) {
-            transfer.items.add(input.files[i]);
-        }
-        pasted.forEach(function (file) { transfer.items.add(file); });
-        input.files = transfer.files;
-    }
-    mfResetPasted(form);
+    mfSyncPastedFiles(form);
 }
 
 /* --- Менеджеры: попап обратной связи --- */
