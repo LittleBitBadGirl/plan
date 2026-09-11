@@ -14,6 +14,7 @@ from app.models import period_entry as _period_entry_import  # noqa: F401
 from app.models import recurring_completion as _recurring_completion_import  # noqa: F401
 from app.models import portfolio as _portfolio_import  # noqa: F401
 from app.models import investment as _investment_import  # noqa: F401
+from app.models import manager as _manager_import  # noqa: F401
 
 engine = create_async_engine(
     settings.database_url,

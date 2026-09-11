@@ -1,0 +1,40 @@
+{% include "partials/managers_styles.html" %}
+<div id="managers-widget" class="mf-card">
+    <div class="mf-card-head">
+        <div>
+            <h3 class="mf-title">Менеджеры</h3>
+            <p class="mf-sub">{{ managers_widget.period_label }}</p>
+        </div>
+        <button type="button" class="mf-mini-btn" onclick="mfToggleAdd()">+ Менеджер</button>
+    </div>
+
+    <form id="mf-add-form" class="mf-add-form" style="display:none"
+          hx-post="/api/managers/create"
+          hx-target="#managers-widget"
+          hx-swap="outerHTML"
+          hx-on::after-request="if (event.detail.successful) { this.reset(); document.getElementById('mf-add-form').style.display = 'none'; }">
+        <input type="text" name="name" placeholder="Имя" required class="mf-input" maxlength="200">
+        <input type="text" name="projects" placeholder="Проекты через запятую" class="mf-input" maxlength="500">
+        <button type="submit" class="mf-btn mf-btn--accent">Добавить</button>
+    </form>
+
+    <div class="mf-list">
+        {% for m in managers_widget.managers %}
+        <button type="button" class="mf-mgr" onclick="openManagerFeedback({{ m.id }})">
+            <span class="mf-mgr-left">
+                <span class="mf-mgr-name">{{ m.name }}</span>
+                <span class="mf-mgr-projects">{{ m.projects or 'проекты не указаны' }}</span>
+            </span>
+            <span class="mf-mgr-right">
+                <span class="mf-mgr-count {{ 'mf-mgr-count--on' if m.month_count else '' }}">{{ m.month_count }} {{ m.month_word }}</span>
+                <span class="mf-mgr-last">{% if m.last_date %}{{ m.last_date }}{% else %}нет записей{% endif %}</span>
+            </span>
+        </button>
+        {% endfor %}
+        {% if not managers_widget.managers %}
+        <p class="mf-empty">Пока никого нет — добавь менеджера.</p>
+        {% endif %}
+    </div>
+
+    <p class="mf-hint">Клик по имени — вся история по месяцам, с пруфами.</p>
+</div>

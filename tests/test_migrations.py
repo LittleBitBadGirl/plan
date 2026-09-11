@@ -10,6 +10,7 @@ from app.db.migrate import run_migrations
 from app.models import calendar_event as _ce  # noqa: F401
 from app.models import calendar_ignore_rule as _cir  # noqa: F401
 from app.models import investment as _inv  # noqa: F401
+from app.models import manager as _mgr  # noqa: F401
 from app.models import period_entry as _pe  # noqa: F401
 from app.models import portfolio as _pf  # noqa: F401
 from app.models import recurring_completion as _rc  # noqa: F401
@@ -41,7 +42,7 @@ async def test_run_migrations_on_fresh_db():
                 text("SELECT version_num FROM alembic_version")
             )
             version = result.scalar_one()
-        assert version == "009_perf_indexes"
+        assert version == "010_manager_feedback"
 
         sync = sqlite3.connect(db_path)
         task_cols = {row[1] for row in sync.execute("PRAGMA table_info(tasks)")}
@@ -60,12 +61,27 @@ async def test_run_migrations_on_fresh_db():
             row[1]
             for row in sync.execute("PRAGMA index_list(habit_logs)")
         }
+        feedback_cols = {
+            row[1] for row in sync.execute("PRAGMA table_info(manager_feedback)")
+        }
+        feedback_indexes = {
+            row[1]
+            for row in sync.execute("PRAGMA index_list(manager_feedback)")
+        }
+        seeded_managers = {
+            row[0] for row in sync.execute("SELECT name FROM managers")
+        }
         sync.close()
         assert "estimated_minutes" in task_cols
         assert "portfolio_id" in flow_cols
         assert "portfolios" in tables
+        assert "managers" in tables
+        assert "manager_feedback" in tables
         assert "ix_tasks_dashboard_day" in task_indexes
         assert "ix_tasks_completed_at" in task_indexes
         assert "ix_habit_logs_habit_cycle" in habit_indexes
+        assert "ix_manager_feedback_manager" in feedback_indexes
+        assert {"period_month", "kind", "files", "links"} <= feedback_cols
+        assert "Алёна Савченко" in seeded_managers
 
         await engine.dispose()

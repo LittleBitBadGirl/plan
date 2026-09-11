@@ -106,6 +106,11 @@ async def dashboard(request: Request):
         shopping_items = await load_active_shopping(db)
         reading_items = await load_active_reading(db)
 
+        # Менеджеры: блок обратной связи (рендер сервером, без hx-trigger load)
+        from app.services.manager_feedback_service import build_widget_context
+
+        managers_widget = await build_widget_context(db)
+
         # Категории для формы — только задачные, финансовые не смешиваем
         cats_result = await db.execute(
             select(Category)
@@ -155,6 +160,7 @@ async def dashboard(request: Request):
         "calendar_events": calendar_events,
         "calendar_personal_events": calendar_personal_events,
         "calendar_sync_active": calendar_sync_active(),
+        "managers_widget": managers_widget,
     })
 
 

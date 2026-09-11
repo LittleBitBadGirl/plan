@@ -154,6 +154,11 @@
 
         <!-- COLUMN 2: HABITS & PERIOD -->
         <div class="contents lg:block lg:space-y-8">
+            <!-- Менеджеры: сбор обратной связи (клик по имени → попап) -->
+            <div class="order-4 lg:order-none">
+                {% include "partials/managers_widget.html" %}
+            </div>
+
             <!-- Habit Trackers — last on mobile -->
             <div class="order-[70] lg:order-none space-y-4">
                 <div class="flex items-center justify-between px-1">
@@ -419,6 +424,11 @@
         </div>
 
     </div>
+
+    <!-- Попап: обратная связь по менеджеру -->
+    <div id="manager-feedback-modal" class="mf-backdrop" style="display:none" onclick="closeManagerFeedback()">
+        <div id="manager-feedback-slot" class="mf-window" onclick="event.stopPropagation()"></div>
+    </div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -539,7 +549,110 @@ function closeHabitHistory() {
 }
 
 document.addEventListener('keydown', function (evt) {
-    if (evt.key === 'Escape') closeHabitHistory();
+    if (evt.key === 'Escape') {
+        closeHabitHistory();
+        closeManagerFeedback();
+    }
 });
+
+/* --- Менеджеры: попап обратной связи --- */
+function openManagerFeedback(managerId) {
+    const modal = document.getElementById('manager-feedback-modal');
+    const slot = document.getElementById('manager-feedback-slot');
+    if (!modal || !slot) return;
+    modal.style.display = 'flex';
+    document.body.classList.add('overflow-hidden');
+    slot.innerHTML = '<div class="mf-modal"><p class="mf-loading">Загрузка...</p></div>';
+    htmx.ajax('GET', '/managers/' + managerId + '/modal', {
+        target: '#manager-feedback-slot',
+        swap: 'innerHTML'
+    });
+}
+
+function closeManagerFeedback() {
+    mfVoiceStop();
+    const modal = document.getElementById('manager-feedback-modal');
+    const slot = document.getElementById('manager-feedback-slot');
+    if (modal) modal.style.display = 'none';
+    if (slot) slot.innerHTML = '';
+    document.body.classList.remove('overflow-hidden');
+}
+
+function mfToggleAdd() {
+    const form = document.getElementById('mf-add-form');
+    if (form) form.style.display = (form.style.display === 'block') ? 'none' : 'block';
+}
+
+function mfRefreshWidget() {
+    if (document.getElementById('managers-widget')) {
+        htmx.ajax('GET', '/managers/widget', { target: '#managers-widget', swap: 'outerHTML' });
+    }
+}
+
+let mfRecognition = null;
+
+function mfVoiceStop() {
+    if (mfRecognition) {
+        try { mfRecognition.stop(); } catch (e) { /* уже остановлен */ }
+        mfRecognition = null;
+    }
+    const btn = document.getElementById('mf-voice-btn');
+    if (btn) {
+        btn.classList.remove('mf-rec');
+        btn.textContent = 'Голос';
+    }
+}
+
+function mfVoiceToggle() {
+    const btn = document.getElementById('mf-voice-btn');
+    const area = document.getElementById('mf-text');
+    if (!area) return;
+    if (mfRecognition) { mfVoiceStop(); return; }
+
+    const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionClass) {
+        alert('Браузер не умеет распознавать речь. Открой планер в Chrome или Comet.');
+        return;
+    }
+
+    const recognition = new SpeechRecognitionClass();
+    recognition.lang = 'ru-RU';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    let base = area.value ? area.value.replace(/\s+$/, '') + ' ' : '';
+
+    recognition.onresult = function (event) {
+        let finalText = '';
+        let interimText = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const result = event.results[i];
+            if (result.isFinal) { finalText += result[0].transcript; }
+            else { interimText += result[0].transcript; }
+        }
+        if (finalText) { base += finalText.trim() + ' '; }
+        area.value = base + interimText;
+        area.scrollTop = area.scrollHeight;
+    };
+
+    recognition.onerror = function (event) {
+        console.error('speech error:', event.error);
+        mfVoiceStop();
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            alert('Нет доступа к микрофону. Разреши микрофон для этого сайта.');
+        }
+    };
+
+    recognition.onend = function () { mfVoiceStop(); };
+
+    try {
+        recognition.start();
+    } catch (e) {
+        console.error('speech start failed:', e);
+        return;
+    }
+    mfRecognition = recognition;
+    if (btn) { btn.classList.add('mf-rec'); btn.textContent = 'Стоп'; }
+}
 </script>
 {% endblock %}
