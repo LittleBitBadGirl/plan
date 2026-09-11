@@ -195,19 +195,14 @@ async def update_manager_feedback(
             raise HTTPException(status_code=404, detail="Запись не найдена")
 
         manager_id = record.manager_id
-        kept_files = load_list(record.files)
-        for relative in remove_files or []:
-            if relative in kept_files:
-                kept_files.remove(relative)
-                target = safe_upload_path(relative)
-                if target and target.is_file():
-                    try:
-                        target.unlink()
-                    except OSError:
-                        pass
+        existing_files = load_list(record.files)
+        to_remove = [path for path in (remove_files or []) if path in existing_files]
+        kept_files = [path for path in existing_files if path not in to_remove]
 
-        kept_files.extend(await save_uploads(files))
+        # Сначала проверяем, что запись не станет пустой, и только потом трогаем диск:
+        # иначе можно удалить пруфы и вернуть ошибку, оставив в записи битые ссылки.
         clean_text = (text or "").strip()
+        kept_files.extend(await save_uploads(files))
         if not clean_text and not kept_files:
             context = await build_modal_context(
                 db, manager_id, error="Нужен текст или хотя бы один скрин."
@@ -216,6 +211,14 @@ async def update_manager_feedback(
             return templates.TemplateResponse(
                 request, "partials/manager_feedback_modal.html", context
             )
+
+        for relative in to_remove:
+            target = safe_upload_path(relative)
+            if target and target.is_file():
+                try:
+                    target.unlink()
+                except OSError:
+                    pass
 
         record_date = parse_record_date(fb_date)
         record.text = clean_text

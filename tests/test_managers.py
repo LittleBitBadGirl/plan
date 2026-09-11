@@ -178,6 +178,58 @@ async def test_edit_form_is_prefilled_per_entry(client):
     assert "2026-09-05" in response.text
 
 
+async def test_empty_edit_keeps_record_and_proof(client):
+    """Пустая правка: ошибка, запись и пруф не тронуты — файл не удаляем до проверки."""
+    manager_id = await _make_manager()
+    await client.post(
+        f"{TEST_DB_URL}/{manager_id}/feedback",
+        data={"text": "Исходный текст", "fb_date": "2026-09-05"},
+        files={"files": ("proof.png", b"png-bytes", "image/png")},
+    )
+    async with async_session() as session:
+        result = await session.execute(select(ManagerFeedback))
+        record = result.scalar_one()
+        feedback_id = record.id
+        kept_path = json.loads(record.files)[0]
+
+    response = await client.post(
+        f"{TEST_DB_URL}/feedback/{feedback_id}/edit",
+        data={"text": "   ", "remove_files": kept_path},
+    )
+
+    assert response.status_code == 200
+    assert "Нужен текст или хотя бы один скрин" in response.text
+    async with async_session() as session:
+        result = await session.execute(
+            select(ManagerFeedback).where(ManagerFeedback.id == feedback_id)
+        )
+        record = result.scalar_one()
+        assert record.text == "Исходный текст"
+        assert json.loads(record.files) == [kept_path]
+    assert (await client.get(f"/uploads/{kept_path}")).status_code == 200
+
+
+async def test_edit_form_prefills_kind_project_and_links(client):
+    manager_id = await _make_manager()
+    await client.post(
+        f"{TEST_DB_URL}/{manager_id}/feedback",
+        data={
+            "text": "С префиллом",
+            "kind": "plus",
+            "project": "СБТ",
+            "links": "https://tracker.dalee.ru/browse/DSBTSUPP-1",
+            "fb_date": "2026-09-07",
+        },
+    )
+
+    response = await client.get(f"/managers/{manager_id}/modal")
+
+    assert response.status_code == 200
+    assert 'value="plus" checked' in response.text
+    assert 'value="СБТ"' in response.text
+    assert 'value="https://tracker.dalee.ru/browse/DSBTSUPP-1"' in response.text
+
+
 async def test_multiple_proof_files_at_once(client):
     """Несколько пруфов в одной записи (скрин + скрин)."""
     manager_id = await _make_manager()
