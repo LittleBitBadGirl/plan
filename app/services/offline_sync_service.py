@@ -407,6 +407,7 @@ async def _apply_one(
             task.completed_at = datetime.now(timezone.utc)
             task.is_archived = True
             task.item_kind = "task"
+            task.overdue_since = None  # закрытая задача больше не «тянется»
             children = await db.execute(
                 select(Task).where(
                     Task.parent_task_id == task.id,
@@ -443,6 +444,7 @@ async def _apply_one(
         task.is_archived = False
         task.status = "новая"
         task.completed_at = None
+        task.overdue_since = None  # вернули из архива — отсчёт просрочки с нуля
         await _remember(db, client_uuid, kind, task.id, payload, "applied")
         return {
             "client_uuid": client_uuid,

@@ -1,3 +1,5 @@
+from datetime import date as date_type
+
 from sqlalchemy import Column, Integer, String, Boolean, Date, DateTime, Time, Text, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -26,6 +28,10 @@ class Task(Base):
     needs_review = Column(Boolean, default=False)
     message_hash = Column(String(64), nullable=True)
     postpones = Column(Integer, default=0)
+    # День, когда задачу должны были сделать, а она осталась висеть. Отсюда
+    # считается «сколько тянется» — в отличие от postpones, значение не зависит
+    # от того, отработал ли ночной перенос и сколько раз задачу переносили руками.
+    overdue_since = Column(Date, nullable=True)
     chronic_task = Column(Boolean, default=False, index=True)
     chronic_reviewed = Column(Boolean, default=False)
     tags = Column(String(500), nullable=True) # Теги проекта или контекста (#Антон, #Сбер)
@@ -45,3 +51,18 @@ class Task(Base):
     # Связи
     category = relationship("Category", back_populates="tasks")
     subtasks = relationship("Task", backref="parent_task", remote_side=[id], lazy="select")
+
+    @property
+    def overdue_days(self) -> int:
+        """Сколько дней задача тянется. 0 — не тянется.
+
+        Считается в календарных днях от дня, когда её должны были сделать: если
+        задача висит с 10-го, 18-го она честно показывает 8, а не то, что успел
+        насчитать счётчик переносов.
+        """
+        anchor = self.overdue_since
+        if anchor is None and self.due_date and self.due_date < date_type.today():
+            anchor = self.due_date
+        if anchor is None:
+            return 0
+        return max((date_type.today() - anchor).days, 1)

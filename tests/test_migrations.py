@@ -43,7 +43,7 @@ async def test_run_migrations_on_fresh_db():
                 text("SELECT version_num FROM alembic_version")
             )
             version = result.scalar_one()
-        assert version == "011_offline_sync"
+        assert version == "012_task_overdue_since"
 
         sync = sqlite3.connect(db_path)
         task_cols = {row[1] for row in sync.execute("PRAGMA table_info(tasks)")}
@@ -83,6 +83,7 @@ async def test_run_migrations_on_fresh_db():
         }
         sync.close()
         assert "estimated_minutes" in task_cols
+        assert "overdue_since" in task_cols
         assert "portfolio_id" in flow_cols
         assert "portfolios" in tables
         assert "managers" in tables

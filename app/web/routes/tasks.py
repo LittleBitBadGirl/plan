@@ -185,15 +185,18 @@ async def task_web_edit(
     request: Request,
     task_id: int,
     title: str = Form(...),
-    description: str = Form(""),
-    category_id: str = Form(""),
-    priority: str = Form("средний"),
-    due_date: str = Form(""),
-    deadline: str = Form(""),
-    status: str = Form("новая"),
-    is_milestone: bool = Form(False),
-    impact_notes: str = Form(""),
-    size: str = Form(""),
+    # Поля, которых нет в форме, приходят как None и НЕ трогаются. Иначе каждое
+    # сохранение из формы сбрасывало приоритет на «средний», статус на «новую»
+    # и стирало описание с заметками — просто потому, что форма их не содержит.
+    description: str = Form(None),
+    category_id: str = Form(None),
+    priority: str = Form(None),
+    due_date: str = Form(None),
+    deadline: str = Form(None),
+    status: str = Form(None),
+    is_milestone: bool = Form(None),
+    impact_notes: str = Form(None),
+    size: str = Form(None),
 ):
     """Web: редактировать задачу из формы (form-data)"""
     async with async_session() as db:
@@ -203,22 +206,34 @@ async def task_web_edit(
             return HTMLResponse(status_code=404, content="Задача не найдена")
 
         task.title = title
-        task.description = description
-        task.category_id = int(category_id) if category_id else None
-        task.priority = priority
-        task.due_date = _parse_due_date_form(due_date)
-        task.deadline = _parse_due_date_form(deadline)
-        task.status = status
-        task.is_milestone = is_milestone
-        task.impact_notes = impact_notes
-        task.size = size if size in ("L", "XL") else None
-        
-        if status == "выполнена" and not task.completed_at:
-            task.completed_at = datetime.utcnow()
-            task.is_archived = True
-            task.item_kind = "task"
-        elif status != "выполнена":
-            task.completed_at = None
+        if description is not None:
+            task.description = description
+        if category_id is not None:
+            task.category_id = int(category_id) if category_id else None
+        if priority is not None:
+            task.priority = priority
+        if due_date is not None:
+            task.due_date = _parse_due_date_form(due_date)
+        if deadline is not None:
+            task.deadline = _parse_due_date_form(deadline)
+        if is_milestone is not None:
+            task.is_milestone = is_milestone
+        if impact_notes is not None:
+            task.impact_notes = impact_notes
+        if size is not None:
+            task.size = size if size in ("L", "XL") else None
+
+        if status is not None:
+            task.status = status
+            if status == "выполнена" and not task.completed_at:
+                task.completed_at = datetime.utcnow()
+                task.is_archived = True
+                task.item_kind = "task"
+                task.overdue_since = None
+            elif status != "выполнена":
+                task.completed_at = None
+                # Задачу вернули в работу — отсчёт просрочки начинается заново.
+                task.overdue_since = None
         await db.commit()
 
     from fastapi.responses import RedirectResponse
@@ -393,6 +408,7 @@ async def _complete_subtask_impl(db: AsyncSession, subtask: Task) -> None:
     subtask.status = "выполнена"
     subtask.completed_at = datetime.now(timezone.utc)
     subtask.is_archived = False
+    subtask.overdue_since = None  # закрытая задача больше не «тянется»
     if subtask.parent_task_id:
         await _sync_parent(db, subtask.parent_task_id)
 
@@ -454,6 +470,7 @@ async def complete_task(request: Request, task_id: int):
             is_backlog = task.due_date is None
             task.status = "выполнена"
             task.completed_at = datetime.utcnow()
+            task.overdue_since = None  # закрытая задача больше не «тянется»
             if task.parent_task_id is None:
                 task.is_archived = True
                 task.item_kind = "task"

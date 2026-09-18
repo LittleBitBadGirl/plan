@@ -38,10 +38,12 @@
                 {% endif %}
             {% endif %}
 
-            {% if task.postpones and task.postpones > 0 %}
-            <span class="text-amber-600/80 inline-flex items-center gap-1" title="Перенесена {{ task.postpones }} раз(а)">
+            {% if task.overdue_days %}
+            {# Дней в просрочке от дня, когда задачу должны были сделать. #}
+            <span class="text-amber-600/80 inline-flex items-center gap-1"
+                  title="Тянется с {{ task.overdue_since.strftime('%d.%m.%Y') if task.overdue_since else '—' }} — {{ task.overdue_days }} дн.">
                 {{ icon_clock() }}
-                <span>×{{ task.postpones }}</span>
+                <span>{{ task.overdue_days }} дн.</span>
             </span>
             {% endif %}
 

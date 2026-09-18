@@ -33,20 +33,23 @@ def rollover_days(due_date: date, today: date, is_work_category: bool = False) -
 
 
 def apply_rollover(task: Task, today: date, is_work_category: bool = False) -> None:
-    """Увеличить postpones на число просроченных дней и перенести due_date на today."""
-    days = rollover_days(task.due_date, today, is_work_category)
-    # Always move to today if overdue, even if 0 work days between
-    if task.due_date < today:
-        task.postpones = (task.postpones or 0) + max(days, 0)
-        task.due_date = today
-        if task.postpones > 7:
-            task.chronic_task = True
+    """Увеличить postpones на число просроченных дней и перенести due_date на today.
+
+    Заодно ставится якорь просрочки (`overdue_since`) — от него считается бейдж
+    «сколько задача тянется». Якорь ставится один раз и не сдвигается, поэтому
+    число честно растёт, даже если задача давно «уехала» на сегодня.
+    """
+    if task.due_date is None or task.due_date >= today:
         return
 
+    if task.overdue_since is None:
+        task.overdue_since = task.due_date
+
+    days = rollover_days(task.due_date, today, is_work_category)
     task.postpones = (task.postpones or 0) + days
     task.due_date = today
 
-    if task.postpones > 7:
+    if (task.postpones or 0) > 7:
         task.chronic_task = True
 
 

@@ -45,6 +45,7 @@ async def restore_task(task_id: int):
             task.is_archived = False
             task.status = "новая"
             task.completed_at = None
+            task.overdue_since = None  # вернули из архива — отсчёт просрочки с нуля
             await db.commit()
             # Возвращаем пустой блок, чтобы HTMX удалил строку из таблицы
             return HTMLResponse(f'<div id="archive-task-{task_id}" class="hidden"></div>')
