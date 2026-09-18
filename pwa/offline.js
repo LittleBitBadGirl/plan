@@ -287,6 +287,11 @@
         return form ? formUrl(form) : null;
     }
 
+    /** Есть ли запись о задаче в срезе: без неё сравнивать правку не с чем. */
+    function hasBaseline(taskId) {
+        return Boolean(taskId && stateCache[taskId]);
+    }
+
 
     /**
      * Превратить отправку формы/кнопки в действие очереди.
@@ -345,6 +350,12 @@
 
         if (route.diff) {
             const values = formValues(form);
+            // Без записи в срезе сравнивать не с чем: все непустые поля ушли бы
+            // с from='' и сервер справедливо счёл бы это спором по каждому полю.
+            // Честнее сказать Вере, что задачу надо поправить при связи.
+            if (!hasBaseline(taskId)) {
+                return { unavailable: 'Эта задача не сохранена на устройстве — поправь её, когда появится связь.' };
+            }
             const changes = [];
             EDITABLE_FIELDS.forEach((field) => {
                 if (!(field in values)) return;
@@ -357,15 +368,28 @@
                     : String(values[field] == null ? '' : values[field]);
                 if (after !== before) changes.push({ field, from: before, to: after });
             });
-            if (!changes.length) return null;
+            if (!changes.length) {
+                return { unavailable: 'Изменений нет.' };
+            }
             return { kind: 'update_fields', taskId, payload: { changes }, title: '', url };
         }
 
         if (route.dateField) {
+            if (!hasBaseline(taskId)) {
+                return { unavailable: 'Эта задача не сохранена на устройстве — поправь её, когда появится связь.' };
+            }
             const baseline = stateCache[taskId] || {};
             const values = formValues(form);
-            const raw = route.dateToToday ? todayIso() : toIso(values[route.dateField] || '');
-            if (!raw) return null;
+            // Пустая дата в вебе означает «на сегодня» для переноса и «снять
+            // дедлайн» для DL — повторяем это, а не отказываем.
+            let raw;
+            if (route.dateToToday) {
+                raw = todayIso();
+            } else if (route.kind === 'plan') {
+                raw = toIso(values[route.dateField] || '') || todayIso();
+            } else {
+                raw = toIso(values[route.dateField] || '');
+            }
             const from = toIso(baseline[route.dateField] || '');
             // Перенос — отдельный вид действия: сервер должен применить ту же
             // логику счётчика переносов, что и кнопка в вебе.
@@ -764,7 +788,10 @@
                 }
 
                 if (data.tasks) await saveState(data.tasks);
-                conflictsPending = data.conflicts_total || conflictsPending;
+                // 0 — тоже значение: «|| conflictsPending» оставил бы старый счётчик.
+                if (typeof data.conflicts_total === 'number') {
+                    conflictsPending = data.conflicts_total;
+                }
             } else {
                 // Ошибка данных или сервера: оставляем, попробуем позже.
                 for (const item of pending) {
@@ -802,8 +829,8 @@
     /** Увести действие в очередь. false — если офлайн его выполнить нельзя. */
     async function handleOfflineAction(element) {
         const action = describeAction(element);
-        if (!action) {
-            showNotice('Без интернета это действие недоступно.');
+        if (!action || action.unavailable) {
+            showNotice((action && action.unavailable) || 'Без интернета это действие недоступно.');
             return false;
         }
         await enqueue(action);
@@ -843,7 +870,7 @@
         const elt = event.detail && event.detail.elt;
         if (!elt || !actionUrl(elt)) return;
         const action = describeAction(elt);
-        if (!action) return;
+        if (!action || action.unavailable) return;
         if (isOffline() || RETRY_SAFE_KINDS.includes(action.kind)) {
             enqueue(action).catch(() => {});
             return;
