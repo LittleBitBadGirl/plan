@@ -34,6 +34,10 @@ from app.web.deps import (
     _shopping_stats_oob,
     _shopping_list_response,
     reading_items_view,
+    is_weekend,
+    not_work_task_filter,
+    work_task_filter,
+    counter_values,
 )
 
 router = APIRouter()
@@ -48,6 +52,11 @@ async def dashboard(request: Request):
     from app.models.habit import Habit
 
     today = date.today()
+
+    # На выходных рабочие задачи не показываем: Вера не хочет возвращаться в работу.
+    # Кнопка «Показать рабочие» ставит cookie show_work=1 — тогда показываем снова.
+    show_work = request.cookies.get("show_work") == "1"
+    hide_work = is_weekend(today) and not show_work
 
     async with async_session() as db:
         habits_result = await db.execute(
@@ -73,19 +82,36 @@ async def dashboard(request: Request):
         period_data = compute_period_data(period_entries, today)
 
         # Обычные задачи (только корневые)
+        base_task_filters = [
+            Task.due_date == today,
+            Task.is_archived == False,
+            Task.status.in_(["новая", "в_работе"]),
+            Task.parent_task_id == None,
+            Task.source.is_distinct_from("recurring"),
+            Task.item_kind == "task",
+        ]
+        task_filters = list(base_task_filters)
+        if hide_work:
+            task_filters.append(not_work_task_filter())
+
         result = await db.execute(
             select(Task)
             .options(selectinload(Task.category).selectinload(Category.parent))
-            .where(
-                Task.due_date == today,
-                Task.is_archived == False,
-                Task.status.in_(["новая", "в_работе"]),
-                Task.parent_task_id == None,
-                Task.source.is_distinct_from("recurring"),
-                Task.item_kind == "task",
-            ).order_by(*dashboard_task_order_by())
+            .where(*task_filters)
+            .order_by(*dashboard_task_order_by())
         )
         tasks = list(result.scalars().all())
+
+        # Сколько рабочих задач спрятано — чтобы кнопка говорила правду.
+        hidden_work_count = 0
+        if is_weekend(today):
+            hidden_result = await db.execute(
+                select(func.count(Task.id)).where(
+                    *base_task_filters,
+                    work_task_filter(),
+                )
+            )
+            hidden_work_count = hidden_result.scalar() or 0
 
         await repair_archived_subtasks(db)
         subtasks_map = await load_subtasks_map(db, [t.id for t in tasks])
@@ -97,11 +123,12 @@ async def dashboard(request: Request):
 
         from app.services.shopping_service import load_active_shopping, load_active_reading
 
-        bundle = await get_dashboard_day_stats(db, today)
+        bundle = await get_dashboard_day_stats(db, today, hide_work=hide_work)
         recurring_today = bundle.recurring_today
         completed, total = bundle.completed, bundle.total
         subtask_progress = bundle.subtask_progress
         ai_warning = bundle.ai_warning
+        active_count, closed_today = counter_values(bundle)
 
         shopping_items = await load_active_shopping(db)
         reading_items = await load_active_reading(db)
@@ -139,6 +166,11 @@ async def dashboard(request: Request):
     return templates.TemplateResponse(request, "dashboard.html", {
         "request": request,
         "tasks": tasks,
+        "active_count": active_count,
+        "closed_today": closed_today,
+        "weekend_hide_work": hide_work,
+        "weekend_show_work": is_weekend(today) and show_work,
+        "hidden_work_count": hidden_work_count,
         "tasks_with_subtasks": tasks_with_subtasks,
         "standalone_tasks": standalone_tasks,
         "subtasks_map": subtasks_map,

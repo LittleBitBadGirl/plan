@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import async_session
 from app.models.task import Task
 from app.models.category import Category
+from app.services.postpones_service import WORK_CATEGORY_NAMES
 
 # ─── Period tracker helpers ───────────────────────────────────────────────────
 
@@ -38,6 +39,44 @@ _MONTH_NAMES = {
 def is_weekend(day: date) -> bool:
     """Суббота и воскресенье (date.weekday(): пн=0 … вс=6)."""
     return day.weekday() >= 5
+
+
+def work_category_id_subquery():
+    """Подзапрос: id категорий, которые считаются рабочими.
+
+    Рабочая категория — сама из списка рабочих либо её родитель (у Веры клиенты
+    висят подкатегориями под «Работа», по имени подкатегории их не отловить).
+    """
+    return select(Category.id).where(
+        or_(
+            Category.name.in_(WORK_CATEGORY_NAMES),
+            Category.parent_id.in_(
+                select(Category.id).where(Category.name.in_(WORK_CATEGORY_NAMES))
+            ),
+        )
+    )
+
+
+def work_task_filter():
+    """Условие «задача рабочая»."""
+    return Task.category_id.in_(work_category_id_subquery())
+
+
+def not_work_task_filter():
+    """Условие «задача не рабочая»: прячем только рабочие.
+
+    Задачи без категории остаются видимыми — они заведомо не про работу.
+    """
+    return or_(
+        Task.category_id.is_(None),
+        Task.category_id.notin_(work_category_id_subquery()),
+    )
+
+
+async def work_category_ids(db: AsyncSession) -> set[int]:
+    """id всех рабочих категорий — для фильтрации уже загруженных объектов."""
+    result = await db.execute(work_category_id_subquery())
+    return {row[0] for row in result.all()}
 
 
 def count_workdays_between(start: date, end: date) -> int:
@@ -473,10 +512,10 @@ def _utc_day_bounds(day: date) -> tuple[datetime, datetime]:
 
 
 async def _load_today_roots_bundle(
-    db: AsyncSession, today: date
+    db: AsyncSession, today: date, hide_work: bool = False
 ) -> tuple[list[Task], list[Task]]:
     """Корневые задачи на сегодня + расширенный список с родителями закрытых подзадач."""
-    roots_result = await db.execute(select(Task).where(*_today_roots_filter(today)))
+    roots_result = await db.execute(select(Task).where(*_today_roots_filter(today, hide_work)))
     roots_today = list(roots_result.scalars().all())
     seen = {r.id for r in roots_today}
     roots_with_sub = list(roots_today)
@@ -507,16 +546,18 @@ async def _load_today_roots_bundle(
     return roots_today, roots_with_sub
 
 
-async def _today_roots_with_sub_completions(db: AsyncSession, today: date) -> list[Task]:
+async def _today_roots_with_sub_completions(
+    db: AsyncSession, today: date, hide_work: bool = False
+) -> list[Task]:
     """Корневые задачи на сегодня + родители с подзадачами, закрытыми сегодня."""
-    _, roots_with_sub = await _load_today_roots_bundle(db, today)
+    _, roots_with_sub = await _load_today_roots_bundle(db, today, hide_work)
     return roots_with_sub
 
 
-def _today_roots_filter(today: date) -> list:
+def _today_roots_filter(today: date, hide_work: bool = False) -> list:
     """Корневые задачи на сегодня: открытые или закрытые сегодня."""
     start_utc, end_utc = _utc_day_bounds(today)
-    return [
+    filters = [
         *_today_task_base_filter(today),
         or_(
             Task.is_archived == False,
@@ -528,6 +569,10 @@ def _today_roots_filter(today: date) -> list:
             ),
         ),
     ]
+    # Выходной и Вера не просила показать работу — рабочие задачи не показываем.
+    if hide_work:
+        filters.append(not_work_task_filter())
+    return filters
 
 
 @dataclass
@@ -542,13 +587,13 @@ class DashboardDayStats:
 
 
 async def get_dashboard_day_stats(
-    db: AsyncSession, today: Optional[date] = None
+    db: AsyncSession, today: Optional[date] = None, hide_work: bool = False
 ) -> DashboardDayStats:
     """Единый проход: standalone + subtask + recurring + banner."""
     if today is None:
         today = date.today()
 
-    roots_today, roots_with_sub = await _load_today_roots_bundle(db, today)
+    roots_today, roots_with_sub = await _load_today_roots_bundle(db, today, hide_work)
 
     subs_by_parent: dict[int, list[Task]] = defaultdict(list)
     if roots_with_sub:
@@ -573,6 +618,12 @@ async def get_dashboard_day_stats(
     recurring_today = filter_recurring_templates(
         templates, today, exclude_completed_keys=completed_keys
     )
+
+    # Выходной: рабочие периодические задачи тоже не показываем и не считаем.
+    if hide_work:
+        work_ids = await work_category_ids(db)
+        recurring_all = [rt for rt in recurring_all if rt.category_id not in work_ids]
+        recurring_today = [rt for rt in recurring_today if rt.category_id not in work_ids]
 
     standalone_total = 0
     standalone_completed = 0
@@ -664,84 +715,44 @@ async def get_today_actionable_stats(db: AsyncSession) -> tuple[int, int]:
     return bundle.actionable_completed, bundle.actionable_total
 
 
-def today_stats_oob_html(completed: int, total: int) -> str:
-    """HTMX OOB: счётчик и полоска прогресса на дашборде."""
-    pct = min(int(completed / total * 100), 100) if total > 0 else 0
+def counter_values(bundle: "DashboardDayStats") -> tuple[int, int]:
+    """Два числа, которые Вера просила оставить: активно и закрыто сегодня.
+
+    Активно — незакрытые задачи дня плюс незакрытые подзадачи этих задач.
+    Закрыто сегодня — закрытые задачи и подзадачи за сегодня.
+    Проценты, полоски и «сколько обычно закрываю» убраны как неправдивые.
+    """
+    progress = bundle.subtask_progress or {}
+    sub_total = progress.get("subtask_total", 0) or 0
+    sub_done = progress.get("subtask_done", 0) or 0
+    active = max(bundle.total - bundle.completed, 0) + max(sub_total - sub_done, 0)
+    return active, bundle.actionable_completed
+
+
+def today_counters_oob_html(active: int, closed: int) -> str:
+    """HTMX OOB: те же два числа после изменения списка задач."""
     return (
-        f'<span id="today-stats-counter" hx-swap-oob="true" '
-        f'class="font-bold text-sm text-amber-600">{completed}/{total}</span>'
-        f'<div id="today-progress-bar" hx-swap-oob="true" '
-        f'class="bg-amber-600 h-full transition-all duration-500" '
-        f'style="width: {pct}%"></div>'
+        '<div id="today-counters" hx-swap-oob="true" '
+        'class="w-full lg:flex-1 lg:order-none flex flex-row gap-5 items-start">'
+        '<div class="flex flex-col gap-0.5 px-1">'
+        '<span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Активно</span>'
+        f'<span id="today-stats-counter" class="font-bold text-sm text-amber-600">{active}</span>'
+        '</div>'
+        '<div class="flex flex-col gap-0.5 px-1">'
+        '<span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Закрыто сегодня</span>'
+        f'<span id="today-closed-counter" class="font-bold text-sm text-emerald-500">{closed}</span>'
+        '</div>'
+        '</div>'
     )
-
-
-def today_subtask_stats_oob_html(sp: dict) -> str:
-    """HTMX OOB: полоска прогресса подзадач (сегментированная) + лейбл «Сделано X/Y»."""
-    if sp["parent_total"] == 0:
-        return (
-            f'<div id="today-subtask-stats-block" hx-swap-oob="true" class="hidden"></div>'
-        )
-
-    # Сегментированная полоска: каждый сегмент = одна подзадача
-    segments_html = ""
-    if sp["subtask_total"] > 0:
-        # Идём по родителям, рендерим их подзадачи как сегменты с микро-разделителями
-        # Но проще: непрерывная полоска + лейбл
-        # Для сегментов генерируем N элементов
-        segs = []
-        for i in range(sp["subtask_total"]):
-            is_done = i < sp["subtask_done"]
-            segs.append(
-                f'<div class="flex-1 h-full rounded-sm transition-all duration-500 '
-                f'{"bg-amber-600" if is_done else "bg-dark-600"}'
-                f'{" mx-px first:ml-0 last:mr-0" if sp["subtask_total"] > 1 else ""}'
-                f'"></div>'
-            )
-        segments_html = "".join(segs)
-
-    pct = min(int(sp["subtask_done"] / sp["subtask_total"] * 100), 100) if sp["subtask_total"] > 0 else 0
-
-    return (
-        f'<div id="today-subtask-stats-block" hx-swap-oob="true" class="w-full lg:flex-1 lg:max-w-sm">'
-        f'<div class="flex justify-between items-center mb-1 px-1">'
-        f'<span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Подзадачи</span>'
-        f'<span id="today-subtask-counter" class="font-bold text-sm text-amber-600">'
-        f'{sp["parent_done"]}/{sp["parent_total"]}'
-        f'</span>'
-        f'</div>'
-        f'<div id="today-subtask-bar" class="w-full bg-dark-800 rounded-full h-1.5 lg:h-1 border border-dark-600 overflow-hidden flex">'
-        f'{segments_html}'
-        f'</div>'
-        f'</div>'
-    )
-
-
-def ai_warning_oob_from(warning: Optional[str]) -> str:
-    """HTMX OOB: жёлтый баннер нагрузки на дашборде."""
-    if warning:
-        return (
-            f'<div id="ai-warning-block" hx-swap-oob="true" '
-            f'class="mb-6 p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">'
-            f'<p class="text-yellow-300">{warning}</p></div>'
-        )
-    return '<div id="ai-warning-block" hx-swap-oob="true" class="hidden"></div>'
-
-
-async def ai_warning_oob_html(db: AsyncSession) -> str:
-    """HTMX OOB: жёлтый баннер нагрузки на дашборде."""
-    bundle = await get_dashboard_day_stats(db)
-    return ai_warning_oob_from(bundle.ai_warning)
-
-
 async def append_today_stats_oob(content: str, db: AsyncSession) -> str:
+    """Дописать к ответу обновление счётчиков «активно / закрыто сегодня».
+
+    Баннер «сколько обычно закрываю» отсюда убран: Вера сказала, что он врёт.
+    Полоски прогресса тоже убраны — остались два числа.
+    """
     bundle = await get_dashboard_day_stats(db)
-    return (
-        content
-        + today_stats_oob_html(bundle.completed, bundle.total)
-        + today_subtask_stats_oob_html(bundle.subtask_progress)
-        + ai_warning_oob_from(bundle.ai_warning)
-    )
+    active, closed = counter_values(bundle)
+    return content + today_counters_oob_html(active, closed)
 
 
 def _completed_tasks_base_filter(start: date, end: date):
@@ -1140,8 +1151,6 @@ __all__ = [
     "get_today_progress",
     "get_today_actionable_stats",
     "get_subtask_today_progress",
-    "today_stats_oob_html",
-    "today_subtask_stats_oob_html",
     "append_today_stats_oob",
     "load_subtasks_map",
     "repair_archived_subtasks",

@@ -77,8 +77,9 @@ class TestPages:
         assert response.status_code == 200
         assert 'id="today-stats-counter"' in response.text
         assert 'hx-swap-oob="true"' in response.text
-        assert 'id="today-progress-bar"' in response.text
-        assert "0/1" in response.text
+        # Полоски прогресса убраны: остались два числа — активно и закрыто сегодня.
+        assert 'id="today-counters"' in response.text
+        assert 'id="today-closed-counter"' in response.text
 
     async def test_task_create_updates_stats_oob(self, client, db):
         """Создание задачи возвращает OOB для счётчика и прогресс-бара"""
@@ -88,7 +89,7 @@ class TestPages:
         )
         assert response.status_code == 200
         assert 'id="today-stats-counter"' in response.text
-        assert 'id="today-progress-bar"' in response.text
+        assert 'id="today-counters"' in response.text
         assert "Новая через HTMX" in response.text
 
     async def test_task_create_excludes_recurring_source_tasks(self, client, db):
