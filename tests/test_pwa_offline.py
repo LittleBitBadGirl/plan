@@ -40,6 +40,14 @@ async def test_offline_assets_are_public(anon_client):
 
 
 @pytest.mark.asyncio
+async def test_offline_docs_are_not_public(anon_client):
+    """Внутренняя документация не должна отдаваться по HTTP."""
+    for path in ("/pwa/ARCHITECTURE.md", "/pwa/README.md"):
+        resp = await anon_client.get(path)
+        assert resp.status_code == 404, path
+
+
+@pytest.mark.asyncio
 async def test_base_template_loads_offline_layer(client):
     """Страница подключает офлайн-скрипт, иначе очередь не заработает."""
     resp = await client.get("/")

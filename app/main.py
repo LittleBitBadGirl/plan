@@ -135,10 +135,21 @@ uploads_dir = Path(__file__).parent.parent / "uploads"
 uploads_dir.mkdir(exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 
-# Офлайн-слой PWA: /pwa/offline.js, /pwa/offline.html
+# Офлайн-слой PWA. Отдаём ровно нужные файлы, а не весь каталог: в pwa/ лежат
+# ещё ARCHITECTURE.md и README.md, и они не должны быть публичными.
 pwa_dir = Path(__file__).parent.parent / "pwa"
-if pwa_dir.exists():
-    app.mount("/pwa", StaticFiles(directory=str(pwa_dir)), name="pwa")
+
+
+def _pwa_file(name: str, media_type: str):
+    """Отдать файл офлайн-слоя без кэширования (иначе обновления не доедут)."""
+    path = pwa_dir / name
+    if not path.exists():
+        return JSONResponse(status_code=404, content={"detail": f"{name} не найден"})
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
 
 
 @app.get("/sw.js", include_in_schema=False)
@@ -146,20 +157,24 @@ async def service_worker():
     """Service worker отдаётся из корня, иначе его область — только /pwa/.
 
     Заголовок Service-Worker-Allowed нужен, чтобы воркер управлял всем сайтом,
-    а не только своим каталогом. Кэшировать файл нельзя: иначе обновления
-    офлайн-слоя не доедут до телефона.
+    а не только своим каталогом.
     """
-    sw_path = Path(__file__).parent.parent / "pwa" / "sw.js"
-    if not sw_path.exists():
-        return JSONResponse(status_code=404, content={"detail": "sw.js не найден"})
-    return FileResponse(
-        sw_path,
-        media_type="application/javascript",
-        headers={
-            "Service-Worker-Allowed": "/",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-        },
-    )
+    response = _pwa_file("sw.js", "application/javascript")
+    if isinstance(response, FileResponse):
+        response.headers["Service-Worker-Allowed"] = "/"
+    return response
+
+
+@app.get("/pwa/offline.js", include_in_schema=False)
+async def pwa_offline_script():
+    """Клиентский офлайн-слой: срез задач, очередь правок, слияние."""
+    return _pwa_file("offline.js", "application/javascript")
+
+
+@app.get("/pwa/offline.html", include_in_schema=False)
+async def pwa_offline_page():
+    """Заглушка «нет сети» со списком сохранённых страниц."""
+    return _pwa_file("offline.html", "text/html")
 
 
 # Роуты

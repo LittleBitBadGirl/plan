@@ -219,7 +219,8 @@ async def test_complete_twice_is_duplicate_not_error(client, db):
         client, [{"client_uuid": "twice-3", "kind": "complete", "task_id": task_id}]
     )
 
-    assert data["results"][0]["status"] in ("duplicate", "applied")
+    # Задача уже выполнена и в архиве: повтор не должен ничего менять.
+    assert data["results"][0]["status"] == "duplicate"
 
 
 @pytest.mark.asyncio
@@ -237,11 +238,14 @@ async def test_to_backlog_removes_date(client, db):
 
 @pytest.mark.asyncio
 async def test_unknown_action_rejected_without_500(client):
+    """Неизвестное действие на существующей задаче — отказ, а не падение."""
+    task_id = await _create(client, uuid="bad-0", title="Существующая")
     data = await _sync(
-        client, [{"client_uuid": "bad-1", "kind": "что_то_такое", "task_id": 1}]
+        client, [{"client_uuid": "bad-1", "kind": "что_то_такое", "task_id": task_id}]
     )
 
-    assert data["results"][0]["status"] in ("rejected", "error")
+    assert data["results"][0]["status"] == "rejected"
+    assert "неизвестное действие" in data["results"][0]["message"]
 
 
 @pytest.mark.asyncio
@@ -260,3 +264,155 @@ async def test_broken_action_does_not_block_the_rest(client, db):
     statuses = [result["status"] for result in data["results"]]
     assert statuses[0] == "rejected"
     assert statuses[1] == "applied"
+
+
+@pytest.mark.asyncio
+async def test_rejected_action_is_not_recorded_and_can_be_retried(client, db):
+    """Отказ не пишется в журнал: иначе повтор навсегда вернул бы «duplicate»."""
+    rejected = await _sync(
+        client,
+        [{"client_uuid": "retry-1", "kind": "create_task", "payload": {"title": "   "}}],
+    )
+    assert rejected["results"][0]["status"] == "rejected"
+
+    retried = await _sync(
+        client,
+        [{"client_uuid": "retry-1", "kind": "create_task", "payload": {"title": "Исправленная"}}],
+    )
+
+    assert retried["results"][0]["status"] == "applied"
+    await db.commit()
+    found = (await db.execute(select(Task).where(Task.title == "Исправленная"))).scalars().all()
+    assert len(found) == 1
+
+
+@pytest.mark.asyncio
+async def test_unarchive_restores_task_as_new(client, db):
+    """Возврат из архива: как /archive/{id}/restore — статус «новая», не «выполнена»."""
+    task_id = await _create(client, uuid="un-1", title="Вернуть из архива")
+    await _sync(client, [{"client_uuid": "un-2", "kind": "complete", "task_id": task_id}])
+
+    data = await _sync(client, [{"client_uuid": "un-3", "kind": "unarchive", "task_id": task_id}])
+
+    assert data["results"][0]["status"] == "applied"
+    db.expire_all()
+    task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one()
+    assert task.is_archived is False
+    assert task.status == "новая"
+    assert task.completed_at is None
+
+
+@pytest.mark.asyncio
+async def test_plan_counts_postpones(client, db):
+    """Перенос с телефона должен считать переносы так же, как кнопка в вебе."""
+    task_id = await _create(client, uuid="plan-1", title="Перенести")
+    past = date.today() - timedelta(days=3)
+    task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one()
+    task.due_date = past
+    await db.commit()
+
+    data = await _sync(
+        client,
+        [
+            {
+                "client_uuid": "plan-2",
+                "kind": "plan",
+                "task_id": task_id,
+                "payload": {"due_date": date.today().isoformat(), "from": past.isoformat()},
+            }
+        ],
+    )
+
+    assert data["results"][0]["status"] == "applied"
+    await db.commit()
+    db.expire_all()
+    task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one()
+    assert task.due_date == date.today()
+    assert task.status == "новая"
+    assert task.postpones == 3
+
+
+@pytest.mark.asyncio
+async def test_create_subtask_has_no_due_date(client, db):
+    """Подзадача без даты: иначе она всплывает в списке как корневая задача."""
+    parent_id = await _create(client, uuid="sub-1", title="Родитель")
+
+    data = await _sync(
+        client,
+        [
+            {
+                "client_uuid": "sub-2",
+                "kind": "create_subtask",
+                "task_id": parent_id,
+                "payload": {"title": "Подзадача"},
+            }
+        ],
+    )
+
+    assert data["results"][0]["status"] == "applied"
+    await db.commit()
+    subtask = (await db.execute(select(Task).where(Task.title == "Подзадача"))).scalar_one()
+    assert subtask.due_date is None
+    assert subtask.parent_task_id == parent_id
+
+
+@pytest.mark.asyncio
+async def test_complete_archived_task_is_rejected_not_conflict(client, db):
+    """Задача в архиве, но не выполненная: конфликта нет, выбор не нужен."""
+    task_id = await _create(client, uuid="arch-1", title="В архиве")
+    await _sync(client, [{"client_uuid": "arch-2", "kind": "archive", "task_id": task_id}])
+
+    data = await _sync(client, [{"client_uuid": "arch-3", "kind": "complete", "task_id": task_id}])
+
+    assert data["results"][0]["status"] == "rejected"
+    await db.commit()
+    assert (await db.execute(select(OfflineConflict))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_conflict_resolution_refused_when_field_changed_again(client, db):
+    """Пока конфликт ждал решения, поле изменили ещё раз — не затираем."""
+    task_id = await _create(client, uuid="stale-1", title="Спорная дата")
+    # На сервере дату перенесли на +3, а телефон об этом ещё не знал: он видел
+    # сегодняшнюю дату и прислал правку «сегодня → +10». Это и есть конфликт.
+    task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one()
+    task.due_date = date.today() + timedelta(days=3)
+    await db.commit()
+
+    local_due = date.today() + timedelta(days=10)
+    await _sync(
+        client,
+        [
+            {
+                "client_uuid": "stale-2",
+                "kind": "update_fields",
+                "task_id": task_id,
+                "payload": {
+                    "changes": [
+                        {
+                            "field": "due_date",
+                            "from": date.today().isoformat(),
+                            "to": local_due.isoformat(),
+                        }
+                    ]
+                },
+            }
+        ],
+    )
+    conflict_id = (await client.get("/api/offline/conflicts")).json()["conflicts"][0]["id"]
+
+    # В вебе дату поменяли ещё раз, пока конфликт лежал неразобранным.
+    newer_due = date.today() + timedelta(days=2)
+    task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one()
+    task.due_date = newer_due
+    await db.commit()
+
+    resolved = await client.post(
+        f"/api/offline/conflicts/{conflict_id}/resolve",
+        json={"resolution": "keep_local"},
+    )
+
+    assert resolved.json()["ok"] is False
+    db.expire_all()
+    task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one()
+    assert task.due_date == newer_due, "более свежее значение затирать нельзя"

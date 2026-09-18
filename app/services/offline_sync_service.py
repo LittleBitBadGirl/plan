@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.offline import OfflineAction, OfflineConflict
 from app.models.task import Task
+from app.models.category import Category
 
 # Поля задачи, которые разрешено менять из офлайн-очереди.
 EDITABLE_FIELDS = (
@@ -170,6 +171,22 @@ async def _remember(
     return record
 
 
+def _rejected(client_uuid: str, message: str, task_id: int | None = None) -> dict[str, Any]:
+    """Отказ без записи в журнал.
+
+    Журнал — это «действие уже применено». Отклонённое действие применено не
+    было, поэтому его нельзя туда писать: иначе после устранения причины (Вера
+    вошла заново, поправила данные) повторная досылка получила бы ответ
+    «duplicate» и правка исчезла бы молча.
+    """
+    return {
+        "client_uuid": client_uuid,
+        "status": "rejected",
+        "task_id": task_id,
+        "message": message,
+    }
+
+
 async def _add_conflict(
     db: AsyncSession,
     client_uuid: str,
@@ -287,17 +304,18 @@ async def _apply_one(
     if kind == "create_task":
         title = str(payload.get("title") or "").strip()
         if not title:
-            await _remember(db, client_uuid, kind, None, payload, "rejected", "пустой заголовок")
-            return {"client_uuid": client_uuid, "status": "rejected", "message": "пустое название"}
+            return _rejected(client_uuid, "пустое название")
 
         clean_title, due_time = _split_time(title)
         category = str(payload.get("category_id") or "").strip()
         new_task = Task(
             title=clean_title,
+            description=str(payload.get("description") or "").strip() or None,
             due_date=_parse_date(payload.get("due_date")) or date.today(),
             due_time=due_time,
             category_id=int(category) if category.isdigit() else None,
             deadline=_parse_date(payload.get("deadline")),
+            size=str(payload.get("size") or "").strip() or None,
             source="offline",
             status="новая",
             item_kind="task",
@@ -315,23 +333,23 @@ async def _apply_one(
     if kind == "create_subtask":
         parent = await _load_task(db, task_id)
         if not parent:
-            await _remember(db, client_uuid, kind, task_id, payload, "rejected", "нет родителя")
-            return {"client_uuid": client_uuid, "status": "rejected", "message": "задача не найдена"}
+            return _rejected(client_uuid, "задача не найдена", task_id)
         title = str(payload.get("title") or "").strip()
         if not title:
-            await _remember(db, client_uuid, kind, task_id, payload, "rejected", "пустой заголовок")
-            return {"client_uuid": client_uuid, "status": "rejected", "message": "пустое название"}
+            return _rejected(client_uuid, "пустое название", task_id)
         subtask = Task(
             title=title,
             parent_task_id=parent.id,
-            due_date=_parse_date(payload.get("deadline")) or parent.due_date,
             deadline=_parse_date(payload.get("deadline")),
             source="offline",
             status="новая",
             item_kind="task",
         )
+        # due_date подзадаче не ставим: в вебе подзадача создаётся без даты, иначе
+        # она всплывает отдельной строкой в списке задач.
         db.add(subtask)
         await db.flush()
+        await _sync_parent(db, parent.id)
         await _remember(db, client_uuid, kind, subtask.id, payload, "applied")
         return {
             "client_uuid": client_uuid,
@@ -341,10 +359,13 @@ async def _apply_one(
         }
 
     if not task:
-        await _remember(db, client_uuid, kind, task_id, payload, "rejected", "задача не найдена")
-        return {"client_uuid": client_uuid, "status": "rejected", "message": "задача не найдена"}
+        return _rejected(client_uuid, "задача не найдена", task_id)
 
     if kind == "update_fields":
+        changes = payload.get("changes") or []
+        bad = [str(change.get("field")) for change in changes if change.get("field") not in EDITABLE_FIELDS]
+        if bad:
+            return _rejected(client_uuid, f"эти поля офлайн не правятся: {', '.join(bad)}", task.id)
         result = await _apply_update_fields(db, client_uuid, task, payload)
         await _remember(
             db,
@@ -361,7 +382,6 @@ async def _apply_one(
 
     if kind == "complete":
         if task.status == "выполнена" and task.is_archived:
-            await _remember(db, client_uuid, kind, task.id, payload, "duplicate", "уже выполнена")
             return {
                 "client_uuid": client_uuid,
                 "status": "duplicate",
@@ -369,25 +389,14 @@ async def _apply_one(
                 "task": _task_state(task),
             }
         if task.is_archived:
-            await _add_conflict(
-                db, client_uuid, task, "is_archived", base_value="0",
-                server_value="1", local_value="0",
+            # Задача уже в архиве, но не как выполненная (её отправили в архив
+            # или удалили в вебе). Конфликта здесь нет: у «отметить выполненной»
+            # и «вернуть из архива» разный смысл, выбирать нечего.
+            return _rejected(
+                client_uuid,
+                "задача уже в архиве — открой архив, если её надо вернуть",
+                task.id,
             )
-            await _remember(db, client_uuid, kind, task.id, payload, "conflict", "задача в архиве")
-            return {
-                "client_uuid": client_uuid,
-                "status": "conflict",
-                "task_id": task.id,
-                "conflicts": [
-                    {
-                        "field": "is_archived",
-                        "label": FIELD_LABELS["is_archived"],
-                        "server_value": "1",
-                        "local_value": "0",
-                    }
-                ],
-                "task": _task_state(task),
-            }
 
         if task.parent_task_id:
             from app.web.routes.tasks import _complete_subtask_impl
@@ -417,20 +426,6 @@ async def _apply_one(
             "task": _task_state(task),
         }
 
-    if kind == "uncomplete":
-        task.status = "новая"
-        task.completed_at = None
-        task.is_archived = False
-        if task.parent_task_id:
-            await _sync_parent(db, task.parent_task_id)
-        await _remember(db, client_uuid, kind, task.id, payload, "applied")
-        return {
-            "client_uuid": client_uuid,
-            "status": "applied",
-            "task_id": task.id,
-            "task": _task_state(task),
-        }
-
     if kind == "archive":
         task.is_archived = True
         task.item_kind = "task"
@@ -443,7 +438,55 @@ async def _apply_one(
         }
 
     if kind == "unarchive":
+        # Как веб-роут /archive/{id}/restore: задача возвращается новой, а не
+        # «выполненной».
         task.is_archived = False
+        task.status = "новая"
+        task.completed_at = None
+        await _remember(db, client_uuid, kind, task.id, payload, "applied")
+        return {
+            "client_uuid": client_uuid,
+            "status": "applied",
+            "task_id": task.id,
+            "task": _task_state(task),
+        }
+
+    if kind == "plan":
+        # Перенос на дату: семантика веб-роута /tasks/{id}/plan. Без
+        # apply_manual_plan с телефона терялся счётчик переносов.
+        from app.services.postpones_service import apply_manual_plan
+
+        new_due = _parse_date(payload.get("due_date")) or date.today()
+        base = payload.get("from")
+        if base is not None and _norm(task.due_date) != _norm(base):
+            await _add_conflict(
+                db,
+                client_uuid,
+                task,
+                "due_date",
+                base_value=base,
+                server_value=task.due_date,
+                local_value=new_due,
+            )
+            await _remember(db, client_uuid, kind, task.id, payload, "conflict", "дата менялась")
+            return {
+                "client_uuid": client_uuid,
+                "status": "conflict",
+                "task_id": task.id,
+                "conflicts": [
+                    {
+                        "field": "due_date",
+                        "label": FIELD_LABELS["due_date"],
+                        "server_value": _norm(task.due_date),
+                        "local_value": new_due.isoformat(),
+                    }
+                ],
+                "task": _task_state(task),
+            }
+
+        apply_manual_plan(task, task.due_date, new_due)
+        task.due_date = new_due
+        task.status = "новая"
         await _remember(db, client_uuid, kind, task.id, payload, "applied")
         return {
             "client_uuid": client_uuid,
@@ -467,17 +510,16 @@ async def _apply_one(
     if kind == "delete_subtask":
         # В вебе удаление подзадачи — физическое (db.delete), повторяем как есть.
         if task.parent_task_id is None:
-            await _remember(db, client_uuid, kind, task.id, payload, "rejected", "это не подзадача")
-            return {"client_uuid": client_uuid, "status": "rejected", "message": "это не подзадача"}
+            return _rejected(client_uuid, "это не подзадача", task.id)
         parent_id = task.parent_task_id
         await db.delete(task)
         await db.flush()
-        await _sync_parent(db, parent_id)
+        # Родителя не трогаем: веб-роут DELETE /tasks/{id}/subtask его тоже не
+        # синхронизирует, а расходиться с вебом поведение не должно.
         await _remember(db, client_uuid, kind, parent_id, payload, "applied")
         return {"client_uuid": client_uuid, "status": "applied", "task_id": parent_id}
 
-    await _remember(db, client_uuid, kind, task_id, payload, "rejected", f"неизвестное действие: {kind}")
-    return {"client_uuid": client_uuid, "status": "rejected", "message": f"неизвестное действие: {kind}"}
+    return _rejected(client_uuid, f"неизвестное действие: {kind}", task_id)
 
 
 async def apply_actions(db: AsyncSession, actions: Iterable[dict]) -> dict[str, Any]:
@@ -522,7 +564,8 @@ async def tasks_state(db: AsyncSession, task_ids: list[int] | None = None) -> li
     """Состояние задач для клиента.
 
     Без ``task_ids`` — полный срез того, что реально правится с телефона:
-    активные задачи плюс архив за последние 30 дней.
+    все неархивные задачи. Архивные в срез не входят: они не правятся офлайн,
+    а восстановление из архива в правке не нуждается.
     """
     query = select(Task)
     if task_ids:
@@ -549,20 +592,46 @@ async def list_conflicts(db: AsyncSession) -> list[dict]:
         .order_by(OfflineConflict.created_at.desc())
     )
     conflicts = result.scalars().all()
-    return [
-        {
-            "id": c.id,
-            "task_id": c.task_id,
-            "task_title": c.task_title,
-            "field": c.field,
-            "label": FIELD_LABELS.get(c.field, c.field),
-            "base_value": c.base_value,
-            "server_value": c.server_value,
-            "local_value": c.local_value,
-            "created_at": c.created_at.isoformat() if c.created_at else "",
-        }
-        for c in conflicts
-    ]
+    listed = []
+    for c in conflicts:
+        listed.append(
+            {
+                "id": c.id,
+                "task_id": c.task_id,
+                "task_title": c.task_title,
+                "field": c.field,
+                "label": FIELD_LABELS.get(c.field, c.field),
+                "base_value": c.base_value,
+                "server_value": c.server_value,
+                "local_value": c.local_value,
+                # Человекочитаемый вид: номер категории Вере ничего не говорит.
+                "server_display": await _display_value(db, c.field, c.server_value),
+                "local_display": await _display_value(db, c.field, c.local_value),
+                "created_at": c.created_at.isoformat() if c.created_at else "",
+            }
+        )
+    return listed
+
+
+def _human_date(value: Any) -> str:
+    match = re.match(r"^(\d{4})-(\d{2})-(\d{2})", str(value or ""))
+    return f"{match.group(3)}.{match.group(2)}.{match.group(1)}" if match else str(value or "")
+
+
+async def _display_value(db: AsyncSession, field: str, value: Any) -> str:
+    """Значение поля в том виде, в каком его понимает Вера."""
+    text = _norm(value)
+    if not text:
+        return "(пусто)"
+    if field == "category_id":
+        if not text.isdigit():
+            return "(без категории)"
+        result = await db.execute(select(Category).where(Category.id == int(text)))
+        category = result.scalar_one_or_none()
+        return category.name if category else f"категория {text}"
+    if field in DATE_FIELDS:
+        return _human_date(text)
+    return text
 
 
 async def resolve_conflict(db: AsyncSession, conflict_id: int, resolution: str) -> dict[str, Any]:
@@ -584,14 +653,28 @@ async def resolve_conflict(db: AsyncSession, conflict_id: int, resolution: str) 
         if not task:
             return {"ok": False, "message": "задача не найдена"}
         field = conflict.field
-        if field in EDITABLE_FIELDS:
-            if field in DATE_FIELDS:
-                setattr(task, field, _parse_date(conflict.local_value))
-            elif field == "category_id":
-                text = str(conflict.local_value or "").strip()
-                setattr(task, field, int(text) if text.isdigit() else None)
-            else:
-                setattr(task, field, conflict.local_value or "")
+        if field not in EDITABLE_FIELDS:
+            return {"ok": False, "message": f"поле «{field}» офлайн не правится"}
+
+        # Пока конфликт ждал решения, поле могли изменить в планере ещё раз.
+        # Затирать в этом случае нельзя — показываем новое значение и просим
+        # выбрать заново.
+        if _norm(getattr(task, field, None)) != _norm(conflict.server_value):
+            conflict.server_value = _norm(getattr(task, field, None))
+            await db.commit()
+            return {
+                "ok": False,
+                "message": "поле снова изменилось в планере — посмотри и выбери заново",
+                "conflicts_total": await conflicts_count(db),
+            }
+
+        if field in DATE_FIELDS:
+            setattr(task, field, _parse_date(conflict.local_value))
+        elif field == "category_id":
+            text = str(conflict.local_value or "").strip()
+            setattr(task, field, int(text) if text.isdigit() else None)
+        else:
+            setattr(task, field, conflict.local_value or "")
 
     conflict.resolution = resolution
     conflict.resolved_at = datetime.now(timezone.utc)

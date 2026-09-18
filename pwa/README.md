@@ -17,8 +17,11 @@
 | Файл | Куда отдаётся | Назначение |
 |---|---|---|
 | `sw.js` | `/sw.js` (роут в `app/main.py`, заголовок `Service-Worker-Allowed: /`) | Кэш и офлайн-отдача страниц, статики, API |
-| `offline.js` | `/pwa/offline.js` (монтирование каталога `pwa/` в `app/main.py`) | Срез задач, очередь правок, слияние, плашка, разбор конфликтов |
-| `offline.html` | `/pwa/offline.html` | Заглушка «нет сети» со списком сохранённых страниц |
+| `offline.js` | `/pwa/offline.js` (роут в `app/main.py`) | Срез задач, очередь правок, слияние, плашка, разбор конфликтов |
+| `offline.html` | `/pwa/offline.html` (роут в `app/main.py`) | Заглушка «нет сети» со списком сохранённых страниц |
+
+Этот `README.md` и `ARCHITECTURE.md` по HTTP не отдаются — публичны только три
+файла из таблицы.
 
 Подключение к страницам — одна строка в `app/web/templates/base.html`:
 
@@ -54,7 +57,7 @@ cd <корень plan>
 ./.venv312/bin/python -m pytest tests/test_pwa_offline.py tests/test_offline_sync.py -q
 ```
 
-Браузерный сценарий (эмуляция офлайна) — раздел 8 в `ARCHITECTURE.md`.
+Браузерный сценарий (эмуляция офлайна) — раздел 9 в `ARCHITECTURE.md`.
 
 ## Изменение версии
 

@@ -37,17 +37,27 @@
     const TASK_ROUTES = [
         { re: /^\/tasks\/create$/, kind: 'create_task' },
         { re: /^\/backlog\/create$/, kind: 'create_task' },
+        // Формы страницы /tasks/new и модалки редактирования — обычный POST
+        // (method="post" action="..."), без htmx. Офлайн их тоже надо уметь.
+        { re: /^\/tasks\/web\/create$/, kind: 'create_task' },
         { re: /^\/tasks\/web\/(\d+)\/edit$/, kind: 'update_fields', idGroup: 1, diff: true },
         { re: /^\/tasks\/(\d+)\/complete$/, kind: 'complete', idGroup: 1 },
         { re: /^\/tasks\/(\d+)\/complete-subtask$/, kind: 'complete', idGroup: 1 },
-        { re: /^\/backlog\/(\d+)\/plan-today$/, kind: 'update_fields', idGroup: 1, dateField: 'due_date', dateToToday: true },
-        { re: /^\/tasks\/(\d+)\/plan$/, kind: 'update_fields', idGroup: 1, dateField: 'due_date' },
+        { re: /^\/backlog\/(\d+)\/plan-today$/, kind: 'plan', idGroup: 1, dateToToday: true },
+        { re: /^\/tasks\/(\d+)\/plan$/, kind: 'plan', idGroup: 1, dateField: 'due_date' },
         { re: /^\/tasks\/(\d+)\/deadline$/, kind: 'update_fields', idGroup: 1, dateField: 'deadline' },
         { re: /^\/tasks\/(\d+)\/backlog$/, kind: 'to_backlog', idGroup: 1 },
         { re: /^\/tasks\/(\d+)\/subtasks$/, kind: 'create_subtask', idGroup: 1 },
         { re: /^\/archive\/(\d+)\/restore$/, kind: 'unarchive', idGroup: 1 },
         { re: /^\/tasks\/(\d+)\/subtask$/, kind: 'delete_subtask', idGroup: 1 },
         { re: /^\/tasks\/(\d+)$/, kind: 'archive', idGroup: 1 },
+    ];
+
+    // Действия, которые безопасно повторить при обрыве связи: применение того же
+    // действия дважды не портит данные. Создание сюда не входит.
+    const RETRY_SAFE_KINDS = [
+        'update_fields', 'plan', 'complete', 'archive', 'unarchive',
+        'to_backlog', 'delete_subtask',
     ];
 
     let syncing = false;
@@ -252,6 +262,31 @@
         return values;
     }
 
+    /** Адрес, по которому форма/кнопка отправит данные: htmx или обычный POST. */
+    function formUrl(form) {
+        if (!form || !form.getAttribute) return null;
+        const hx = form.getAttribute('hx-post') || form.getAttribute('hx-delete');
+        if (hx) return hx;
+        const action = form.getAttribute('action');
+        const method = String(form.getAttribute('method') || 'get').toLowerCase();
+        if (!action || method !== 'post') return null;
+        try {
+            const parsed = new URL(action, window.location.origin);
+            if (parsed.origin !== window.location.origin) return null;
+            return parsed.pathname + parsed.search;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function actionUrl(element) {
+        if (!element || !element.getAttribute) return null;
+        const hx = element.getAttribute('hx-post') || element.getAttribute('hx-delete');
+        if (hx) return hx;
+        const form = element.tagName === 'FORM' ? element : (element.closest ? element.closest('form') : null);
+        return form ? formUrl(form) : null;
+    }
+
 
     /**
      * Превратить отправку формы/кнопки в действие очереди.
@@ -261,36 +296,34 @@
     function describeAction(element) {
         if (!element || !element.getAttribute) return null;
 
-        let url = element.getAttribute('hx-post');
-        let method = 'POST';
-        if (!url) {
-            url = element.getAttribute('hx-delete');
-            method = 'DELETE';
-        }
-        if (!url) {
-            const form = element.closest ? element.closest('form[hx-post], form[hx-delete]') : null;
-            if (form) return describeAction(form);
-            return null;
-        }
+        let url = element.getAttribute('hx-post') || element.getAttribute('hx-delete');
+        let form = element.tagName === 'FORM' ? element : (element.closest ? element.closest('form') : null);
+        // Обычные формы (method="post" action="...") офлайн обрабатываются так же,
+        // как htmx-формы: форма редактирования задачи и /tasks/new именно такие.
+        if (!url && form) url = formUrl(form);
+        if (!url) return null;
 
         const found = routeFor(url);
         if (!found) return null;
 
         const { route, taskId } = found;
-        const form = element.tagName === 'FORM' ? element : element.closest('form');
 
         if (route.kind === 'create_task') {
             const values = formValues(form);
             const title = String(values.title || '').trim();
             if (!title) return null;
+            const payload = {
+                title,
+                category_id: values.category_id || '',
+                due_date: values.due_date ? toIso(values.due_date) : todayIso(),
+            };
+            if (values.deadline) payload.deadline = toIso(values.deadline);
+            if (values.size) payload.size = values.size;
+            if (values.description) payload.description = values.description;
             return {
                 kind: 'create_task',
                 taskId: null,
-                payload: {
-                    title,
-                    category_id: values.category_id || '',
-                    due_date: values.due_date ? toIso(values.due_date) : todayIso(),
-                },
+                payload,
                 title,
                 url,
             };
@@ -333,16 +366,16 @@
             const values = formValues(form);
             const raw = route.dateToToday ? todayIso() : toIso(values[route.dateField] || '');
             if (!raw) return null;
+            const from = toIso(baseline[route.dateField] || '');
+            // Перенос — отдельный вид действия: сервер должен применить ту же
+            // логику счётчика переносов, что и кнопка в вебе.
+            if (route.kind === 'plan') {
+                return { kind: 'plan', taskId, payload: { due_date: raw, from }, title: humanDate(raw), url };
+            }
             return {
                 kind: 'update_fields',
                 taskId,
-                payload: {
-                    changes: [{
-                        field: route.dateField,
-                        from: toIso(baseline[route.dateField] || ''),
-                        to: raw,
-                    }],
-                },
+                payload: { changes: [{ field: route.dateField, from, to: raw }] },
                 title: humanDate(raw),
                 url,
             };
@@ -386,9 +419,14 @@
             badge.textContent = 'в очереди';
             card.appendChild(badge);
         }
-        if (action.kind === 'update_fields') {
+        if (action.kind === 'update_fields' || action.kind === 'plan') {
             const patch = { id: action.taskId };
-            action.payload.changes.forEach((change) => { patch[change.field] = change.to; });
+            if (action.kind === 'plan') {
+                patch.due_date = action.payload.due_date;
+                patch.status = 'новая';
+            } else {
+                action.payload.changes.forEach((change) => { patch[change.field] = change.to; });
+            }
             await saveState([Object.assign({}, stateCache[action.taskId] || { id: action.taskId }, patch)]);
         } else if (action.kind === 'complete') {
             await saveState([Object.assign({}, stateCache[action.taskId] || { id: action.taskId }, {
@@ -481,7 +519,9 @@
         } else if (syncing) {
             message = `Отправляю: ${pending}…`;
         } else if (failed > 0) {
-            message = `Не отправлено: ${failed}. Нажмите «Повторить».`;
+            const broken = items.find((item) => item.failed && item.last_error);
+            const reason = broken ? ` Причина: ${String(broken.last_error).slice(0, 140)}.` : '';
+            message = `Не отправлено: ${failed}.${reason}`;
         } else if (pending > 0) {
             message = `В очереди: ${pending}.`;
         } else if (conflictsPending > 0) {
@@ -514,7 +554,8 @@
     // ---------------------------------------------------- черновик в списке задач
 
     function renderDraftCard(title) {
-        const list = document.getElementById('tasks-list');
+        // Список задач есть на дашборде и в бэклоге, id у них разные.
+        const list = document.getElementById('tasks-list') || document.getElementById('backlog-list');
         if (!list) return;
 
         const row = document.createElement('div');
@@ -590,12 +631,14 @@
             caption.textContent = `${conflict.task_title || 'задача'} — ${conflict.label}`;
             row.appendChild(caption);
 
-            [[conflict.server_value, 'keep_server', 'Оставить в планере'],
-             [conflict.local_value, 'keep_local', 'Поставить моё']].forEach(([value, resolution, label]) => {
+            const options = [
+                [conflict.server_display || conflict.server_value, 'keep_server', 'Оставить в планере'],
+                [conflict.local_display || conflict.local_value, 'keep_local', 'Поставить моё'],
+            ];
+            options.forEach(([value, resolution, label]) => {
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = 'offline-modal__choice';
-                button.innerHTML = '';
                 const what = document.createElement('span');
                 what.className = 'offline-modal__value';
                 what.textContent = value === '' ? '(пусто)' : value;
@@ -605,13 +648,25 @@
                 button.append(what, how);
                 button.addEventListener('click', async () => {
                     button.disabled = true;
-                    await fetch(`/api/offline/conflicts/${conflict.id}/resolve`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'same-origin',
-                        body: JSON.stringify({ resolution }),
-                    }).catch(() => {});
-                    row.remove();
+                    let answer = {};
+                    try {
+                        const resp = await fetch(`/api/offline/conflicts/${conflict.id}/resolve`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'same-origin',
+                            body: JSON.stringify({ resolution }),
+                        });
+                        answer = await resp.json();
+                    } catch (error) {
+                        answer = {};
+                    }
+                    if (answer && answer.ok === false) {
+                        // Поле изменили ещё раз: решение не применили, чтобы не
+                        // затереть более свежее значение.
+                        showNotice(answer.message || 'Не удалось применить выбор.');
+                    } else {
+                        row.remove();
+                    }
                     await refreshConflicts();
                     await loadState();
                 });
@@ -744,11 +799,6 @@
         bar.querySelector('.offline-bar__text').textContent = text;
     }
 
-    function htmxUrl(element) {
-        if (!element || !element.getAttribute) return null;
-        return element.getAttribute('hx-post') || element.getAttribute('hx-delete');
-    }
-
     /** Увести действие в очередь. false — если офлайн его выполнить нельзя. */
     async function handleOfflineAction(element) {
         const action = describeAction(element);
@@ -764,7 +814,9 @@
         const form = event.target;
         if (!(form instanceof HTMLFormElement)) return;
         if (!isOffline()) return;
-        if (!htmxUrl(form)) return;
+        // Учитываются и htmx-формы, и обычные POST-формы: редактирование задачи,
+        // /tasks/new, категории, трекеры.
+        if (!actionUrl(form)) return;
 
         // Событие гасится только у форм, которые умеем обработать; для остальных
         // оно тоже гасится, но с явным сообщением — потерять действие нельзя.
@@ -777,17 +829,26 @@
     document.body.addEventListener('htmx:beforeRequest', (event) => {
         if (!isOffline()) return;
         const elt = event.detail && event.detail.elt;
-        if (!elt || !htmxUrl(elt)) return;
+        if (!elt || !actionUrl(elt)) return;
         event.preventDefault();
         handleOfflineAction(elt).catch(() => {});
     });
 
-    // Запрос ушёл, но не дошёл: сеть пропала между нажатием и отправкой.
+    // Запрос ушёл, но не дошёл: сеть пропала между нажатием и отправкой. Флаг
+    // navigator.onLine здесь врёт (Wi-Fi без интернета бывает «онлайн»), поэтому
+    // ориентируемся на сам факт сетевой ошибки. Повторяем только то, что
+    // безопасно применить дважды; создание вслепую не повторяем — запрос мог
+    // дойти до сервера.
     document.body.addEventListener('htmx:sendError', (event) => {
-        if (!isOffline()) return;
         const elt = event.detail && event.detail.elt;
-        if (!elt || !htmxUrl(elt)) return;
-        handleOfflineAction(elt).catch(() => {});
+        if (!elt || !actionUrl(elt)) return;
+        const action = describeAction(elt);
+        if (!action) return;
+        if (isOffline() || RETRY_SAFE_KINDS.includes(action.kind)) {
+            enqueue(action).catch(() => {});
+            return;
+        }
+        showNotice('Связь пропала. Проверь, не создалась ли задача, и добавь заново.');
     });
 
     // ------------------------------------------------------------------ события

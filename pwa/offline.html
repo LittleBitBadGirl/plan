@@ -86,8 +86,10 @@
     async function renderQueue() {
         const box = document.getElementById('queue');
         try {
+            // Без номера версии: открываем ту, что уже есть. Фиксированная
+            // версия ниже текущей даёт VersionError и ломает весь блок.
             const db = await new Promise((resolve, reject) => {
-                const request = indexedDB.open('planner-offline', 1);
+                const request = indexedDB.open('planner-offline');
                 request.onsuccess = () => resolve(request.result);
                 request.onerror = () => reject(request.error);
             });
@@ -97,7 +99,8 @@
                 request.onerror = () => reject(request.error);
             });
             db.close();
-            if (items.length) box.textContent = 'Ждут отправки: ' + items.length;
+            const pending = items.filter((item) => !item.failed).length;
+            if (pending) box.textContent = 'Ждут отправки: ' + pending;
         } catch (error) {
             // IndexedDB недоступен — ничего не показываем.
         }
@@ -118,6 +121,7 @@
                 const url = new URL(request.url);
                 if (url.origin !== window.location.origin) continue;
                 if (url.pathname.startsWith('/web/static') || url.pathname.startsWith('/pwa')) continue;
+                if (url.pathname.startsWith('/api/')) continue;
                 if (seen.has(url.pathname)) continue;
                 seen.add(url.pathname);
                 items.push(url.pathname);
