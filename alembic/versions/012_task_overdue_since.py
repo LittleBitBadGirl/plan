@@ -61,6 +61,7 @@ def upgrade() -> None:
                SET overdue_since = date(due_date, '-' || postpones || ' days')
              WHERE overdue_since IS NULL
                AND due_date IS NOT NULL
+               AND due_date <= date('now')
                AND COALESCE(postpones, 0) > 0
                AND is_archived = 0
                AND status IN ('новая', 'в_работе')

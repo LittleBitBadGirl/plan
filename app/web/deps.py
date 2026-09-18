@@ -79,6 +79,18 @@ async def work_category_ids(db: AsyncSession) -> set[int]:
     return {row[0] for row in result.all()}
 
 
+def weekend_hide_work(request=None) -> bool:
+    """Прячем ли рабочие задачи прямо сейчас: выходной и нет cookie «показать».
+
+    Нужно и при отрисовке страницы, и при живых обновлениях (OOB-счётчики,
+    перерисовка списка после действия) — иначе в субботу список и числа
+    разъезжаются с тем, что Вера видит на экране.
+    """
+    if request is None:
+        return False
+    return is_weekend(date.today()) and request.cookies.get("show_work") != "1"
+
+
 def count_workdays_between(start: date, end: date) -> int:
     if start > end:
         return 0
@@ -744,13 +756,16 @@ def today_counters_oob_html(active: int, closed: int) -> str:
         '</div>'
         '</div>'
     )
-async def append_today_stats_oob(content: str, db: AsyncSession) -> str:
+async def append_today_stats_oob(content: str, db: AsyncSession, request=None) -> str:
     """Дописать к ответу обновление счётчиков «активно / закрыто сегодня».
 
     Баннер «сколько обычно закрываю» отсюда убран: Вера сказала, что он врёт.
     Полоски прогресса тоже убраны — остались два числа.
+
+    ``request`` нужен, чтобы на выходных числа считались в том же составе, что
+    и список на экране (без рабочих задач).
     """
-    bundle = await get_dashboard_day_stats(db)
+    bundle = await get_dashboard_day_stats(db, hide_work=weekend_hide_work(request))
     active, closed = counter_values(bundle)
     return content + today_counters_oob_html(active, closed)
 
@@ -1106,17 +1121,22 @@ async def get_tasks_today(db: AsyncSession, request: Request):
     """Вспомогательная функция для получения списка задач на сегодня и их отрисовки"""
     today = date.today()
 
+    filters = [
+        Task.due_date == today,
+        Task.is_archived == False,
+        Task.status.in_(["новая", "в_работе"]),
+        Task.parent_task_id == None,
+        Task.source.is_distinct_from("recurring"),
+        Task.item_kind == "task",
+    ]
+    if weekend_hide_work(request):
+        filters.append(not_work_task_filter())
+
     result = await db.execute(
         select(Task)
         .options(selectinload(Task.category).selectinload(Category.parent))
-        .where(
-            Task.due_date == today,
-            Task.is_archived == False,
-            Task.status.in_(["новая", "в_работе"]),
-            Task.parent_task_id == None,
-            Task.source.is_distinct_from("recurring"),
-            Task.item_kind == "task",
-        ).order_by(*dashboard_task_order_by())
+        .where(*filters)
+        .order_by(*dashboard_task_order_by())
     )
     tasks = result.scalars().all()
 
@@ -1137,7 +1157,7 @@ async def get_tasks_today(db: AsyncSession, request: Request):
         "subtasks_map": subtasks_map,
     })
 
-    return await append_today_stats_oob(content, db)
+    return await append_today_stats_oob(content, db, request)
 
 __all__ = [
     "templates",

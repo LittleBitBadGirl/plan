@@ -80,6 +80,40 @@ async def test_subcategory_of_work_parent_is_work(db):
     assert "Рабочая" not in titles
 
 
+@pytest.mark.asyncio
+async def test_weekend_filter_holds_after_actions(client, db, monkeypatch):
+    """Главная проверка: фильтр работает и в живых обновлениях, а не только при отрисовке.
+
+    Критик нашёл, что после любого действия (счётчики по /dashboard/today-stats,
+    перерисовка списка после создания задачи) числа и список считались БЕЗ фильтра,
+    и в субботу рабочие задачи возвращались на экран.
+    """
+    import re
+
+    from app.web.routes import dashboard as dashboard_module
+    import app.web.deps as deps_module
+
+    await _make_tasks(db, due_date=date(2026, 9, 19))
+    monkeypatch.setattr(dashboard_module, "date", _Saturday)
+    monkeypatch.setattr(deps_module, "date", _Saturday)
+    # иначе создаваемая задача ляжет на настоящую пятницу и не попадёт в субботний список
+    import app.web.routes.tasks as tasks_module
+
+    monkeypatch.setattr(tasks_module, "date", _Saturday)
+
+    stats = await client.get("/dashboard/today-stats")
+    assert stats.status_code == 200
+    active = re.search(r'id="today-stats-counter"[^>]*>(\d+)<', stats.text)
+    # на экране две задачи: личная и без категории (рабочая скрыта) — в числах те же две
+    assert active is not None and int(active.group(1)) == 2
+
+    created = await client.post("/tasks/create", data={"title": "Задача в субботу", "category_id": ""})
+    assert created.status_code == 200
+    assert "Рабочая" not in created.text
+    assert "Личная" in created.text
+    assert "Задача в субботу" in created.text
+
+
 class _Saturday(date):
     @classmethod
     def today(cls):

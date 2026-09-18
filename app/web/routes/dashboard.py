@@ -197,7 +197,7 @@ async def dashboard(request: Request):
 
 
 @router.get("/dashboard/today-stats", response_class=HTMLResponse)
-async def dashboard_today_stats():
-    """HTMX OOB-фрагмент: счётчик и полоска прогресса дня."""
+async def dashboard_today_stats(request: Request):
+    """HTMX OOB-фрагмент: счётчики «активно / закрыто сегодня»."""
     async with async_session() as db:
-        return HTMLResponse(content=await append_today_stats_oob("", db))
+        return HTMLResponse(content=await append_today_stats_oob("", db, request))

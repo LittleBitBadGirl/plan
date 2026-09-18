@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import date, time
@@ -191,6 +191,7 @@ async def toggle_recurring(
 
 @router.post("/{recurring_id}/complete")
 async def complete_recurring(
+    request: Request,
     recurring_id: int,
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -231,7 +232,7 @@ async def complete_recurring(
 
     hide_card = f'<div id="recurring-{recurring_id}" hx-swap-oob="true"></div>'
     return HTMLResponse(
-        content=await append_today_stats_oob(hide_card, db)
+        content=await append_today_stats_oob(hide_card, db, request)
     )
 
 

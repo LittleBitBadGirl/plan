@@ -378,10 +378,10 @@ async def task_create_htmx(
 
 
 
-async def _hide_root_task_oob(db: AsyncSession, task_id: int) -> str:
+async def _hide_root_task_oob(db: AsyncSession, task_id: int, request=None) -> str:
     """HTMX: скрыть карточку root-задачи + обновить stats OOB."""
     hide = f'<div id="task-{task_id}" hx-swap-oob="true"></div>'
-    return await append_today_stats_oob(hide, db)
+    return await append_today_stats_oob(hide, db, request)
 
 
 async def _sync_parent(db: AsyncSession, parent_id: int):
@@ -431,7 +431,7 @@ async def complete_subtask_htmx(request: Request, task_id: int):
             "parent_id": subtask.parent_task_id,
             "today": date.today(),
         })
-        return HTMLResponse(content=await append_today_stats_oob(row, db))
+        return HTMLResponse(content=await append_today_stats_oob(row, db, request))
 
 
 @router.post("/tasks/{task_id}/backlog", response_class=HTMLResponse)
@@ -465,7 +465,7 @@ async def complete_task(request: Request, task_id: int):
                     "parent_id": task.parent_task_id,
                     "today": date.today(),
                 })
-                return HTMLResponse(content=await append_today_stats_oob(row, db))
+                return HTMLResponse(content=await append_today_stats_oob(row, db, request))
 
             is_backlog = task.due_date is None
             task.status = "выполнена"
@@ -484,12 +484,13 @@ async def complete_task(request: Request, task_id: int):
                     child.status = "выполнена"
                     child.completed_at = datetime.utcnow()
                     child.is_archived = False
+                    child.overdue_since = None  # закрытые дети тоже больше не «тянутся»
             await db.commit()
 
             if is_backlog:
                 return HTMLResponse(content="✅ выполнено")
 
-            return HTMLResponse(content=await _hide_root_task_oob(db, task.id))
+            return HTMLResponse(content=await _hide_root_task_oob(db, task.id, request))
     raise HTTPException(status_code=404, detail="Задача не найдена")
 
 
@@ -506,7 +507,7 @@ async def delete_task(request: Request, task_id: int):
 
             target = request.headers.get("HX-Target", "")
             if target.startswith("task-"):
-                return HTMLResponse(content=await _hide_root_task_oob(db, task.id))
+                return HTMLResponse(content=await _hide_root_task_oob(db, task.id, request))
 
             return HTMLResponse(content=await get_tasks_today(db, request))
     raise HTTPException(status_code=404, detail="Задача не найдена")
