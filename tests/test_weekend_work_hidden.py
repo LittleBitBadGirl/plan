@@ -88,8 +88,6 @@ async def test_weekend_filter_holds_after_actions(client, db, monkeypatch):
     перерисовка списка после создания задачи) числа и список считались БЕЗ фильтра,
     и в субботу рабочие задачи возвращались на экран.
     """
-    import re
-
     from app.web.routes import dashboard as dashboard_module
     import app.web.deps as deps_module
 
@@ -103,9 +101,8 @@ async def test_weekend_filter_holds_after_actions(client, db, monkeypatch):
 
     stats = await client.get("/dashboard/today-stats")
     assert stats.status_code == 200
-    active = re.search(r'id="today-stats-counter"[^>]*>(\d+)<', stats.text)
-    # на экране две задачи: личная и без категории (рабочая скрыта) — в числах те же две
-    assert active is not None and int(active.group(1)) == 2
+    # счётчик показывает «готово/всего» по задачам дня: на экране две, рабочая скрыта
+    assert "0/2" in stats.text
 
     created = await client.post("/tasks/create", data={"title": "Задача в субботу", "category_id": ""})
     assert created.status_code == 200

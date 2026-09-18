@@ -37,7 +37,6 @@ from app.web.deps import (
     is_weekend,
     not_work_task_filter,
     work_task_filter,
-    counter_values,
 )
 
 router = APIRouter()
@@ -128,7 +127,6 @@ async def dashboard(request: Request):
         completed, total = bundle.completed, bundle.total
         subtask_progress = bundle.subtask_progress
         ai_warning = bundle.ai_warning
-        active_count, closed_today = counter_values(bundle)
 
         shopping_items = await load_active_shopping(db)
         reading_items = await load_active_reading(db)
@@ -166,8 +164,6 @@ async def dashboard(request: Request):
     return templates.TemplateResponse(request, "dashboard.html", {
         "request": request,
         "tasks": tasks,
-        "active_count": active_count,
-        "closed_today": closed_today,
         "weekend_hide_work": hide_work,
         "weekend_show_work": is_weekend(today) and show_work,
         "hidden_work_count": hidden_work_count,

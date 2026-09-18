@@ -175,8 +175,8 @@ async def test_append_today_stats_oob_uses_single_bundle(db):
         html = await append_today_stats_oob("", db)
         assert mock_bundle.await_count == 1
         assert 'id="today-stats-counter"' in html
-        assert 'id="today-closed-counter"' in html
-        assert 'id="today-counters"' in html
+        assert 'id="today-subtask-stats-block"' in html
+        assert 'id="ai-warning-block"' in html
 
 
 @pytest.mark.asyncio

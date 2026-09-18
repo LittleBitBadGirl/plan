@@ -1,8 +1,6 @@
 """Тесты баннера дневной нагрузки и HTMX OOB после закрытия подзадач."""
 from datetime import date, datetime, timedelta, timezone
 
-import re
-
 import pytest
 from sqlalchemy import select
 
@@ -99,8 +97,7 @@ class TestTodayLoadBannerStats:
 
 
 class TestTodayLoadBannerHTMX:
-    async def test_complete_subtask_updates_counters_oob(self, client, db):
-        """Закрытие подзадачи обновляет счётчики «активно / закрыто сегодня»."""
+    async def test_complete_subtask_updates_ai_warning_oob(self, client, db):
         await _seed_overdue_subtask_parent(db, sub_count=10, overdue_open=10)
 
         subs_result = await db.execute(
@@ -113,25 +110,23 @@ class TestTodayLoadBannerHTMX:
 
         resp = await client.post(f"/tasks/{sub_id}/complete-subtask")
         assert resp.status_code == 200
-        assert 'id="today-counters"' in resp.text
+        assert 'id="ai-warning-block"' in resp.text
         assert 'hx-swap-oob="true"' in resp.text
-        closed = re.search(r'id="today-closed-counter"[^>]*>(\d+)<', resp.text)
-        assert closed is not None and int(closed.group(1)) == 1
+        assert "1 готово" in resp.text
+        assert "9 осталось" in resp.text
         assert "line-through" in resp.text
 
-    async def test_today_stats_endpoint_returns_counters(self, client, db):
+    async def test_today_stats_endpoint_reflects_actionable_banner(self, client, db):
         await _seed_overdue_subtask_parent(db, sub_count=10, overdue_open=9)
 
         resp = await client.get("/dashboard/today-stats")
         assert resp.status_code == 200
-        assert 'id="today-counters"' in resp.text
-        active = re.search(r'id="today-stats-counter"[^>]*>(\d+)<', resp.text)
-        closed = re.search(r'id="today-closed-counter"[^>]*>(\d+)<', resp.text)
-        assert active is not None and int(active.group(1)) == 9
-        assert closed is not None and int(closed.group(1)) == 1
+        assert "1 готово" in resp.text
+        assert "9 осталось" in resp.text
 
-    async def test_append_today_stats_oob_includes_counters(self, db):
+    async def test_append_today_stats_oob_includes_subtask_block_id(self, db):
         await _seed_overdue_subtask_parent(db, sub_count=3, overdue_open=3)
 
         html = await append_today_stats_oob("", db)
-        assert 'id="today-counters"' in html
+        assert 'id="today-subtask-stats-block"' in html
+        assert 'id="today-subtask-counter"' in html

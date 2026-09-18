@@ -727,47 +727,82 @@ async def get_today_actionable_stats(db: AsyncSession) -> tuple[int, int]:
     return bundle.actionable_completed, bundle.actionable_total
 
 
-def counter_values(bundle: "DashboardDayStats") -> tuple[int, int]:
-    """Два числа, которые Вера просила оставить: активно и закрыто сегодня.
-
-    Активно — незакрытые задачи дня плюс незакрытые подзадачи этих задач.
-    Закрыто сегодня — закрытые задачи и подзадачи за сегодня.
-    Проценты, полоски и «сколько обычно закрываю» убраны как неправдивые.
-    """
-    progress = bundle.subtask_progress or {}
-    sub_total = progress.get("subtask_total", 0) or 0
-    sub_done = progress.get("subtask_done", 0) or 0
-    active = max(bundle.total - bundle.completed, 0) + max(sub_total - sub_done, 0)
-    return active, bundle.actionable_completed
-
-
-def today_counters_oob_html(active: int, closed: int) -> str:
-    """HTMX OOB: те же два числа после изменения списка задач."""
+def today_stats_oob_html(completed: int, total: int) -> str:
+    """HTMX OOB: счётчик и полоска прогресса на дашборде."""
+    pct = min(int(completed / total * 100), 100) if total > 0 else 0
     return (
-        '<div id="today-counters" hx-swap-oob="true" '
-        'class="w-full lg:flex-1 lg:order-none flex flex-row gap-5 items-start">'
-        '<div class="flex flex-col gap-0.5 px-1">'
-        '<span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Активно</span>'
-        f'<span id="today-stats-counter" class="font-bold text-sm text-amber-600">{active}</span>'
-        '</div>'
-        '<div class="flex flex-col gap-0.5 px-1">'
-        '<span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Закрыто сегодня</span>'
-        f'<span id="today-closed-counter" class="font-bold text-sm text-emerald-500">{closed}</span>'
-        '</div>'
-        '</div>'
+        f'<span id="today-stats-counter" hx-swap-oob="true" '
+        f'class="font-bold text-sm text-amber-600">{completed}/{total}</span>'
+        f'<div id="today-progress-bar" hx-swap-oob="true" '
+        f'class="bg-amber-600 h-full transition-all duration-500" '
+        f'style="width: {pct}%"></div>'
     )
-async def append_today_stats_oob(content: str, db: AsyncSession, request=None) -> str:
-    """Дописать к ответу обновление счётчиков «активно / закрыто сегодня».
 
-    Баннер «сколько обычно закрываю» отсюда убран: Вера сказала, что он врёт.
-    Полоски прогресса тоже убраны — остались два числа.
+
+def today_subtask_stats_oob_html(sp: dict) -> str:
+    """HTMX OOB: полоска прогресса подзадач (сегментированная) + лейбл «Сделано X/Y»."""
+    if sp["parent_total"] == 0:
+        return (
+            f'<div id="today-subtask-stats-block" hx-swap-oob="true" class="hidden"></div>'
+        )
+
+    # Сегментированная полоска: каждый сегмент = одна подзадача
+    segments_html = ""
+    if sp["subtask_total"] > 0:
+        segs = []
+        for i in range(sp["subtask_total"]):
+            is_done = i < sp["subtask_done"]
+            segs.append(
+                f'<div class="flex-1 h-full rounded-sm transition-all duration-500 '
+                f'{"bg-amber-600" if is_done else "bg-dark-600"}'
+                f'{" mx-px first:ml-0 last:mr-0" if sp["subtask_total"] > 1 else ""}'
+                f'"></div>'
+            )
+        segments_html = "".join(segs)
+
+    return (
+        f'<div id="today-subtask-stats-block" hx-swap-oob="true" class="w-full lg:flex-1 lg:max-w-sm">'
+        f'<div class="flex justify-between items-center mb-1 px-1">'
+        f'<span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Подзадачи</span>'
+        f'<span id="today-subtask-counter" class="font-bold text-sm text-amber-600">'
+        f'{sp["parent_done"]}/{sp["parent_total"]}'
+        f'</span>'
+        f'</div>'
+        f'<div id="today-subtask-bar" class="w-full bg-dark-800 rounded-full h-1.5 lg:h-1 border border-dark-600 overflow-hidden flex">'
+        f'{segments_html}'
+        f'</div>'
+        f'</div>'
+    )
+
+
+def ai_warning_oob_from(warning: Optional[str]) -> str:
+    """HTMX OOB: жёлтый баннер нагрузки на дашборде.
+
+    Текст берётся из _build_daily_load_warning — там уже нет хвоста про «обычно
+    вы закрываете», Вера его убрала.
+    """
+    if warning:
+        return (
+            f'<div id="ai-warning-block" hx-swap-oob="true" '
+            f'class="mb-6 p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">'
+            f'<p class="text-yellow-300">{warning}</p></div>'
+        )
+    return '<div id="ai-warning-block" hx-swap-oob="true" class="hidden"></div>'
+
+
+async def append_today_stats_oob(content: str, db: AsyncSession, request=None) -> str:
+    """Дописать к ответу прежние блоки аналитики: прогресс задач и подзадачи.
 
     ``request`` нужен, чтобы на выходных числа считались в том же составе, что
     и список на экране (без рабочих задач).
     """
     bundle = await get_dashboard_day_stats(db, hide_work=weekend_hide_work(request))
-    active, closed = counter_values(bundle)
-    return content + today_counters_oob_html(active, closed)
+    return (
+        content
+        + today_stats_oob_html(bundle.completed, bundle.total)
+        + today_subtask_stats_oob_html(bundle.subtask_progress)
+        + ai_warning_oob_from(bundle.ai_warning)
+    )
 
 
 def _completed_tasks_base_filter(start: date, end: date):
@@ -1168,6 +1203,9 @@ __all__ = [
     "get_today_progress",
     "get_today_actionable_stats",
     "get_subtask_today_progress",
+    "today_stats_oob_html",
+    "today_subtask_stats_oob_html",
+    "ai_warning_oob_from",
     "append_today_stats_oob",
     "load_subtasks_map",
     "repair_archived_subtasks",
