@@ -489,6 +489,14 @@
         retry.textContent = 'Повторить';
         retry.hidden = true;
 
+        // Действие, которое сервер отверг навсегда (задача уже в архиве и т.п.),
+        // иначе висело бы в очереди бесконечно и плашка не гасла бы.
+        const discard = document.createElement('button');
+        discard.type = 'button';
+        discard.className = 'offline-bar__btn';
+        discard.textContent = 'Убрать';
+        discard.hidden = true;
+
         const update = document.createElement('button');
         update.type = 'button';
         update.className = 'offline-bar__btn';
@@ -505,13 +513,24 @@
             await renderBar();
             sync();
         });
+        discard.addEventListener('click', async () => {
+            const items = await outboxAll();
+            const broken = items.filter((item) => item.failed);
+            if (!broken.length) return;
+            const confirmed = window.confirm(
+                `Убрать из очереди ${broken.length} шт.? Эти правки на сервер не уйдут.`
+            );
+            if (!confirmed) return;
+            for (const item of broken) await outboxDelete(item.id);
+            await renderBar();
+        });
         update.addEventListener('click', () => {
             if (registration && registration.waiting) {
                 registration.waiting.postMessage({ type: 'SKIP_WAITING' });
             }
         });
 
-        bar.append(text, conflicts, retry, update);
+        bar.append(text, conflicts, retry, discard, update);
         document.body.appendChild(bar);
         return bar;
     }
@@ -524,7 +543,7 @@
         const bar = ensureBar();
         const text = bar.querySelector('.offline-bar__text');
         const buttons = bar.querySelectorAll('.offline-bar__btn');
-        const [conflictsBtn, retryBtn, updateBtn] = buttons;
+        const [conflictsBtn, retryBtn, discardBtn, updateBtn] = buttons;
 
         const items = await outboxAll();
         const pending = items.filter((item) => !item.failed).length;
@@ -556,6 +575,7 @@
         conflictsBtn.hidden = !(conflictsPending > 0);
         conflictsBtn.textContent = `Разобрать (${conflictsPending})`;
         retryBtn.hidden = !((failed > 0 || authProblem) && !isOffline());
+        discardBtn.hidden = !(failed > 0);
         updateBtn.hidden = !hasWaitingWorker;
 
         bar.hidden = !(message || hasWaitingWorker);
