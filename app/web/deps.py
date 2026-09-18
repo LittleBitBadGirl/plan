@@ -966,21 +966,18 @@ async def get_subtask_insights(db: AsyncSession) -> dict:
 async def _build_daily_load_warning(
     db: AsyncSession, completed: int, total: int
 ) -> Optional[str]:
-    """Текст предупреждения о перегрузке по уже посчитанной нагрузке."""
+    """Текст предупреждения о перегрузке по уже посчитанной нагрузке.
+
+    Только факт: сколько задач, сколько готово и сколько осталось. Хвост
+    «Обычно вы закрываете ~N в день» убран — Вера сказала, что он считается
+    криво и раздражает, так что и запрос средней за две недели здесь больше
+    не нужен.
+    """
     remaining = max(total - completed, 0)
     if remaining <= 8:
         return None
 
-    avg = await get_avg_completed_per_day(db)
-    if avg >= 0.5:
-        avg_label = int(round(avg))
-        avg_part = f"Обычно вы закрываете ~{avg_label} в день."
-    else:
-        avg_part = "Обычно вы закрываете ~5 в день."
-
-    return (
-        f"Сегодня {total} задач: {completed} готово, {remaining} осталось. {avg_part}"
-    )
+    return f"Сегодня {total} задач: {completed} готово, {remaining} осталось."
 
 
 async def build_daily_load_warning(db: AsyncSession) -> Optional[str]:
