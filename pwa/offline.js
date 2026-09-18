@@ -45,7 +45,6 @@
         { re: /^\/tasks\/(\d+)\/complete-subtask$/, kind: 'complete', idGroup: 1 },
         { re: /^\/backlog\/(\d+)\/plan-today$/, kind: 'plan', idGroup: 1, dateToToday: true },
         { re: /^\/tasks\/(\d+)\/plan$/, kind: 'plan', idGroup: 1, dateField: 'due_date' },
-        { re: /^\/tasks\/(\d+)\/deadline$/, kind: 'update_fields', idGroup: 1, dateField: 'deadline' },
         { re: /^\/tasks\/(\d+)\/backlog$/, kind: 'to_backlog', idGroup: 1 },
         { re: /^\/tasks\/(\d+)\/subtasks$/, kind: 'create_subtask', idGroup: 1 },
         { re: /^\/archive\/(\d+)\/restore$/, kind: 'unarchive', idGroup: 1 },

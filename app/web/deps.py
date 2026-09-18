@@ -460,8 +460,6 @@ def _is_actionable_subtask(sub: Task, today: date) -> bool:
         return False
     if sub.status == "выполнена":
         return _completed_on_day(sub.completed_at, today)
-    if sub.deadline is not None and sub.deadline > today:
-        return False
     return True
 
 

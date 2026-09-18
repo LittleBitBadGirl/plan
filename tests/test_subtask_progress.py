@@ -107,8 +107,13 @@ async def test_actionable_subs_with_deadline_today(db):
 
 
 @pytest.mark.asyncio
-async def test_actionable_subs_future_deadline_not_counted(db):
-    """Открытые подзадачи с deadline в будущем не портят статистику."""
+async def test_deadline_no_longer_hides_subtasks(db):
+    """ДЛ выведен из интерфейса: подзадача с ДЛ в будущем больше не прячется.
+
+    Раньше `_is_actionable_subtask` отбрасывал такие подзадачи, и они не попадали
+    в счётчик дашборда. Дедлайн больше не используется как инструмент, поэтому
+    фильтр убран: в счётчик идут все открытые подзадачи.
+    """
     today = date.today()
     future = today + timedelta(days=7)
     parent = Task(title="Проект", due_date=today, status="новая", source="web")
@@ -120,7 +125,7 @@ async def test_actionable_subs_future_deadline_not_counted(db):
     await db.commit()
 
     completed, total = await get_today_actionable_stats(db)
-    assert total == 1
+    assert total == 2
     assert completed == 0
 
 
