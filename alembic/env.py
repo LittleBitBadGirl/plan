@@ -17,6 +17,7 @@ from app.models import (  # noqa: E402, F401
     calendar_ignore_rule,
     investment,
     manager,
+    offline,
     period_entry,
     portfolio,
     recurring_completion,

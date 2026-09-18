@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Нет сети — Planner</title>
+    <meta name="theme-color" content="#0c0c11">
+    <style>
+        :root { color-scheme: dark; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: #0c0c11;
+            color: #d6d3d1;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 2rem 1rem;
+        }
+        .wrap { width: 100%; max-width: 32rem; }
+        h1 { font-size: 1.25rem; color: #fff; margin: 0 0 0.5rem; }
+        p { color: #78716c; font-size: 0.9rem; line-height: 1.5; margin: 0 0 1.25rem; }
+        .queue { color: #d97706; font-size: 0.9rem; margin-bottom: 1.25rem; }
+        ul { list-style: none; margin: 0 0 1.5rem; padding: 0; }
+        li { border-bottom: 1px solid #1e1e27; }
+        li a {
+            display: block;
+            padding: 0.7rem 0.25rem;
+            color: #d6d3d1;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        li a:hover { color: #fff; }
+        .btn {
+            display: inline-block;
+            padding: 0.6rem 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid #2a2a36;
+            background: #14141b;
+            color: #d6d3d1;
+            font-size: 0.9rem;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .btn:hover { background: #1c1c26; }
+        .hint { color: #57534e; font-size: 0.8rem; margin-top: 1.5rem; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <h1>Нет сети</h1>
+    <p>Планер сохранён на этом устройстве. Ниже — страницы, которые открывались последними, они работают без интернета.</p>
+
+    <div class="queue" id="queue"></div>
+
+    <ul id="cache-list"></ul>
+
+    <a class="btn" href="/">Открыть планировщик</a>
+    <a class="btn" href="javascript:history.back()">Назад</a>
+
+    <div class="hint">Добавленные без сети задачи уйдут на сервер автоматически, как только появится связь.</div>
+</div>
+
+<script>
+    const PAGE_CACHE_SUFFIX = '-pages';
+
+    function humanName(path) {
+        const names = {
+            '/': 'Дашборд',
+            '/tasks': 'Задачи',
+            '/backlog': 'Бэклог',
+            '/calendar': 'Календарь',
+            '/recurring': 'Периодические',
+            '/stats': 'Статистика',
+            '/archive': 'Архив',
+            '/finance': 'Финансы',
+            '/portfolio': 'Портфель',
+            '/shopping': 'Покупки',
+            '/reading': 'Читать',
+            '/categories': 'Категории',
+        };
+        return names[path] || path;
+    }
+
+    async function renderQueue() {
+        const box = document.getElementById('queue');
+        try {
+            const db = await new Promise((resolve, reject) => {
+                const request = indexedDB.open('planner-offline', 1);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+            const items = await new Promise((resolve, reject) => {
+                const request = db.transaction('outbox', 'readonly').objectStore('outbox').getAll();
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = () => reject(request.error);
+            });
+            db.close();
+            if (items.length) box.textContent = 'Ждут отправки: ' + items.length;
+        } catch (error) {
+            // IndexedDB недоступен — ничего не показываем.
+        }
+    }
+
+    async function renderCachedPages() {
+        const list = document.getElementById('cache-list');
+        if (!('caches' in window)) return;
+        try {
+            const keys = await caches.keys();
+            const pageCacheKey = keys.find((key) => key.endsWith(PAGE_CACHE_SUFFIX));
+            if (!pageCacheKey) return;
+            const cache = await caches.open(pageCacheKey);
+            const requests = await cache.keys();
+            const seen = new Set();
+            const items = [];
+            for (const request of requests) {
+                const url = new URL(request.url);
+                if (url.origin !== window.location.origin) continue;
+                if (url.pathname.startsWith('/web/static') || url.pathname.startsWith('/pwa')) continue;
+                if (seen.has(url.pathname)) continue;
+                seen.add(url.pathname);
+                items.push(url.pathname);
+            }
+            items.slice(0, 12).forEach((path) => {
+                const li = document.createElement('li');
+                const link = document.createElement('a');
+                link.href = path;
+                link.textContent = humanName(path);
+                li.appendChild(link);
+                list.appendChild(li);
+            });
+        } catch (error) {
+            // Кэш недоступен — остаётся кнопка «Открыть планировщик».
+        }
+    }
+
+    renderQueue();
+    renderCachedPages();
+</script>
+<script defer src="/pwa/offline.js"></script>
+</body>
+</html>

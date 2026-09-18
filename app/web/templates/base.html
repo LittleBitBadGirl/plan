@@ -161,6 +161,9 @@
         </main>
     </div>
 
+    <!-- PWA: регистрация service worker, офлайн-очередь задач -->
+    <script defer src="/pwa/offline.js"></script>
+
     {% block extra_scripts %}{% endblock %}
     <script>
     document.body.addEventListener('htmx:afterSwap', function (evt) {

@@ -17,3 +17,4 @@ from .calendar_ignore_rule import CalendarIgnoreRule
 from .portfolio import Portfolio, PortfolioGoal, Instrument, Position, ImportLog
 from .investment import InvestmentSnapshot, InvestmentFlow
 from .manager import Manager, ManagerFeedback
+from .offline import OfflineAction, OfflineConflict

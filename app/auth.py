@@ -10,9 +10,11 @@ from app.config import settings
 PUBLIC_PREFIXES = (
     "/web/static",
     "/uploads",
+    "/pwa",  # офлайн-слой PWA: service worker, скрипт очереди, офлайн-заглушка
 )
 PUBLIC_EXACT = {
     "/api/health",
+    "/sw.js",  # service worker обязан отдаваться с корня и без токена
     "/login",
     "/logout",
     "/openapi.json",

@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
 
 from app.utils.logger import app_logger
@@ -19,6 +19,7 @@ from app.api.habits import router as habits_router
 from app.api.period import router as period_router
 from app.api.ai import router as ai_router
 from app.api.screenshot import router as screenshot_router
+from app.api.offline import router as offline_router
 from app.web.pages import router as web_router
 from app.web.auth_routes import router as auth_router
 from app.config import settings
@@ -134,6 +135,33 @@ uploads_dir = Path(__file__).parent.parent / "uploads"
 uploads_dir.mkdir(exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 
+# Офлайн-слой PWA: /pwa/offline.js, /pwa/offline.html
+pwa_dir = Path(__file__).parent.parent / "pwa"
+if pwa_dir.exists():
+    app.mount("/pwa", StaticFiles(directory=str(pwa_dir)), name="pwa")
+
+
+@app.get("/sw.js", include_in_schema=False)
+async def service_worker():
+    """Service worker отдаётся из корня, иначе его область — только /pwa/.
+
+    Заголовок Service-Worker-Allowed нужен, чтобы воркер управлял всем сайтом,
+    а не только своим каталогом. Кэшировать файл нельзя: иначе обновления
+    офлайн-слоя не доедут до телефона.
+    """
+    sw_path = Path(__file__).parent.parent / "pwa" / "sw.js"
+    if not sw_path.exists():
+        return JSONResponse(status_code=404, content={"detail": "sw.js не найден"})
+    return FileResponse(
+        sw_path,
+        media_type="application/javascript",
+        headers={
+            "Service-Worker-Allowed": "/",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+        },
+    )
+
+
 # Роуты
 app.include_router(tasks_router)
 app.include_router(categories_router)
@@ -142,6 +170,7 @@ app.include_router(habits_router)
 app.include_router(period_router)
 app.include_router(ai_router)
 app.include_router(screenshot_router)
+app.include_router(offline_router)
 app.include_router(auth_router)
 app.include_router(web_router)
 

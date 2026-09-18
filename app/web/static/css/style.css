@@ -258,3 +258,183 @@ select:focus {
         height: 1.125rem;
     }
 }
+
+/* PWA: плашка состояния офлайн-режима (вне Tailwind-сборки) */
+.offline-bar {
+    position: fixed;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: calc(0.75rem + env(safe-area-inset-bottom));
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.85rem;
+    border-radius: 0.6rem;
+    border: 1px solid #2a2a36;
+    background: #14141b;
+    color: #d6d3d1;
+    font-size: 0.82rem;
+    line-height: 1.3;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+.offline-bar[hidden] {
+    display: none;
+}
+
+.offline-bar--offline {
+    border-color: rgba(217, 119, 6, 0.45);
+}
+
+/* Есть неразобранные конфликты — плашка заметнее. */
+.offline-bar--alert {
+    border-color: rgba(196, 130, 107, 0.75);
+}
+
+.offline-bar__text {
+    flex: 1;
+    min-width: 0;
+}
+
+.offline-bar__btn {
+    flex-shrink: 0;
+    padding: 0.3rem 0.6rem;
+    border-radius: 0.4rem;
+    border: 1px solid #2a2a36;
+    background: #1c1c26;
+    color: #d6d3d1;
+    font-size: 0.78rem;
+    cursor: pointer;
+}
+
+.offline-bar__btn:hover {
+    background: #23232f;
+    color: #fff;
+}
+
+/* PWA: задача, ждущая отправки на сервер */
+.offline-draft {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    margin-bottom: 0.4rem;
+    border: 1px dashed rgba(217, 119, 6, 0.45);
+    border-radius: 0.5rem;
+    background: rgba(120, 53, 15, 0.08);
+    font-size: 0.85rem;
+}
+
+.offline-draft__title {
+    flex: 1;
+    min-width: 0;
+    color: #d6d3d1;
+    overflow-wrap: anywhere;
+}
+
+.offline-draft__badge {
+    flex-shrink: 0;
+    font-size: 0.7rem;
+    color: #d97706;
+}
+
+/* Пометка на задаче, чья правка ещё не ушла на сервер */
+.offline-pending {
+    margin-left: 0.4rem;
+    font-size: 0.65rem;
+    color: #d97706;
+    border: 1px dashed rgba(217, 119, 6, 0.5);
+    border-radius: 0.35rem;
+    padding: 0 0.3rem;
+    white-space: nowrap;
+}
+
+/* Заглушка вместо HTMX-фрагмента, который не сохранён на устройстве */
+.offline-fragment {
+    padding: 0.6rem 0.75rem;
+    border: 1px dashed #2a2a36;
+    border-radius: 0.5rem;
+    color: #78716c;
+    font-size: 0.82rem;
+}
+
+/* Разбор конфликтов офлайн-правок */
+.offline-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 1.5rem 1rem;
+    overflow-y: auto;
+    background: rgba(6, 6, 9, 0.72);
+}
+
+.offline-modal__box {
+    width: 100%;
+    max-width: 34rem;
+    border: 1px solid #2a2a36;
+    border-radius: 0.75rem;
+    background: #14141b;
+    color: #d6d3d1;
+    padding: 1rem;
+}
+
+.offline-modal__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.offline-modal__hint {
+    margin: 0 0 0.9rem;
+    color: #78716c;
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+.offline-modal__row {
+    border-top: 1px solid #1e1e27;
+    padding: 0.7rem 0;
+}
+
+.offline-modal__caption {
+    font-size: 0.85rem;
+    margin-bottom: 0.45rem;
+}
+
+.offline-modal__choice {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    width: 100%;
+    margin-bottom: 0.35rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid #2a2a36;
+    border-radius: 0.45rem;
+    background: #1c1c26;
+    color: #d6d3d1;
+    text-align: left;
+    cursor: pointer;
+}
+
+.offline-modal__choice:hover {
+    background: #23232f;
+    color: #fff;
+}
+
+.offline-modal__value {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.offline-modal__label {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    color: #d97706;
+}

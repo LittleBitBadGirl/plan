@@ -11,6 +11,7 @@ from app.models import calendar_event as _ce  # noqa: F401
 from app.models import calendar_ignore_rule as _cir  # noqa: F401
 from app.models import investment as _inv  # noqa: F401
 from app.models import manager as _mgr  # noqa: F401
+from app.models import offline as _offl  # noqa: F401
 from app.models import period_entry as _pe  # noqa: F401
 from app.models import portfolio as _pf  # noqa: F401
 from app.models import recurring_completion as _rc  # noqa: F401
@@ -42,7 +43,7 @@ async def test_run_migrations_on_fresh_db():
                 text("SELECT version_num FROM alembic_version")
             )
             version = result.scalar_one()
-        assert version == "010_manager_feedback"
+        assert version == "011_offline_sync"
 
         sync = sqlite3.connect(db_path)
         task_cols = {row[1] for row in sync.execute("PRAGMA table_info(tasks)")}
@@ -71,6 +72,15 @@ async def test_run_migrations_on_fresh_db():
         seeded_managers = {
             row[0] for row in sync.execute("SELECT name FROM managers")
         }
+        action_indexes = {
+            row[1] for row in sync.execute("PRAGMA index_list(offline_actions)")
+        }
+        conflict_indexes = {
+            row[1] for row in sync.execute("PRAGMA index_list(offline_conflicts)")
+        }
+        action_cols = {
+            row[1] for row in sync.execute("PRAGMA table_info(offline_actions)")
+        }
         sync.close()
         assert "estimated_minutes" in task_cols
         assert "portfolio_id" in flow_cols
@@ -83,5 +93,10 @@ async def test_run_migrations_on_fresh_db():
         assert "ix_manager_feedback_manager" in feedback_indexes
         assert {"period_month", "kind", "files", "links"} <= feedback_cols
         assert "Алёна Савченко" in seeded_managers
+        assert "offline_actions" in tables
+        assert "offline_conflicts" in tables
+        assert "ix_offline_actions_client_uuid" in action_indexes
+        assert "ix_offline_conflicts_task_id" in conflict_indexes
+        assert {"client_uuid", "kind", "task_id", "status"} <= action_cols
 
         await engine.dispose()
