@@ -30,8 +30,13 @@ def _categorize_key() -> str:
     """Ключ для категоризации: свой, иначе по базе (OpenRouter → openrouter, остальное → deepseek)."""
     if settings.ai_categorize_api_key:
         return settings.ai_categorize_api_key
-    if "openrouter" in (settings.ai_categorize_base_url or "").lower():
+    base = (settings.ai_categorize_base_url or "").lower()
+    if "openrouter" in base:
         return settings.openrouter_api_key
+    if "groq" in base:
+        return settings.groq_api_key
+    if "generativelanguage" in base or "googleapis" in base:
+        return settings.gemini_api_key
     return settings.deepseek_api_key
 
 
@@ -476,38 +481,6 @@ STOP_SLOP_PROMPT = """Ты — редактор. Перепиши ответ AI-
 {text}
 
 Очищенный текст:"""
-
-
-async def _stop_slop(text: str) -> str:
-    """Прогоняет AI-текст через DeepSeek для очистки от AI-штампов."""
-    if not text or not settings.deepseek_api_key:
-        return text
-
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                DEEPSEEK_URL,
-                headers={
-                    "Authorization": f"Bearer {settings.deepseek_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": DEEPSEEK_MODEL,
-                    "messages": [
-                        {"role": "user", "content": STOP_SLOP_PROMPT.format(text=text)},
-                    ],
-                    "temperature": 0.3,
-                },
-                timeout=30.0,
-            )
-            if resp.status_code == 200:
-                return resp.json()["choices"][0]["message"]["content"]
-            else:
-                app_logger.error(f"Stop-slop error: {resp.status_code}")
-    except Exception as e:
-        app_logger.error(f"Stop-slop exception: {e}")
-
-    return text  # fallback — вернуть как есть
 
 
 ai_service = AIService()
