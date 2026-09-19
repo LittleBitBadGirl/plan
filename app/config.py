@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     openrouter_api_key: str = ""
 
+    # Роли моделей: адрес, ключ и имя модели живут в .env, а не в коде
+    ai_categorize_base_url: str = "https://api.deepseek.com"
+    ai_categorize_api_key: str = ""   # пусто → deepseek_api_key, а если база OpenRouter → openrouter_api_key
+    ai_categorize_model: str = "deepseek-chat"
+    ai_vision_base_url: str = "https://openrouter.ai/api/v1"
+    ai_vision_api_key: str = ""       # пусто → openrouter_api_key
+    ai_vision_model: str = "google/gemini-2.5-flash"
+
     # OCR
     ocr_lang: str = "rus+eng"
 

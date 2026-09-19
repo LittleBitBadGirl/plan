@@ -20,6 +20,25 @@ from app.utils.logger import app_logger
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 DEEPSEEK_MODEL = "deepseek-chat"
 
+
+def _categorize_url() -> str:
+    """Адрес для категоризации — из .env (AI_CATEGORIZE_BASE_URL)."""
+    return f"{settings.ai_categorize_base_url.rstrip('/')}/chat/completions"
+
+
+def _categorize_key() -> str:
+    """Ключ для категоризации: свой, иначе по базе (OpenRouter → openrouter, остальное → deepseek)."""
+    if settings.ai_categorize_api_key:
+        return settings.ai_categorize_api_key
+    if "openrouter" in (settings.ai_categorize_base_url or "").lower():
+        return settings.openrouter_api_key
+    return settings.deepseek_api_key
+
+
+# Текстовая роль (категоризация, генерация импактов, stop-slop) — один адрес и ключ из .env.
+_text_url = _categorize_url
+_text_key = _categorize_key
+
 CATEGORIZE_SYSTEM = """Ты — Senior PM. Твоя цель: точно определить категорию задачи.
 
 СПИСОК КАТЕГОРИЙ (ID и Название):
@@ -36,8 +55,8 @@ CATEGORIZE_SYSTEM = """Ты — Senior PM. Твоя цель: точно опр�
 
 async def _deepseek_categorize(task_text: str, categories_list: List[Dict]) -> Dict:
     """Категоризация через DeepSeek V4 Pro."""
-    if not settings.deepseek_api_key:
-        app_logger.warning("DEEPSEEK_API_KEY not set, falling back to Groq")
+    if not _categorize_key():
+        app_logger.warning("ключ категоризации не задан (AI_CATEGORIZE_API_KEY / OPENROUTER_API_KEY / DEEPSEEK_API_KEY), fallback на Groq")
         return await _groq_categorize(task_text, categories_list)
 
     cat_desc = []
@@ -53,13 +72,13 @@ async def _deepseek_categorize(task_text: str, categories_list: List[Dict]) -> D
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                DEEPSEEK_URL,
+                _categorize_url(),
                 headers={
-                    "Authorization": f"Bearer {settings.deepseek_api_key}",
+                    "Authorization": f"Bearer {_categorize_key()}",
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": DEEPSEEK_MODEL,
+                    "model": settings.ai_categorize_model,
                     "messages": [
                         {"role": "system", "content": prompt},
                         {"role": "user", "content": f"Задача: «{task_text}»"},
@@ -74,9 +93,9 @@ async def _deepseek_categorize(task_text: str, categories_list: List[Dict]) -> D
                 content = data["choices"][0]["message"]["content"]
                 return json.loads(content)
             else:
-                app_logger.error(f"DeepSeek API error: {resp.status_code} {resp.text[:200]}")
+                app_logger.error(f"категоризация ({settings.ai_categorize_model}) error: {resp.status_code} {resp.text[:200]}")
     except Exception as e:
-        app_logger.error(f"DeepSeek exception: {e}")
+        app_logger.error(f"категоризация ({settings.ai_categorize_model}) exception: {e}")
 
     # Fallback to Groq
     return await _groq_categorize(task_text, categories_list)
@@ -125,11 +144,21 @@ async def _groq_categorize(task_text: str, categories_list: List[Dict]) -> Dict:
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_VISION_MODEL = "google/gemini-2.5-flash"
 
+
+def _vision_url() -> str:
+    """Адрес вижн-вызова — из .env (AI_VISION_BASE_URL)."""
+    return f"{settings.ai_vision_base_url.rstrip('/')}/chat/completions"
+
+
+def _vision_key() -> str:
+    """Ключ вижн-вызова: свой, иначе общий OPENROUTER_API_KEY."""
+    return settings.ai_vision_api_key or settings.openrouter_api_key
+
 async def _openrouter_vision(image_path: str) -> Dict:
-    """Анализ скриншота через OpenRouter Vision."""
-    if not settings.openrouter_api_key:
-        app_logger.warning("OPENROUTER_API_KEY not set, falling back to Gemini Vision")
-        return await _openrouter_vision(image_path)
+    """Анализ скриншота через OpenRouter Vision (модель задаётся AI_VISION_MODEL)."""
+    if not _vision_key():
+        app_logger.warning("OPENROUTER_API_KEY / AI_VISION_API_KEY not set, falling back to Gemini Vision")
+        return await _gemini_vision(image_path)
 
     b64 = await _prepare_image(image_path)
     if b64 is None:
@@ -141,15 +170,15 @@ async def _openrouter_vision(image_path: str) -> Dict:
 
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                OPENROUTER_URL,
+                _vision_url(),
                 headers={
-                    "Authorization": f"Bearer {settings.openrouter_api_key}",
+                    "Authorization": f"Bearer {_vision_key()}",
                     "Content-Type": "application/json",
                     "HTTP-Referer": "https://planner.local",
                     "X-Title": "Planner Bot",
                 },
                 json={
-                    "model": OPENROUTER_VISION_MODEL,
+                    "model": settings.ai_vision_model,
                     "messages": [{"role": "user", "content": [
                         {"type": "text", "text": prompt},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
@@ -168,7 +197,8 @@ async def _openrouter_vision(image_path: str) -> Dict:
     except Exception as e:
         app_logger.error(f"OpenRouter Vision exception: {e}")
 
-    return await _openrouter_vision(image_path)
+    return await _gemini_vision(image_path)
+
 
 # ─── Gemini Vision (финансы) ─────────────────────────────────────────────────
 
@@ -404,13 +434,13 @@ class AIService:
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
-                    DEEPSEEK_URL if settings.deepseek_api_key else "https://api.groq.com/openai/v1/chat/completions",
+                    _text_url() if _text_key() else "https://api.groq.com/openai/v1/chat/completions",
                     headers={
-                        "Authorization": f"Bearer {settings.deepseek_api_key or settings.groq_api_key}",
+                        "Authorization": f"Bearer {_text_key() or settings.groq_api_key}",
                         "Content-Type": "application/json",
                     },
                     json={
-                        "model": DEEPSEEK_MODEL if settings.deepseek_api_key else "llama-3.3-70b-versatile",
+                        "model": settings.ai_categorize_model if _text_key() else "llama-3.3-70b-versatile",
                         "messages": [{"role": "system", "content": prompt}],
                         "temperature": 0.0,
                         "response_format": {"type": "json_object"},
@@ -511,20 +541,20 @@ STOP_SLOP_SYSTEM = """Ты — редактор. Перепиши текст, у
 
 
 async def _stop_slop(text: str) -> str:
-    """Прогон текста через DeepSeek с инструкцией очистки от AI-паттернов."""
-    if not text or not settings.deepseek_api_key:
+    """Прогон текста через текстовую модель (модель и адрес — из .env)."""
+    if not text or not _text_key():
         return text
 
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                DEEPSEEK_URL,
+                _text_url(),
                 headers={
-                    "Authorization": f"Bearer {settings.deepseek_api_key}",
+                    "Authorization": f"Bearer {_text_key()}",
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": DEEPSEEK_MODEL,
+                    "model": settings.ai_categorize_model,
                     "messages": [
                         {"role": "system", "content": STOP_SLOP_SYSTEM},
                         {"role": "user", "content": text},
