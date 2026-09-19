@@ -3,7 +3,9 @@
 {% if reading_items %}
     {% for item in reading_items %}
     <div class="reading-item bg-dark-800 rounded-lg p-2 px-3 border border-dark-700 hover:border-amber-600/30 transition flex flex-col gap-2"
-         id="reading-{{ item.id }}">
+         id="reading-{{ item.id }}"
+         data-title="{{ item.title }}"
+         data-content="{{ item.content or '' }}">
         {# --- Row: status badge, title, actions --- #}
         <div class="flex items-start gap-2">
             {# Status badge + progress toggle button #}
@@ -143,51 +145,69 @@
     </div>
     {% endfor %}
 
-    {# --- Popup overlay --- #}
-    <div id="reading-popup-overlay" class="fixed inset-0 bg-black/70 z-50 hidden flex items-center justify-center p-4"
-         onclick="if(event.target===this)closeReadingPopup()">
-        <div class="bg-dark-900 border border-dark-600 rounded-xl max-w-lg w-full max-h-[80vh] overflow-y-auto shadow-2xl"
-             onclick="event.stopPropagation()">
-            <div class="flex items-center justify-between p-4 border-b border-dark-700">
-                <h3 id="reading-popup-title" class="text-stone-200 font-semibold text-sm"></h3>
-                <button onclick="closeReadingPopup()" class="text-stone-500 hover:text-stone-300 transition">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-            </div>
-            <div id="reading-popup-body" class="p-4 text-sm text-stone-300 whitespace-pre-wrap leading-relaxed"></div>
-        </div>
-    </div>
-
-    <script>
-    const _readingContents = {
-        {% for item in reading_items %}
-        {% if item.content %}
-        {{ item.id }}: {{ item.content | tojson }}{% if not loop.last %},{% endif %}
-        {% endif %}
-        {% endfor %}
-    };
-    function showReadingPopup(id) {
-        const overlay = document.getElementById('reading-popup-overlay');
-        const titleEl = document.getElementById('reading-popup-title');
-        const bodyEl = document.getElementById('reading-popup-body');
-        const row = document.getElementById('reading-' + id);
-        const titleText = row ? row.querySelector('a')?.textContent?.trim() || row.querySelector('span')?.textContent?.trim() || '' : '';
-        titleEl.textContent = titleText;
-        bodyEl.textContent = _readingContents[id] || '';
-        overlay.classList.remove('hidden');
-        overlay.classList.add('flex');
-    }
-    function closeReadingPopup() {
-        const overlay = document.getElementById('reading-popup-overlay');
-        overlay.classList.add('hidden');
-        overlay.classList.remove('flex');
-    }
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') closeReadingPopup();
-    });
-    </script>
 {% else %}
     <div class="text-center py-8 text-gray-500">
         <p class="text-sm">Список пуст</p>
     </div>
 {% endif %}
+
+{# --- Попап и его скрипт держим вне списка: при обновлении списка они не должны исчезать --- #}
+<div id="reading-popup-overlay" class="fixed inset-0 bg-black/70 z-50 hidden flex items-center justify-center p-4"
+     onclick="if(event.target===this)closeReadingPopup()">
+    <div class="bg-dark-900 border border-dark-600 rounded-xl max-w-lg w-full max-h-[80vh] overflow-y-auto shadow-2xl"
+         onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between p-4 border-b border-dark-700">
+            <h3 id="reading-popup-title" class="text-stone-200 font-semibold text-sm"></h3>
+            <button onclick="closeReadingPopup()" class="text-stone-500 hover:text-stone-300 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        <div id="reading-popup-body" class="p-4 text-sm text-stone-300 whitespace-pre-wrap leading-relaxed"></div>
+    </div>
+</div>
+
+<script>
+// htmx исполняет скрипт из подставленного html повторно, поэтому всё здесь идемпотентно:
+// данные берём из data-атрибутов строки, подписку на Escape ставим один раз.
+function _readingFillLinks(el, text) {
+    el.textContent = '';
+    const parts = String(text).split(/(https?:\/\/[^\s]+)/g);
+    for (let i = 0; i < parts.length; i++) {
+        if (i % 2 === 1) {
+            const a = document.createElement('a');
+            a.href = parts[i];
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            a.className = 'text-amber-400 hover:underline break-words';
+            a.textContent = parts[i];
+            el.appendChild(a);
+        } else if (parts[i]) {
+            el.appendChild(document.createTextNode(parts[i]));
+        }
+    }
+}
+function showReadingPopup(id) {
+    const overlay = document.getElementById('reading-popup-overlay');
+    const row = document.getElementById('reading-' + id);
+    if (!overlay || !row) return;
+    const bodyEl = document.getElementById('reading-popup-body');
+    // Заголовок и текст берём из самой строки: после любого обновления списка они свежие
+    document.getElementById('reading-popup-title').textContent =
+        (row.dataset.title || '').replace(/https?:\/\/\S+/g, '').trim();
+    _readingFillLinks(bodyEl, row.dataset.content || '');
+    overlay.classList.remove('hidden');
+    overlay.classList.add('flex');
+}
+function closeReadingPopup() {
+    const overlay = document.getElementById('reading-popup-overlay');
+    if (!overlay) return;
+    overlay.classList.add('hidden');
+    overlay.classList.remove('flex');
+}
+if (!window._readingEscapeBound) {
+    window._readingEscapeBound = true;
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeReadingPopup();
+    });
+}
+</script>
