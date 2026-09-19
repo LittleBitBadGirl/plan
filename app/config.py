@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     ai_vision_api_key: str = ""       # пусто → openrouter_api_key
     ai_vision_model: str = "google/gemini-2.5-flash"
 
+    # Резервы: где основной OpenRouter — резерв прямой DeepSeek (и наоборот)
+    ai_text_fallback_base_url: str = ""
+    ai_text_fallback_api_key: str = ""
+    ai_text_fallback_model: str = ""
+    ai_vision_fallback_base_url: str = ""
+    ai_vision_fallback_api_key: str = ""
+    ai_vision_fallback_model: str = ""
+
     # OCR
     ocr_lang: str = "rus+eng"
 

@@ -27,10 +27,15 @@ def _categorize_url() -> str:
 
 
 def _categorize_key() -> str:
-    """Ключ для категоризации: свой, иначе по базе (OpenRouter → openrouter, остальное → deepseek)."""
+    """Ключ основной модели: свой, иначе по базе (openrouter/groq/gemini/иначе deepseek)."""
     if settings.ai_categorize_api_key:
         return settings.ai_categorize_api_key
-    base = (settings.ai_categorize_base_url or "").lower()
+    return _key_for_base(settings.ai_categorize_base_url)
+
+
+def _key_for_base(base_url: str) -> str:
+    """Подбирает ключ по адресу провайдера."""
+    base = (base_url or "").lower()
     if "openrouter" in base:
         return settings.openrouter_api_key
     if "groq" in base:
@@ -38,6 +43,30 @@ def _categorize_key() -> str:
     if "generativelanguage" in base or "googleapis" in base:
         return settings.gemini_api_key
     return settings.deepseek_api_key
+
+
+def _fallback(base_url: str, api_key: str, model: str):
+    """(url, key, model) резервного провайдера или None, если он не настроен."""
+    base = (base_url or "").strip()
+    model = (model or "").strip()
+    if not base or not model:
+        return None
+    key = api_key or _key_for_base(base)
+    if not key:
+        return None
+    return f"{base.rstrip('/')}/chat/completions", key, model
+
+
+def _text_fallback():
+    return _fallback(settings.ai_text_fallback_base_url,
+                     settings.ai_text_fallback_api_key,
+                     settings.ai_text_fallback_model)
+
+
+def _vision_fallback():
+    return _fallback(settings.ai_vision_fallback_base_url,
+                     settings.ai_vision_fallback_api_key,
+                     settings.ai_vision_fallback_model)
 
 
 # Текстовая роль (категоризация, генерация импактов, stop-slop) — один адрес и ключ из .env.
@@ -101,6 +130,32 @@ async def _deepseek_categorize(task_text: str, categories_list: List[Dict]) -> D
                 app_logger.error(f"категоризация ({settings.ai_categorize_model}) error: {resp.status_code} {resp.text[:200]}")
     except Exception as e:
         app_logger.error(f"категоризация ({settings.ai_categorize_model}) exception: {e}")
+
+    # Резерв по политике: обычно прямой DeepSeek (AI_TEXT_FALLBACK_* в .env)
+    fb = _text_fallback()
+    if fb:
+        fb_url, fb_key, fb_model = fb
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    fb_url,
+                    headers={"Authorization": f"Bearer {fb_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": fb_model,
+                        "messages": [
+                            {"role": "system", "content": prompt},
+                            {"role": "user", "content": f"Задача: «{task_text}»"},
+                        ],
+                        "temperature": 0.0,
+                        "response_format": {"type": "json_object"},
+                    },
+                    timeout=20.0,
+                )
+                if resp.status_code == 200:
+                    return json.loads(resp.json()["choices"][0]["message"]["content"])
+                app_logger.error(f"категоризация: резерв ({fb_model}) error: {resp.status_code} {resp.text[:200]}")
+        except Exception as e:
+            app_logger.error(f"категоризация: резерв ({fb_model}) exception: {e}")
 
     # Fallback to Groq
     return await _groq_categorize(task_text, categories_list)
@@ -169,10 +224,10 @@ async def _openrouter_vision(image_path: str) -> Dict:
     if b64 is None:
         return {"type": "other"}
 
-    try:
-        today = date.today()
-        prompt = FINANCE_PROMPT.format(today=today.isoformat(), year=today.year)
+    today = date.today()
+    prompt = FINANCE_PROMPT.format(today=today.isoformat(), year=today.year)
 
+    try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 _vision_url(),
@@ -201,6 +256,33 @@ async def _openrouter_vision(image_path: str) -> Dict:
                 app_logger.error(f"OpenRouter Vision error: {resp.status_code} {resp.text[:200]}")
     except Exception as e:
         app_logger.error(f"OpenRouter Vision exception: {e}")
+
+    # Резерв по политике: обычно прямой DeepSeek (AI_VISION_FALLBACK_*)
+    fb = _vision_fallback()
+    if fb:
+        fb_url, fb_key, fb_model = fb
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    fb_url,
+                    headers={"Authorization": f"Bearer {fb_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": fb_model,
+                        "messages": [{"role": "user", "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                        ]}],
+                        "temperature": 0.0,
+                        "response_format": {"type": "json_object"},
+                    },
+                    timeout=60.0,
+                )
+                if resp.status_code == 200:
+                    text = resp.json()["choices"][0]["message"]["content"]
+                    return json.loads(text.strip().removeprefix("```json").removesuffix("```").strip())
+                app_logger.error(f"вижн: резерв ({fb_model}) error: {resp.status_code} {resp.text[:200]}")
+        except Exception as e:
+            app_logger.error(f"вижн: резерв ({fb_model}) exception: {e}")
 
     return await _gemini_vision(image_path)
 
