@@ -32,6 +32,12 @@ class RecurringTaskResponse(BaseModel):
     missed_count: int = 0
     created_at: str
 
+    @field_validator("is_active", mode="before")
+    @classmethod
+    def _default_is_active(cls, value):
+        """Пустое значение в колонке читаем как дефолт модели (активно), а не роняем список."""
+        return True if value is None else value
+
     @field_validator("time_of_day", mode="before")
     @classmethod
     def parse_time(cls, v):
@@ -199,7 +205,7 @@ async def complete_recurring(
     from datetime import datetime
     from app.web.deps import append_today_stats_oob
     from fastapi.responses import HTMLResponse
-    from app.models.task import Task
+    from app.models.task import Task, task_is_active
     from sqlalchemy import update
 
     result = await db.execute(select(RecurringTask).where(RecurringTask.id == recurring_id))
@@ -217,7 +223,7 @@ async def complete_recurring(
             Task.category_id == task.category_id,
             Task.due_date == today,
             Task.status.in_(["новая", "в_работе"]),
-            Task.is_archived == False,
+            task_is_active(),
         )
     )
     open_task = open_result.scalar_one_or_none()

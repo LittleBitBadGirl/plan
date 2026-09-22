@@ -10,6 +10,12 @@ from app.models.category import Category
 router = APIRouter(prefix="/api/categories", tags=["categories"], dependencies=[Depends(verify_token)])
 
 
+class MessageResponse(BaseModel):
+    """Ответ операций без тела категории."""
+
+    message: str
+
+
 class CategoryCreate(BaseModel):
     name: str
     is_global: bool = False
@@ -69,7 +75,7 @@ async def update_category(
     return category
 
 
-@router.delete("/{category_id}")
+@router.delete("/{category_id}", response_model=MessageResponse)
 async def delete_category(
     category_id: int,
     db: AsyncSession = Depends(get_db_session),

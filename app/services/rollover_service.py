@@ -2,7 +2,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.task import Task
+from app.models.task import Task, task_is_active
 from app.models.category import Category
 from app.db.database import async_session
 from app.services.postpones_service import apply_rollover, WORK_CATEGORY_NAMES
@@ -22,7 +22,7 @@ async def _rollover_impl(db: AsyncSession):
         .where(
             Task.status.in_(["новая", "в_работе"]),
             Task.due_date < today,
-            Task.is_archived == False,
+            task_is_active(),
             Task.source.is_distinct_from("recurring"),
         )
     )

@@ -44,7 +44,7 @@ async def test_run_migrations_on_fresh_db():
                 text("SELECT version_num FROM alembic_version")
             )
             version = result.scalar_one()
-        assert version == "013_achievements"
+        assert version == "014_task_is_archived"
 
         sync = sqlite3.connect(db_path)
         task_cols = {row[1] for row in sync.execute("PRAGMA table_info(tasks)")}
@@ -150,8 +150,81 @@ async def test_achievements_migration_creates_table_itself():
         cols = {row[1] for row in sync.execute("PRAGMA table_info(achievements)")}
         sync.close()
 
-        assert version == "013_achievements"
+        assert version == "014_task_is_archived"
         assert "achievements" in tables
         assert {"text", "sphere", "is_archived", "created_at"} <= cols
+
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_is_archived_migration_fills_empty_values_and_guards_new_rows():
+    """Задача с пустым is_archived перестаёт быть невидимой.
+
+    Миграция 014: заполняет существующие пустые значения и ставит триггер,
+    чтобы колонка заполнялась и при вставке в обход ORM (source='hermes').
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = os.path.join(tmp, "archived_migrate.db")
+        url = f"sqlite+aiosqlite:///{db_path}"
+        engine = create_async_engine(url, connect_args={"check_same_thread": False})
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        # задача «из интеграции»: колонка не заполнена (так писались 29 задач в базе Веры)
+        sync = sqlite3.connect(db_path)
+        sync.execute(
+            "INSERT INTO tasks (title, source, is_archived, item_kind) "
+            "VALUES ('задача из интеграции', 'hermes', NULL, 'task')"
+        )
+        sync.commit()
+        before = sync.execute("SELECT COUNT(*) FROM tasks WHERE is_archived IS NULL").fetchone()[0]
+        sync.close()
+
+        from app.config import settings
+
+        prev_url = settings.database_url
+        settings.database_url = url
+        try:
+            run_migrations()
+        finally:
+            settings.database_url = prev_url
+
+        sync = sqlite3.connect(db_path)
+        after = sync.execute("SELECT COUNT(*) FROM tasks WHERE is_archived IS NULL").fetchone()[0]
+        filled = sync.execute(
+            "SELECT is_archived FROM tasks WHERE title = 'задача из интеграции'"
+        ).fetchone()[0]
+        # вставка без колонки — как её делает внешний писатель
+        sync.execute(
+            "INSERT INTO tasks (title, source, item_kind) VALUES ('новая из интеграции', 'hermes', 'task')"
+        )
+        sync.commit()
+        fresh = sync.execute(
+            "SELECT is_archived FROM tasks WHERE title = 'новая из интеграции'"
+        ).fetchone()[0]
+        triggers = {
+            row[0]
+            for row in sync.execute("SELECT name FROM sqlite_master WHERE type = 'trigger'")
+        }
+        sync.close()
+
+        assert before == 1
+        assert after == 0, "пустые значения должны быть заполнены миграцией"
+        assert filled == 0
+        assert fresh == 0, "новая задача из интеграции не должна остаться с пустым is_archived"
+        assert "tasks_is_archived_default" in triggers
+        assert "tasks_is_archived_default_update" in triggers
+
+        # Сырой UPDATE до NULL — так же возвращал невидимые задачи: защита и на обновление
+        sync = sqlite3.connect(db_path)
+        sync.execute("UPDATE tasks SET is_archived = NULL WHERE title = 'задача из интеграции'")
+        sync.commit()
+        nulls_after_update = sync.execute(
+            "SELECT COUNT(*) FROM tasks WHERE is_archived IS NULL"
+        ).fetchone()[0]
+        sync.close()
+        assert nulls_after_update == 0, "UPDATE до NULL не должен оставлять невидимых задач"
 
         await engine.dispose()

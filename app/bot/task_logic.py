@@ -9,7 +9,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.category import Category
-from app.models.task import Task
+from app.models.task import Task, task_is_active
 from app.services.ai_service import ai_service
 from app.web.deps import dashboard_task_order_by, get_today_stats
 
@@ -74,7 +74,7 @@ def today_open_tasks_filter(today: date | None = None) -> list:
     today = today or date.today()
     return [
         Task.due_date == today,
-        Task.is_archived == False,
+        task_is_active(),
         Task.status.in_(["новая", "в_работе"]),
         Task.parent_task_id == None,
         Task.source.is_distinct_from("recurring"),
@@ -85,7 +85,7 @@ def today_open_tasks_filter(today: date | None = None) -> list:
 def backlog_tasks_filter() -> list:
     """Корневые задачи бэклога."""
     return [
-        Task.is_archived == False,
+        task_is_active(),
         Task.due_date == None,
         Task.parent_task_id == None,
         Task.status.in_(["новая", "в_работе", "отложена"]),
@@ -140,7 +140,7 @@ async def create_task_from_text(
 
     dup_filters = [
         Task.title == clean_title,
-        Task.is_archived == False,
+        task_is_active(),
         Task.parent_task_id == None,
     ]
     if target == "backlog":
@@ -231,7 +231,7 @@ async def find_tasks_to_complete(db: AsyncSession, task_name: str) -> list[Task]
     today = date.today()
     result = await db.execute(
         select(Task).where(
-            Task.is_archived == False,
+            task_is_active(),
             Task.status.in_(["новая", "в_работе"]),
             Task.parent_task_id == None,
             Task.item_kind == "task",

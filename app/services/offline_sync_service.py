@@ -30,7 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.offline import OfflineAction, OfflineConflict
-from app.models.task import Task
+from app.models.task import Task, task_is_active
 from app.models.category import Category
 
 # Поля задачи, которые разрешено менять из офлайн-очереди.
@@ -573,7 +573,7 @@ async def tasks_state(db: AsyncSession, task_ids: list[int] | None = None) -> li
     if task_ids:
         query = query.where(Task.id.in_(task_ids))
     else:
-        query = query.where(Task.is_archived == False)  # noqa: E712
+        query = query.where(task_is_active())  # noqa: E712
 
     result = await db.execute(query)
     tasks = result.scalars().all()

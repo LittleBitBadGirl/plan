@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import async_session
 from app.models.recurring import RecurringTask
-from app.models.task import Task
+from app.models.task import Task, task_is_active
 from app.services.recurring_completion_service import (
     find_template_for_task,
     record_missed,
@@ -22,7 +22,7 @@ async def _generate_impl(db: AsyncSession):
         select(Task).where(
             Task.source == "recurring",
             Task.due_date < today,
-            Task.is_archived == False,
+            task_is_active(),
         )
     )
     for overdue_task in overdue_result.scalars().all():
@@ -37,7 +37,7 @@ async def _generate_impl(db: AsyncSession):
         .where(
             Task.source == "recurring",
             Task.due_date < today,
-            Task.is_archived == False,
+            task_is_active(),
         )
         .values(is_archived=True)
     )
@@ -50,7 +50,7 @@ async def _generate_impl(db: AsyncSession):
             select(Task).where(
                 Task.title == template.title,
                 Task.due_date == today,
-                Task.is_archived == False,
+                task_is_active(),
             )
         )
         if existing.scalar_one_or_none():

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, date
 
 from app.api.dependencies import get_db_session
 from app.services.ai_service import ai_service
-from app.models.task import Task
+from app.models.task import Task, task_is_active
 from app.models.report import AIReport
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
@@ -132,7 +132,7 @@ async def get_stats(db: AsyncSession = Depends(get_db_session)):
     result = await db.execute(
         select(
             func.count(Task.id).filter(Task.status == "выполнена").label("completed"),
-            func.count(Task.id).filter(Task.is_archived == False).label("active"),
+            func.count(Task.id).filter(task_is_active()).label("active"),
             func.count(Task.id).filter(Task.chronic_task == True).label("chronic"),
         )
     )

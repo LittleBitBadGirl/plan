@@ -3,10 +3,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import date, datetime
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.api.dependencies import get_db_session, verify_token
-from app.models.task import Task
+from app.models.task import Task, task_is_active
 from app.models.category import Category
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"], dependencies=[Depends(verify_token)])
@@ -18,25 +18,52 @@ class TaskResponse(BaseModel):
 
     id: int
     title: str
-    description: str
+    description: Optional[str] = None
     category_id: Optional[int]
-    status: str
-    priority: str
+    status: str = "новая"
+    priority: str = "средний"
     due_date: Optional[date]
     deadline: Optional[date]
-    created_at: datetime
+    created_at: Optional[datetime] = None
     completed_at: Optional[datetime]
-    source: str
+    source: str = "web"
     parent_task_id: Optional[int]
-    is_archived: bool
-    sort_order: int
-    needs_review: bool
+    is_archived: bool = False
+    sort_order: int = 0
+    needs_review: bool = False
     message_hash: Optional[str]
-    postpones: int
+    postpones: int = 0
     chronic_task: Optional[bool]
     chronic_reviewed: Optional[bool]
     tags: Optional[str] = None
     size: Optional[str] = None  # L / XL / None
+
+    @field_validator("is_archived", "needs_review", mode="before")
+    @classmethod
+    def _empty_bool_means_no(cls, value):
+        """Колонка может остаться незаполненной (задачи от интеграции) — читаем как «нет».
+
+        Без этого список задач падал с 500 на первой же строке с пустым
+        is_archived: bool-поле не принимает None.
+        """
+        return bool(value)
+
+    @field_validator("source", "status", "priority", mode="before")
+    @classmethod
+    def _empty_string_means_default(cls, value, info):
+        defaults = {"source": "web", "status": "новая", "priority": "средний"}
+        return defaults[info.field_name] if value is None else value
+
+    @field_validator("sort_order", "postpones", mode="before")
+    @classmethod
+    def _empty_int_means_zero(cls, value):
+        return 0 if value is None else value
+
+
+class MessageResponse(BaseModel):
+    """Ответ операций без тела задачи (архивация, удаление)."""
+
+    message: str
 
 
 class TaskCreate(BaseModel):
@@ -80,7 +107,7 @@ async def list_tasks(
     offset: int = 0,
 ):
     """Получить список задач с фильтрацией"""
-    query = select(Task).where(Task.is_archived == False)
+    query = select(Task).where(task_is_active())
 
     if status:
         query = query.where(Task.status == status)
@@ -151,7 +178,7 @@ async def get_tasks_by_date(
     """Получить задачи на конкретную дату"""
     query = (
         select(Task)
-        .where(Task.due_date == task_date, Task.is_archived == False)
+        .where(Task.due_date == task_date, task_is_active())
         .order_by(Task.due_date.asc(), Task.sort_order.asc())
     )
     result = await db.execute(query)
@@ -192,7 +219,7 @@ async def update_task(
     return task
 
 
-@router.delete("/{task_id}")
+@router.delete("/{task_id}", response_model=MessageResponse)
 async def delete_task(
     task_id: int,
     db: AsyncSession = Depends(get_db_session),
@@ -271,7 +298,7 @@ async def add_subtask(
     return subtask
 
 
-@router.post("/{task_id}/archive", response_model=TaskResponse)
+@router.post("/{task_id}/archive", response_model=MessageResponse)
 async def archive_task(
     task_id: int,
     db: AsyncSession = Depends(get_db_session),

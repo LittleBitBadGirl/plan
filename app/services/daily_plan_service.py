@@ -6,7 +6,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.task import Task
+from app.models.task import Task, task_is_active
 from app.services.calendar_sync_service import (
     get_visible_events_grouped,
     refresh_calendar_events,
@@ -43,7 +43,7 @@ async def build_daily_plan_text(db: AsyncSession, today: date | None = None) -> 
         .where(
             Task.due_date == today,
             Task.status.in_(["новая", "в_работе"]),
-            Task.is_archived == False,
+            task_is_active(),
             Task.parent_task_id.is_(None),
             Task.source.is_distinct_from("recurring"),
             Task.item_kind == "task",

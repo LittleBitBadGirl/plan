@@ -190,6 +190,22 @@ class TestDeleteTask:
         get_resp = await client.get(f"/api/tasks/{task_id}")
         assert get_resp.json()["is_archived"] is True
 
+    async def test_archive_endpoint_returns_message_not_task(self, client):
+        """POST /archive отдаёт {"message": ...}: контракт совпадает с моделью ответа.
+
+        Раньше эндпоинт объявлял response_model=TaskResponse, а возвращал dict —
+        ответ падал с 500, хотя задача в базе уже архивировалась.
+        """
+        create_resp = await client.post("/api/tasks", json={"title": "В архив"})
+        task_id = create_resp.json()["id"]
+
+        response = await client.post(f"/api/tasks/{task_id}/archive")
+
+        assert response.status_code == 200
+        assert response.json() == {"message": "Task archived"}
+        get_resp = await client.get(f"/api/tasks/{task_id}")
+        assert get_resp.json()["is_archived"] is True
+
     async def test_deleted_task_not_in_list(self, client):
         """Удалённая задача не появляется в списке"""
         create_resp = await client.post("/api/tasks", json={"title": "Скрыть"})
