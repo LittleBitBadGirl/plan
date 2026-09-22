@@ -133,15 +133,16 @@
             {% endif %}
         </div>
 
-        {# Достижение и новая задача — одним стилем. Плюсы убраны, отступы
-           поджаты: кнопки занимают меньше места, а смысл читается по слову. #}
+        {# Достижение и новая задача — одним стилем: без плюсов, с теми же
+           боковыми отступами, что у «Добавить» (px-5). shrink-0 обязателен:
+           без него кнопки сжимались и текст вылезал за границы. #}
         <div class="hidden lg:flex shrink-0 items-center gap-2">
             <button type="button" onclick="openAchievementQuickAdd()"
-                    class="inline-flex items-center px-3.5 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 whitespace-nowrap">
+                    class="shrink-0 inline-flex items-center px-5 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 whitespace-nowrap">
                 Достижение
             </button>
             <a href="/tasks/new"
-               class="inline-flex items-center px-3.5 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 whitespace-nowrap">
+               class="shrink-0 inline-flex items-center px-5 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 whitespace-nowrap">
                 Новая задача
             </a>
         </div>

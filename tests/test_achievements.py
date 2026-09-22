@@ -189,7 +189,11 @@ async def test_dashboard_has_achievement_quick_add(client):
     assert html.count('onclick="openAchievementQuickAdd()"') == 2, \
         "кнопка достижения нужна в шапке: на телефоне и на десктопе"
     # стиль один: кнопка достижения должна быть того же вида, что «Новая задача»
-    assert 'px-3.5 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-xl' in html
+    # стиль один с «Новой задачей», отступы как у «Добавить», иначе кнопки сжимались
+    assert html.count(
+        'shrink-0 inline-flex items-center px-5 py-2 bg-accent hover:bg-accent-hover '
+        'text-white text-sm font-bold rounded-xl'
+    ) == 2, "«Достижение» и «Новая задача» должны быть одного вида и не сжиматься"
     assert 'id="ach-quick"' in html
     assert 'id="ach-quick-slot"' in html
     assert "'/achievements/widget'" in html

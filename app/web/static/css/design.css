@@ -815,12 +815,17 @@ h3,
     padding-bottom: 4px;
     line-height: 18px;
   }
-  .dash-quick-42 .dash-quick-42__icon,
-  .dash-quick-42 button[type="submit"] {
+  .dash-quick-42 .dash-quick-42__icon {
     width: 28px;
     height: 28px;
-    min-height: 28px;
     padding: 0;
+  }
+  /* «Добавить» — той же высоты, что поле, но шириной по тексту: правило
+     width: 28px ломало кнопку, текст вылезал за границы. */
+  .dash-quick-42 button[type="submit"] {
+    height: 28px;
+    min-height: 28px;
+    padding: 0 20px;
     font-size: 13px;
   }
   .dash-quick-42__card {
