@@ -8,24 +8,75 @@
         <div>
             <h1 class="reading-page__title">Читать</h1>
             <p class="reading-page__lead">
-                Своё чтиво в одном месте: ссылки, книги и заметки.
-                {% if total %}Сейчас {{ total }}: читаю {{ reading_now_count }}, к прочтению {{ want_to_read_count }}.{% endif %}
+                Книги, статьи, видео и подкасты по категориям. Теги на карточках, фильтры ниже.
+                {% if found is not none %}<span id="reading-found">Найдено {{ found }} из {{ total }}.</span>{% endif %}
+                {% if reading_now_count %}Читаю сейчас: {{ reading_now_count }}.{% endif %}
             </p>
         </div>
         <a href="/archive" class="reading-page__archive">прочитанное — в архиве</a>
     </header>
 
-    {# Добавление: поле + необязательные заметки. Список обновляется на месте. #}
+    {# Добавление: название, заметки, категория, формат и теги.
+       hx-include подтягивает текущие фильтры, чтобы список не сбрасывался. #}
     <form class="reading-add"
           hx-post="/api/reading/create"
           hx-target="#reading-list"
           hx-swap="innerHTML"
+          hx-include="#reading-filters"
           hx-on::after-request="this.reset()">
-        <input type="text" name="title" placeholder="Ссылка, книга или название..." required
+        <input type="text" name="title" placeholder="Ссылка, книга или название материала..." required
                class="reading-add__title">
         <textarea name="content" rows="1" placeholder="Заметки: где взять, зачем читаю (необязательно)"
                   class="reading-add__notes"></textarea>
+        <div class="reading-add__row">
+            <select name="category" class="reading-add__select" title="Категория">
+                <option value="">без категории</option>
+                {% for name in categories %}
+                <option value="{{ name }}">{{ name }}</option>
+                {% endfor %}
+            </select>
+            <select name="reading_format" class="reading-add__select" title="Формат">
+                <option value="">формат не указан</option>
+                {% for name in formats %}
+                <option value="{{ name }}">{{ name }}</option>
+                {% endfor %}
+            </select>
+            <input type="text" name="tags" list="reading-tag-options" class="reading-add__tags"
+                   placeholder="теги через запятую">
+        </div>
         <button type="submit" class="reading-add__submit">Добавить</button>
+    </form>
+    <datalist id="reading-tag-options">
+        {% for tag in tag_options %}<option value="{{ tag }}"></option>{% endfor %}
+    </datalist>
+
+    {# Фильтры. Живут в строке запроса: срез можно сохранить в закладки.
+       Кнопки внутри списка подтягивают эту форму через hx-include. #}
+    <form id="reading-filters" class="reading-filters"
+          hx-get="/reading/list"
+          hx-target="#reading-list"
+          hx-swap="innerHTML"
+          hx-push-url="true"
+          hx-trigger="change, submit, input changed delay:300ms from:find input[name='q']">
+        <input type="hidden" name="cat" value="{{ filters.category }}">
+
+        <div class="reading-filters__row">
+            <input type="search" name="q" value="{{ filters.query }}" class="reading-filters__search"
+                   placeholder="поиск по названию, заметке и тегам">
+            <select name="status" class="reading-filters__select" title="Что показывать">
+                <option value="active" {% if filters.status == 'active' %}selected{% endif %}>активные</option>
+                <option value="all" {% if filters.status == 'all' %}selected{% endif %}>все, включая прочитанное</option>
+                <option value="arch" {% if filters.status == 'arch' %}selected{% endif %}>только прочитанное</option>
+            </select>
+            <select name="sort" class="reading-filters__select" title="Порядок">
+                <option value="" {% if filters.sort != 'title' %}selected{% endif %}>сначала читаю, потом свежие</option>
+                <option value="title" {% if filters.sort == 'title' %}selected{% endif %}>по названию</option>
+            </select>
+            <button type="submit" class="reading-filters__reset" name="cat" value="">все категории</button>
+        </div>
+
+        {% include "partials/reading_filters_chips.html" %}
+
     </form>
 
     <div class="reading-page__list" id="reading-list">
@@ -55,5 +106,19 @@ function toggleReadingPdf(id) {
         box.classList.add('hidden');
     }
 }
+// Раскрытая форма «категория, формат, теги» не должна схлопываться,
+// когда список перерисовался после сохранения.
+document.body.addEventListener('htmx:afterSwap', function (e) {
+    if (!e.target || e.target.id !== 'reading-list') return;
+    document.querySelectorAll('details.reading-card__edit[data-open="1"]').forEach(function (d) {
+        d.open = true;
+    });
+});
+document.body.addEventListener('toggle', function (e) {
+    var el = e.target;
+    if (el.classList && el.classList.contains('reading-card__edit')) {
+        el.dataset.open = el.open ? '1' : '0';
+    }
+}, true);
 </script>
 {% endblock %}

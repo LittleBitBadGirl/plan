@@ -44,7 +44,7 @@ async def test_run_migrations_on_fresh_db():
                 text("SELECT version_num FROM alembic_version")
             )
             version = result.scalar_one()
-        assert version == "014_task_is_archived"
+        assert version == "017_reading_import_unique"
 
         sync = sqlite3.connect(db_path)
         task_cols = {row[1] for row in sync.execute("PRAGMA table_info(tasks)")}
@@ -150,7 +150,7 @@ async def test_achievements_migration_creates_table_itself():
         cols = {row[1] for row in sync.execute("PRAGMA table_info(achievements)")}
         sync.close()
 
-        assert version == "014_task_is_archived"
+        assert version == "017_reading_import_unique"
         assert "achievements" in tables
         assert {"text", "sphere", "is_archived", "created_at"} <= cols
 

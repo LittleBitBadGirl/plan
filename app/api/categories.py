@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional
@@ -20,6 +20,8 @@ class CategoryCreate(BaseModel):
     name: str
     is_global: bool = False
     parent_id: Optional[int] = None
+    # Тип категории: task (по умолчанию), reading, finance
+    type: str = "task"
 
 
 class CategoryUpdate(BaseModel):
@@ -30,10 +32,19 @@ class CategoryUpdate(BaseModel):
 
 @router.get("")
 async def list_categories(
+    category_type: Optional[str] = Query(default=None, alias="type"),
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Получить все категории"""
-    result = await db.execute(select(Category).order_by(Category.is_global.desc(), Category.name))
+    """Категории задач по умолчанию.
+
+    ?type=reading — категории чтения, ?type=finance — финансовые,
+    ?type=all — все подряд. Раньше метод отдавал вообще все категории, из-за
+    чего категории чтения попадали в списки задач.
+    """
+    stmt = select(Category)
+    if category_type != "all":
+        stmt = stmt.where(Category.type == (category_type or "task"))
+    result = await db.execute(stmt.order_by(Category.is_global.desc(), Category.name))
     return result.scalars().all()
 
 
@@ -47,6 +58,7 @@ async def create_category(
         name=category_data.name,
         is_global=category_data.is_global,
         parent_id=category_data.parent_id,
+        type=category_data.type,
     )
     db.add(category)
     await db.flush()
@@ -80,12 +92,29 @@ async def delete_category(
     category_id: int,
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Удалить категорию"""
+    """Удалить категорию.
+
+    У категорий чтения сначала обнуляем связь с записями: иначе записи
+    остаются со ссылкой на несуществующую категорию и висят мёртвым грузом —
+    на странице чтения они уезжают на полку «без категории».
+    """
     result = await db.execute(select(Category).where(Category.id == category_id))
     category = result.scalar_one_or_none()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
 
+    if category.type == "reading":
+        from sqlalchemy import update as sa_update
+
+        from app.models.shopping import ShoppingItem
+
+        await db.execute(
+            sa_update(ShoppingItem)
+            .where(ShoppingItem.category_id == category_id)
+            .values(category_id=None)
+        )
+
     await db.delete(category)
     await db.flush()
+    await db.commit()
     return {"message": "Category deleted"}

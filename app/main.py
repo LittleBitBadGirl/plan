@@ -11,7 +11,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from app.db.database import init_db, async_session
-from app.db.seed import seed_categories
+from app.db.seed import seed_categories, seed_reading_categories
 from app.api.tasks import router as tasks_router
 from app.api.categories import router as categories_router
 from app.api.recurring import router as recurring_router
@@ -41,6 +41,8 @@ async def lifespan(app: FastAPI):
     # Seed категорий, если БД пуста
     async with async_session() as db:
         await seed_categories(db)
+        # Категории чтения досеиваются всегда: если их удалили, они вернутся.
+        await seed_reading_categories(db)
         await db.commit()
 
     # Сделать бэкап при запуске

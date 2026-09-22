@@ -79,7 +79,9 @@ async def _load_task_categories(db: AsyncSession) -> dict:
     сколько всего было».
     """
     result = await db.execute(
-        select(Category).order_by(Category.is_global.desc(), Category.name)
+        select(Category)
+        .where(Category.type == "task")
+        .order_by(Category.is_global.desc(), Category.name)
     )
     categories = list(result.scalars().all())
 
@@ -167,7 +169,9 @@ async def backlog_create_htmx(
         if category_id and category_id.isdigit():
             final_category_id = int(category_id)
         else:
-            cat_stmt = select(Category).order_by(Category.is_global.desc(), Category.name)
+            cat_stmt = select(Category).where(Category.type == "task").order_by(
+                Category.is_global.desc(), Category.name
+            )
             cat_res = await db.execute(cat_stmt)
             all_cats = [{"id": c.id, "name": c.name, "is_global": c.is_global} for c in cat_res.scalars().all()]
             ai_result = await ai_service.categorize(title, all_cats)

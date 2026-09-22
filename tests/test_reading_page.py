@@ -1,4 +1,4 @@
-"""Страница «Читать»: список переехал с низа дашборда в отдельный раздел."""
+"""Страница «Читать»: полки категорий, карточки и фильтры."""
 
 import pytest
 
@@ -6,7 +6,7 @@ from app.models.shopping import ShoppingItem
 
 
 @pytest.mark.asyncio
-async def test_reading_page_renders_list_and_form(client, db):
+async def test_reading_page_renders_shelves_and_filter_chips(client, db):
     db.add(ShoppingItem(title="Бизнес по-русски", item_kind="reading", reading_status="reading"))
     db.add(ShoppingItem(title="Русская модель управления", item_kind="reading"))
     await db.commit()
@@ -15,13 +15,17 @@ async def test_reading_page_renders_list_and_form(client, db):
     assert resp.status_code == 200
     html = resp.text
 
-    # обе книги на месте, добавление и попап «подробнее» тоже
+    # обе книги на месте, добавление, фильтры и попап «подробнее» тоже
     assert "Бизнес по-русски" in html
     assert "Русская модель управления" in html
     assert 'hx-post="/api/reading/create"' in html
     assert 'id="reading-list"' in html
+    assert 'id="reading-filters"' in html
     assert 'id="reading-popup-overlay"' in html
-    assert "readings" not in html  # на странице нет старых надписей дашборда
+    # на странице есть категории чтения и полка для записей без категории
+    assert "Менеджмент и команда" in html
+    assert "без категории" in html
+    assert "readings" not in html  # старых надписей дашборда нет
 
 
 @pytest.mark.asyncio
@@ -41,14 +45,14 @@ async def test_reading_page_shows_pdf_viewer_for_pdf_links(client, db):
 
 
 @pytest.mark.asyncio
-async def test_reading_page_counts_in_lead(client, db):
+async def test_reading_page_lead_counts(client, db):
     db.add(ShoppingItem(title="Читаю сейчас", item_kind="reading", reading_status="reading"))
     db.add(ShoppingItem(title="В очереди", item_kind="reading"))
     await db.commit()
 
     html = (await client.get("/reading")).text
-    assert "читаю 1" in html
-    assert "к прочтению 1" in html
+    assert "Найдено 2 из 2" in html
+    assert "Читаю сейчас: 1" in html
 
 
 @pytest.mark.asyncio

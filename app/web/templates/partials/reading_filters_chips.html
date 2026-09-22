@@ -1,0 +1,51 @@
+{# Чипсы фильтров: категории, форматы, теги. Один и тот же блок рисуется
+   на странице и приходит ответом на смену фильтров. Во втором случае
+   oob=True — тогда блок подменяется на месте через hx-swap-oob. #}
+{% set oob_attr = ' hx-swap-oob="true"' if oob else '' %}
+
+<div class="reading-filters__group" id="reading-cat-group"{{ oob_attr | safe }}>
+    <span class="reading-filters__label">категории</span>
+    <div class="reading-chips">
+        {% for name in categories %}
+        <button type="submit" name="cat" value="{{ name }}"
+                class="reading-chip {% if filters.category == name %}reading-chip--on{% endif %} {% if not category_counts.get(name) %}reading-chip--empty{% endif %}">
+            {{ name }} <u>{{ category_counts.get(name, 0) }}</u>
+        </button>
+        {% endfor %}
+        {% if category_counts.get('без категории') %}
+        <button type="submit" name="cat" value="без категории"
+                class="reading-chip {% if filters.category == 'без категории' %}reading-chip--on{% endif %}">
+            без категории <u>{{ category_counts.get('без категории') }}</u>
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="reading-filters__group" id="reading-fmt-group"{{ oob_attr | safe }}>
+    <span class="reading-filters__label">формат</span>
+    <div class="reading-chips">
+        {% for name in formats %}
+        <label class="reading-chip {% if name in filters.formats %}reading-chip--on{% endif %} {% if not format_counts.get(name) %}reading-chip--empty{% endif %}">
+            <input type="checkbox" name="fmt" value="{{ name }}" {% if name in filters.formats %}checked{% endif %}>
+            {{ name }} <u>{{ format_counts.get(name, 0) }}</u>
+        </label>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="reading-filters__group" id="reading-tag-group"{{ oob_attr | safe }}>
+    <span class="reading-filters__label">теги</span>
+    <div class="reading-chips">
+        {% for name, count in tag_chips %}
+        <label class="reading-chip {% if name in filters.tags %}reading-chip--on{% endif %}">
+            <input type="checkbox" name="tag" value="{{ name }}" {% if name in filters.tags %}checked{% endif %}>
+            {{ name }} <u>{{ count }}</u>
+        </label>
+        {% endfor %}
+        {% if tag_pairs | length > tag_chips_limit %}
+        <button type="submit" name="all_tags" value="1" class="reading-chip reading-chip--more">
+            {% if tag_all %}свернуть теги{% else %}ещё {{ tag_pairs | length - tag_chips_limit }} тегов{% endif %}
+        </button>
+        {% endif %}
+    </div>
+</div>

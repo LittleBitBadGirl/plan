@@ -28,6 +28,7 @@ from app.models.calendar_event import CalendarEvent
 from app.models.recurring import RecurringTask
 from app.models.recurring_completion import RecurringCompletion
 from app.models.shopping import ShoppingItem
+from app.models.tag import Tag, shopping_item_tags
 
 TEST_AUTH_HEADERS = {
     "Authorization": "Bearer test-api-token",
@@ -40,10 +41,11 @@ async def setup_test_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    from app.db.seed import seed_categories
+    from app.db.seed import seed_categories, seed_reading_categories
 
     async with async_session() as session:
         await seed_categories(session)
+        await seed_reading_categories(session)
         await session.commit()
 
     yield
@@ -58,7 +60,9 @@ async def isolate_tasks_and_calendar():
     async with async_session() as session:
         await session.execute(delete(RecurringCompletion))
         await session.execute(delete(CalendarEvent))
+        await session.execute(delete(shopping_item_tags))
         await session.execute(delete(ShoppingItem))
+        await session.execute(delete(Tag))
         await session.execute(delete(Task))
         await session.execute(delete(RecurringTask))
         await session.commit()

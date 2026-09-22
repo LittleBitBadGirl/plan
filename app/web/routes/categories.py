@@ -171,10 +171,22 @@ async def create_subcategory_inline(parent_id: int, name: str = Form(...)):
 @router.delete("/api/categories/{category_id}", response_class=HTMLResponse)
 async def delete_category_htmx(category_id: int):
     """Удалить категорию (HTMX) — для категорий задач"""
+    from sqlalchemy import update as sa_update
+
+    from app.models.shopping import ShoppingItem
+
     async with async_session() as db:
         result = await db.execute(select(Category).where(Category.id == category_id))
         cat = result.scalar_one_or_none()
         if cat:
+            # Записи чтения не должны оставаться со ссылкой на удалённую
+            # категорию: связь обнуляем, они уезжают на полку «без категории».
+            if cat.type == "reading":
+                await db.execute(
+                    sa_update(ShoppingItem)
+                    .where(ShoppingItem.category_id == category_id)
+                    .values(category_id=None)
+                )
             await db.delete(cat)
             await db.commit()
             return HTMLResponse(content="")
@@ -227,6 +239,16 @@ async def delete_finance_category_safe(category_id: int):
             .where(Tx.category_id == category_id)
             .values(category_id=fallback_id)
         )
+
+        # Записи чтения уходят на полку «без категории»
+        if cat.type == "reading":
+            from app.models.shopping import ShoppingItem
+
+            await db.execute(
+                sa_update(ShoppingItem)
+                .where(ShoppingItem.category_id == category_id)
+                .values(category_id=None)
+            )
 
         await db.delete(cat)
         await db.commit()

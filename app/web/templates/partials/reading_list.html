@@ -1,166 +1,183 @@
-{% from 'partials/icons_macros.html' import icon_check, icon_trash %}
+{# При ответе на смену фильтров (oob) вместе со списком обновляем чипсы
+   фильтров и счётчик найденного: они лежат вне списка, htmx их не трогает. #}
+{% if oob %}
+{% with oob = True %}{% include "partials/reading_filters_chips.html" %}{% endwith %}
+<span id="reading-found" hx-swap-oob="true">Найдено {{ found }} из {{ total }}.</span>
+{% endif %}
 
-{% if reading_items %}
-    {% for item in reading_items %}
-    <div class="reading-item bg-dark-800 rounded-lg p-2 px-3 border border-dark-700 hover:border-amber-600/30 transition flex flex-col gap-2"
-         id="reading-{{ item.id }}"
-         data-title="{{ item.title }}"
-         data-content="{{ item.content or '' }}">
-        {# --- Row: status badge, title, actions --- #}
-        <div class="flex items-start gap-2">
-            {# Status badge + progress toggle button #}
-            {% if item.status == 'reading' %}
-            <button type="button"
-                    hx-post="/api/reading/{{ item.id }}/progress"
-                    hx-target="#reading-list"
-                    hx-swap="innerHTML"
-                    class="shrink-0 bg-amber-900/60 text-amber-300 px-1.5 py-0.5 rounded text-[9px] font-bold border border-amber-700/50 hover:bg-amber-800/60 transition mt-0.5"
-                    title="В процессе — нажми чтобы завершить">
-                читаю
-            </button>
-            {% else %}
-            <button type="button"
-                    hx-post="/api/reading/{{ item.id }}/progress"
-                    hx-target="#reading-list"
-                    hx-swap="innerHTML"
-                    class="shrink-0 bg-dark-700 text-gray-500 hover:text-amber-400 hover:bg-amber-900/30 px-1.5 py-0.5 rounded text-[9px] font-bold border border-dark-600 hover:border-amber-700/50 transition mt-0.5"
-                    title="Начать читать">
-                к прочтению
+{% from 'partials/icons_macros.html' import icon_trash %}
+
+{% if shelves %}
+    {% for shelf in shelves %}
+    <section class="reading-shelf">
+        <div class="reading-shelf__head">
+            <span class="reading-shelf__name">{{ shelf.name }}</span>
+            <span class="reading-shelf__n">{{ shelf.cards | length }}</span>
+            {% if shelf.show_only %}
+            <button type="submit" form="reading-filters" name="cat" value="{{ shelf.name }}" class="reading-shelf__only">
+                показать только эту категорию
             </button>
             {% endif %}
+        </div>
 
-            {# Title / link — full visibility, no truncate #}
-            <div class="flex-1 min-w-0">
+        <div class="reading-grid">
+            {% for item in shelf.cards %}
+            <article class="reading-card" id="reading-{{ item.id }}"
+                    data-title="{{ item.title }}"
+                    data-content="{{ item.content or '' }}">
+
+                <div class="reading-card__top">
+                    {% if item.status == 'reading' %}
+                    <button type="button" class="reading-card__status reading-card__status--reading"
+                            hx-post="/api/reading/{{ item.id }}/progress" hx-target="#reading-list"
+                            hx-swap="innerHTML" hx-include="#reading-filters"
+                            title="В процессе, нажми чтобы завершить">читаю</button>
+                    {% elif item.is_archived %}
+                    <span class="reading-card__status reading-card__status--done">прочитано</span>
+                    {% else %}
+                    <button type="button" class="reading-card__status"
+                            hx-post="/api/reading/{{ item.id }}/progress" hx-target="#reading-list"
+                            hx-swap="innerHTML" hx-include="#reading-filters"
+                            title="Начать читать">к прочтению</button>
+                    {% endif %}
+                    {% if item.reading_format %}
+                    <span class="reading-card__format">{{ item.reading_format }}</span>
+                    {% endif %}
+                </div>
+
                 {% if item.url %}
-                <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer"
-                   class="font-medium text-sm text-amber-200 hover:text-amber-100 hover:underline block break-words"
+                <a class="reading-card__title" href="{{ item.url }}" target="_blank" rel="noopener noreferrer"
                    title="{{ item.title }}">
                     {{ item.title }}
-                    {% if '.pdf' in item.url.lower() %}
-                    <span class="text-[10px] text-amber-500/70">PDF</span>
-                    {% endif %}
-                    <svg class="w-3 h-3 inline-block opacity-70 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                    <svg class="reading-card__ext" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                 </a>
                 {% else %}
-                <span class="font-medium text-sm text-stone-200 block break-words">{{ item.title }}</span>
+                <span class="reading-card__title reading-card__title--plain">{{ item.title }}</span>
                 {% endif %}
-                {# Show content preview if non-link item has content #}
-                {% if not item.url and item.content %}
-                <p class="text-[10px] text-gray-500 mt-0.5 line-clamp-2 break-words">{{ item.content }}</p>
+
+                {% if item.tags %}
+                <div class="reading-card__tags">
+                    {% for tag in item.tags %}
+                    <button type="submit" form="reading-filters" name="tag" value="{{ tag }}" class="reading-tag"
+                            title="Показать всё с этим тегом">{{ tag }}</button>
+                    {% endfor %}
+                </div>
                 {% endif %}
-            </div>
 
-            {# Подробнее button — only when there's description content #}
-            {% if item.content %}
-            <button type="button"
-                    onclick="showReadingPopup({{ item.id }})"
-                    class="flex-shrink-0 text-[10px] text-stone-500 hover:text-amber-400 transition mt-0.5 px-1.5 py-0.5 rounded border border-dark-600 hover:border-amber-700/50"
-                    title="Подробнее">
-                подробнее
-            </button>
-            {% endif %}
+                {% if item.content %}
+                <p class="reading-card__note">{{ item.content }}</p>
+                {% endif %}
 
-            {# Delete #}
-            <form hx-delete="/api/reading/{{ item.id }}" hx-target="#reading-list" hx-swap="innerHTML" class="flex-shrink-0">
-                <button type="submit" class="icon-action icon-action--danger" title="Удалить">
-                    {{ icon_trash() }}
-                </button>
-            </form>
+                {# --- Прогресс: полоса с правкой страниц, или подсказка --- #}
+                {% if item.pages_total and item.pages_total > 0 %}
+                <div class="reading-progress" id="pg-row-{{ item.id }}">
+                    <span id="pg-display-{{ item.id }}" class="reading-progress__counter"
+                          onclick="document.getElementById('pg-display-{{ item.id }}').classList.add('hidden'); document.getElementById('pg-edit-{{ item.id }}').classList.remove('hidden'); document.getElementById('pg-input-{{ item.id }}').focus()"
+                          title="Кликни чтобы обновить страницу">{{ item.pages_read }}/{{ item.pages_total }}</span>
+                    <form id="pg-edit-{{ item.id }}" class="reading-progress__form hidden"
+                          hx-post="/api/reading/{{ item.id }}/pages" hx-target="#reading-list"
+                          hx-swap="innerHTML" hx-include="#reading-filters">
+                        <input id="pg-input-{{ item.id }}" type="number" name="pages_read" value="{{ item.pages_read }}"
+                               min="0" max="{{ item.pages_total }}" class="reading-progress__input">
+                        <button type="submit" class="reading-progress__ok">ок</button>
+                        <button type="button" class="reading-progress__cancel"
+                                onclick="document.getElementById('pg-display-{{ item.id }}').classList.remove('hidden'); document.getElementById('pg-edit-{{ item.id }}').classList.add('hidden')">×</button>
+                    </form>
+                    <div class="reading-progress__bar">
+                        <div class="reading-progress__fill" style="width: {{ item.pages_pct }}%"></div>
+                    </div>
+                    <span class="reading-progress__pct">{{ item.pages_pct }}%</span>
+                    <form hx-post="/api/reading/{{ item.id }}/pages" hx-target="#reading-list"
+                          hx-swap="innerHTML" hx-include="#reading-filters" class="reading-progress__total">
+                        <input type="number" name="pages_total" value="{{ item.pages_total }}" min="1"
+                               class="reading-progress__input">
+                        <button type="submit" class="reading-progress__ok" title="Изменить всего страниц">ок</button>
+                    </form>
+                </div>
+                {% elif item.status == 'reading' %}
+                <form class="reading-progress reading-progress--empty"
+                      hx-post="/api/reading/{{ item.id }}/pages" hx-target="#reading-list"
+                      hx-swap="innerHTML" hx-include="#reading-filters">
+                    <span class="reading-progress__hint">всего страниц:</span>
+                    <input type="number" name="pages_total" placeholder="0" min="1" class="reading-progress__input">
+                    <button type="submit" class="reading-progress__ok">ок</button>
+                </form>
+                {% else %}
+                <form class="reading-progress reading-progress--hint"
+                      hx-post="/api/reading/{{ item.id }}/pages" hx-target="#reading-list"
+                      hx-swap="innerHTML" hx-include="#reading-filters">
+                    <span class="reading-progress__hint">стр:</span>
+                    <input type="number" name="pages_total" placeholder="..." min="1" class="reading-progress__input">
+                    <button type="submit" class="reading-progress__ok">ок</button>
+                </form>
+                {% endif %}
+
+                <div class="reading-card__actions">
+                    {% if item.content %}
+                    <button type="button" class="reading-card__action" onclick="showReadingPopup({{ item.id }})"
+                            title="Показать заметку целиком">подробнее</button>
+                    {% endif %}
+                    <details class="reading-card__edit" data-open="0">
+                        <summary class="reading-card__action">изменить</summary>
+                        <form class="reading-edit" hx-post="/api/reading/{{ item.id }}/meta"
+                              hx-target="#reading-list" hx-swap="innerHTML" hx-include="#reading-filters">
+                            <label class="reading-edit__field">
+                                <span>категория</span>
+                                <select name="category">
+                                    <option value="">без категории</option>
+                                    {% for name in categories %}
+                                    <option value="{{ name }}" {% if item.category == name %}selected{% endif %}>{{ name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label class="reading-edit__field">
+                                <span>формат</span>
+                                <select name="reading_format">
+                                    <option value="">не указан</option>
+                                    {% for name in formats %}
+                                    <option value="{{ name }}" {% if item.reading_format == name %}selected{% endif %}>{{ name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label class="reading-edit__field">
+                                <span>теги через запятую</span>
+                                <input type="text" name="tags" list="reading-tag-options"
+                                       value="{{ item.tags | join(', ') }}">
+                            </label>
+                            <div class="reading-edit__buttons">
+                                <button type="submit" class="reading-edit__save">сохранить</button>
+                            </div>
+                        </form>
+                    </details>
+                    <form hx-delete="/api/reading/{{ item.id }}" hx-target="#reading-list" hx-swap="innerHTML"
+                          hx-include="#reading-filters" class="reading-card__delete">
+                        <button type="submit" class="icon-action icon-action--danger" title="Удалить">
+                            {{ icon_trash() }}
+                        </button>
+                    </form>
+                </div>
+
+                {# PDF читаем не выходя со страницы: просмотрщик подгружается по клику #}
+                {% if item.url and '.pdf' in item.url.lower() %}
+                <div class="reading-pdf">
+                    <button type="button" class="reading-pdf__toggle" onclick="toggleReadingPdf({{ item.id }})">
+                        читать здесь
+                    </button>
+                    <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer" class="reading-pdf__open">
+                        открыть в новой вкладке
+                    </a>
+                </div>
+                <div id="pdf-viewer-{{ item.id }}" class="reading-pdf__box hidden" data-src="{{ item.url }}"></div>
+                {% endif %}
+            </article>
+            {% endfor %}
         </div>
-
-        {# --- Progress section — two modes --- #}
-
-        {# Mode A: pages_total is set — show progress bar, click counter to edit #}
-        {% if item.pages_total and item.pages_total > 0 %}
-        {% set pct = ((item.pages_read or 0) / item.pages_total * 100) | round %}
-        <div class="flex items-center gap-2 pl-6" id="pg-row-{{ item.id }}">
-            {# Clickable counter → inline edit #}
-            <span id="pg-display-{{ item.id }}"
-                  onclick="document.getElementById('pg-display-{{ item.id }}').classList.add('hidden'); document.getElementById('pg-edit-{{ item.id }}').classList.remove('hidden'); document.getElementById('pg-input-{{ item.id }}').focus()"
-                  class="text-[10px] text-gray-400 hover:text-amber-400 tabular-nums w-14 text-right shrink-0 cursor-pointer border-b border-dashed border-gray-700 hover:border-amber-600 transition"
-                  title="Кликни чтобы обновить страницу">{{ item.pages_read or 0 }}/{{ item.pages_total }}</span>
-            {# Inline edit form (hidden by default) #}
-            <form id="pg-edit-{{ item.id }}"
-                  hx-post="/api/reading/{{ item.id }}/pages"
-                  hx-target="#reading-list"
-                  hx-swap="innerHTML"
-                  class="hidden flex items-center gap-1">
-                <span class="text-[9px] text-gray-500">стр.</span>
-                <input id="pg-input-{{ item.id }}" type="number" name="pages_read" value="{{ item.pages_read or 0 }}" min="0" max="{{ item.pages_total }}"
-                       class="w-12 bg-dark-900 border border-amber-700 rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none focus:border-amber-500">
-                <span class="text-[9px] text-gray-600">/ {{ item.pages_total }}</span>
-                <button type="submit" class="text-[9px] text-amber-400 hover:text-amber-300 transition font-bold">ок</button>
-                <button type="button"
-                        onclick="document.getElementById('pg-display-{{ item.id }}').classList.remove('hidden'); document.getElementById('pg-edit-{{ item.id }}').classList.add('hidden')"
-                        class="text-[9px] text-gray-600 hover:text-gray-400 transition">×</button>
-            </form>
-            {# Progress bar #}
-            <div class="flex-1 bg-dark-700 rounded-full h-2 overflow-hidden border border-dark-600">
-                <div class="h-full {{ 'bg-amber-600' if item.status == 'reading' else 'bg-emerald-700' }} transition-all duration-500" style="width: {{ [pct, 100] | min }}%"></div>
-            </div>
-            <span class="text-[10px] text-gray-600 tabular-nums w-8 shrink-0">{{ [pct, 100] | min }}%</span>
-            {# Edit total pages #}
-            <button type="button"
-                    onclick="this.nextElementSibling.classList.toggle('hidden')"
-                    class="text-[9px] text-gray-600 hover:text-amber-400 transition ml-1"
-                    title="Изменить всего страниц">✎</button>
-            <form hx-post="/api/reading/{{ item.id }}/pages"
-                  hx-target="#reading-list"
-                  hx-swap="innerHTML"
-                  class="hidden flex items-center gap-1">
-                <input type="number" name="pages_total" value="{{ item.pages_total }}" min="1"
-                       class="w-12 bg-dark-900 border border-dark-600 rounded px-1 py-0.5 text-[9px] text-white focus:outline-none focus:border-amber-600">
-                <button type="submit" class="text-[9px] text-amber-400 hover:text-amber-300 transition">✓</button>
-            </form>
-        </div>
-        {% endif %}
-
-        {# Mode B: no pages set yet, and status is reading — show prominent input #}
-        {% if (not item.pages_total or item.pages_total == 0) and item.status == 'reading' %}
-        <div class="pl-6">
-            <form hx-post="/api/reading/{{ item.id }}/pages"
-                  hx-target="#reading-list"
-                  hx-swap="innerHTML"
-                  class="flex items-center gap-2">
-                <span class="text-[10px] text-gray-500 shrink-0">всего страниц:</span>
-                <input type="number" name="pages_total" placeholder="0" min="1"
-                       class="w-16 bg-dark-900 border border-dark-600 rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-600">
-                <button type="submit" class="text-xs bg-amber-800 hover:bg-amber-700 text-amber-200 px-2 py-0.5 rounded transition font-medium">ок</button>
-            </form>
-        </div>
-        {% endif %}
-
-        {# Mode C: no pages and NOT reading — subtle hint #}
-        {% if (not item.pages_total or item.pages_total == 0) and item.status != 'reading' %}
-        <form hx-post="/api/reading/{{ item.id }}/pages"
-              hx-target="#reading-list"
-              hx-swap="innerHTML"
-              class="flex items-center gap-1 pl-6 opacity-40 hover:opacity-100 transition-opacity">
-            <span class="text-[9px] text-gray-600">стр:</span>
-            <input type="number" name="pages_total" placeholder="..." min="1"
-                   class="w-10 bg-transparent border-b border-gray-700 px-1 py-0.5 text-[9px] text-white placeholder-gray-700 focus:outline-none focus:border-amber-600">
-            <button type="submit" class="text-[9px] text-gray-600 hover:text-amber-400 transition">✓</button>
-        </form>
-        {% endif %}
-
-        {# PDF читаем не выходя со страницы: просмотрщик подгружается по клику #}
-        {% if item.url and '.pdf' in item.url.lower() %}
-        <div class="reading-pdf">
-            <button type="button" class="reading-pdf__toggle" onclick="toggleReadingPdf({{ item.id }})">
-                читать здесь
-            </button>
-            <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer" class="reading-pdf__open">
-                открыть в новой вкладке
-            </a>
-        </div>
-        <div id="pdf-viewer-{{ item.id }}" class="reading-pdf__box hidden" data-src="{{ item.url }}"></div>
-        {% endif %}
-    </div>
+    </section>
     {% endfor %}
-
 {% else %}
-    <div class="text-center py-8 text-gray-500">
-        <p class="text-sm">Список пуст</p>
+    <div class="reading-empty">
+        <p>Под выбранные условия ничего нет.</p>
+        <p class="reading-empty__hint">Снять фильтры: кнопка «все категории» или очистка поиска.</p>
     </div>
 {% endif %}
 
@@ -181,7 +198,7 @@
 
 <script>
 // htmx исполняет скрипт из подставленного html повторно, поэтому всё здесь идемпотентно:
-// данные берём из data-атрибутов строки, подписку на Escape ставим один раз.
+// данные берём из data-атрибутов карточки, подписку на Escape ставим один раз.
 function _readingFillLinks(el, text) {
     el.textContent = '';
     const parts = String(text).split(/(https?:\/\/[^\s]+)/g);
@@ -204,7 +221,7 @@ function showReadingPopup(id) {
     const row = document.getElementById('reading-' + id);
     if (!overlay || !row) return;
     const bodyEl = document.getElementById('reading-popup-body');
-    // Заголовок и текст берём из самой строки: после любого обновления списка они свежие
+    // Заголовок и текст берём из самой карточки: после любого обновления списка они свежие
     document.getElementById('reading-popup-title').textContent =
         (row.dataset.title || '').replace(/https?:\/\/\S+/g, '').trim();
     _readingFillLinks(bodyEl, row.dataset.content || '');

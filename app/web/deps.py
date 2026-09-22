@@ -1090,30 +1090,96 @@ def _reading_url(title: str):
 
 
 def reading_items_view(items: list) -> list:
-    """ShoppingItem(reading) → dict {id, title, url, content, status, pages_total, pages_read} для шаблона."""
-    return [{
-        "id": it.id,
-        "title": it.title,
-        "url": _reading_url(it.title),
-        "content": it.content,
-        "status": it.reading_status or "want_to_read",
-        "pages_total": it.pages_total,
-        "pages_read": it.pages_read or 0,
-    } for it in items]
+    """ShoppingItem(reading) → dict для шаблона: ссылка, категория, формат, теги, прогресс."""
+    view = []
+    for it in items:
+        pages_total = it.pages_total or 0
+        pages_read = it.pages_read or 0
+        view.append({
+            "id": it.id,
+            "title": it.title,
+            "url": _reading_url(it.title),
+            "content": it.content,
+            "status": it.reading_status or "want_to_read",
+            "pages_total": it.pages_total,
+            "pages_read": pages_read,
+            "pages_pct": min(100, round(pages_read / pages_total * 100)) if pages_total else 0,
+            "is_archived": bool(it.is_archived),
+            "category": it.category.name if it.category else "",
+            "reading_format": it.reading_format or "",
+            "tags": [tag.name for tag in (it.tags or [])],
+        })
+    return view
 
 
-def _render_reading_list(request: Request, reading_items: list) -> str:
+async def reading_filters_from_request(request: Request):
+    """Фильтры страницы чтения: из строки запроса, а для POST — из полей формы.
+
+    htmx отправляет фильтры строкой запроса при GET и телом формы при POST
+    (кнопки внутри списка подтягивают форму фильтров через hx-include),
+    поэтому источник зависит от метода.
+    """
+    from app.services.reading_service import parse_filters
+
+    keys = ("cat", "fmt", "tag", "status", "q", "all_tags")
+    if any(key in request.query_params for key in keys):
+        return parse_filters(request.query_params)
+    if request.method in ("POST", "PUT", "PATCH"):
+        return parse_filters(await request.form())
+    return parse_filters(request.query_params)
+
+
+async def build_reading_context(db: AsyncSession, filters) -> dict:
+    """Всё, что нужно странице чтения: полки, счётчики, чипсы фильтров."""
+    from app.services import reading_service as rs
+
+    items = await rs.load_reading(db, filters)
+    categories = await rs.reading_categories(db)
+    # Ключ называется cards, а не items: у словаря есть метод items(), и в Jinja
+    # shelf.items вернул бы метод, а не список карточек.
+    shelves = [
+        {
+            "name": shelf["name"],
+            "show_only": shelf["show_only"],
+            "cards": reading_items_view(shelf["items"]),
+        }
+        for shelf in rs.group_by_shelf(items, categories, filters)
+    ]
+    tag_pairs = await rs.tag_counts(db, filters)
+    tag_all = len(tag_pairs) <= rs.TAG_CHIPS_LIMIT or filters.all_tags
+    return {
+        "shelves": shelves,
+        "found": len(items),
+        "total": await rs.total_reading(db, include_archived=True),
+        "categories": [category.name for category in categories],
+        "category_counts": await rs.category_counts(db, filters),
+        "formats": rs.READING_FORMATS,
+        "format_counts": await rs.format_counts(db, filters),
+        "tag_pairs": tag_pairs,
+        # Чипсы тегов показываем срезом, если не просили все.
+        "tag_chips": tag_pairs if tag_all else tag_pairs[: rs.TAG_CHIPS_LIMIT],
+        "tag_chips_limit": rs.TAG_CHIPS_LIMIT,
+        "tag_all": tag_all,
+        "filters": filters,
+        # Нужны ли out-of-band обновления: список приходит ответом на смену
+        # фильтров, а чипсы и счётчик живут вне него.
+        "oob": False,
+    }
+
+
+def _render_reading_list(request: Request, context: dict) -> str:
     tpl = templates.get_template("partials/reading_list.html")
-    return tpl.render({"request": request, "reading_items": reading_items})
+    return tpl.render({"request": request, **context})
 
 
 async def _reading_list_response(request: Request, db: AsyncSession):
     from fastapi.responses import HTMLResponse
-    from app.services.shopping_service import load_active_reading
 
-    items = await load_active_reading(db)
-    html = _render_reading_list(request, reading_items_view(items))
-    return HTMLResponse(content=html)
+    filters = await reading_filters_from_request(request)
+    context = await build_reading_context(db, filters)
+    # htmx присылает HX-Request: тогда вместе со списком обновляем чипсы фильтров.
+    context["oob"] = request.headers.get("HX-Request") == "true"
+    return HTMLResponse(content=_render_reading_list(request, context))
 
 
 async def get_history_data(db, period: str):
@@ -1238,6 +1304,8 @@ __all__ = [
     "_shopping_toggle_response",
     "_shopping_counts",
     "reading_items_view",
+    "reading_filters_from_request",
+    "build_reading_context",
     "_render_reading_list",
     "_reading_list_response",
 ]

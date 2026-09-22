@@ -8,6 +8,7 @@ from .recurring_completion import RecurringCompletion
 from .report import AIReport
 from .impact import CareerImpact
 from .shopping import ShoppingItem
+from .tag import Tag
 from .finance import Transaction
 from .goal import FinancialGoal
 from .goal_history import GoalHistory

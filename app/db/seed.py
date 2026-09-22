@@ -70,3 +70,21 @@ async def seed_categories(db: AsyncSession):
             db.add(sub)
 
     await db.flush()
+
+
+async def seed_reading_categories(db: AsyncSession):
+    """Заводит категории чтения (type='reading'), когда их нет вообще.
+
+    Отдельная функция, потому что seed_categories выходит сразу, если в базе
+    уже есть категории. Список берём из сервиса чтения: он же задаёт порядок
+    полок на странице. Если категории чтения уже заведены, функцию ничего не
+    делает: удалённую вручную категорию она не воскрешает.
+    """
+    from app.services.reading_service import READING_CATEGORY_ORDER
+
+    result = await db.execute(select(Category).where(Category.type == "reading"))
+    if result.scalars().first():
+        return
+    for name in READING_CATEGORY_ORDER:
+        db.add(Category(name=name, is_global=True, type="reading"))
+    await db.flush()
