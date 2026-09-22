@@ -16,7 +16,7 @@
 
 
     <!-- Tailwind CSS (локальная сборка, без CDN) -->
-    <link rel="stylesheet" href="/web/static/css/tailwind.css">
+    <link rel="stylesheet" href="/web/static/css/tailwind.css{{ static_v('css/tailwind.css') }}">
 
     <!-- HTMX (локально) -->
     <script src="/web/static/js/htmx.min.js"></script>
@@ -30,10 +30,10 @@
     </style>
 
     <!-- Custom styles -->
-    <link rel="stylesheet" href="/web/static/css/style.css?v=3">
+    <link rel="stylesheet" href="/web/static/css/style.css{{ static_v('css/style.css') }}">
 
     <!-- Свои шрифты (локально) и токены оформления — после tailwind.css -->
-    <link rel="stylesheet" href="/web/static/css/design.css?v=1">
+    <link rel="stylesheet" href="/web/static/css/design.css{{ static_v('css/design.css') }}">
 
     {% block extra_head %}{% endblock %}
 </head>

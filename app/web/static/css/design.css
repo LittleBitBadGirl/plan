@@ -948,19 +948,32 @@ h3,
 }
 
 /* Компактная карточка «Читать» на дашборде — ведёт на страницу */
+/* Одна строка фиксированной высоты: раньше карточка расползалась на три строки,
+   когда в заголовке пункта лежал адрес PDF. Теперь заголовок обрезается
+   многоточием, переносов нет, высота как у блока ввода. */
 .reading-shortcut {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.65rem 0.85rem;
+  gap: 0.55rem;
+  height: 42px;
+  padding: 0 0.8rem;
   background: #1c1917;
   border: 1px solid #44403c;
   border-radius: 0.75rem;
-  transition: border-color 0.15s ease;
+  overflow: hidden;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
-.reading-shortcut:hover { border-color: #b45309; }
-.reading-shortcut__label { font-weight: 700; color: #e7e5e4; font-size: 0.95rem; }
+.reading-shortcut:hover { border-color: #b45309; background: #221f1d; }
+.reading-shortcut__label {
+  flex: 0 0 auto;
+  font-weight: 700;
+  color: #e7e5e4;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
 .reading-shortcut__count {
+  flex: 0 0 auto;
   background: #b45309;
   color: #fff;
   font-size: 0.8rem;
@@ -985,4 +998,14 @@ h3,
   overflow: hidden;
 }
 .reading-shortcut__bar i { display: block; height: 100%; background: #d97706; }
-.reading-shortcut__pct { color: #a8a29e; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.reading-shortcut__pct {
+  flex: 0 0 auto;
+  color: #a8a29e;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+.reading-shortcut__arrow { flex: 0 0 auto; color: #78716c; font-size: 0.95rem; }
+@media (max-width: 640px) {
+  .reading-shortcut__bar { flex: 0 0 2.5rem; }
+  .reading-shortcut__now { font-size: 0.85rem; }
+}

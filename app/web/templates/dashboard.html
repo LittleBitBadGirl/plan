@@ -335,22 +335,27 @@
                 {# Сводка по нагрузке («Сегодня 85 задач: …») — рядом с календарём:
                    слева она спорила за место с формой ввода, а тут она к месту,
                    и на телефоне остаётся прямо над календарём (dash-m-3). #}
-                {# Читать: список переехал на отдельную страницу (/reading), здесь —
-                   компактная кнопка с тем, что читается сейчас. #}
+                {# Читать: список живёт на отдельной странице (/reading). Здесь —
+                   одна строка: название пункта, счётчик и прогресс. Ссылку из
+                   заголовка вырезаем: иначе адрес PDF растягивал кнопку на три
+                   строки. #}
                 {% set r_now = (reading_items | selectattr('status', 'equalto', 'reading') | list | first) if reading_items else None %}
-                <a href="/reading" class="reading-shortcut mb-4">
+                {% set r_title = (r_now.title.split('http')[0].strip() or r_now.title) if r_now else '' %}
+                {% set r_pct = ([(r_now.pages_read or 0) / r_now.pages_total * 100, 100] | min | round | int) if (r_now and r_now.pages_total) else 0 %}
+                <a href="/reading" class="reading-shortcut mb-4"
+                   title="{% if r_now %}{{ r_title }} — открыть список чтения{% else %}Список чтения{% endif %}">
                     <span class="reading-shortcut__label">Читать</span>
                     <span class="reading-shortcut__count">{{ reading_items | length }}</span>
                     {% if r_now %}
-                    <span class="reading-shortcut__now">{{ r_now.title }}</span>
+                    <span class="reading-shortcut__now">{{ r_title }}</span>
                     {% if r_now.pages_total %}
-                    {% set r_pct = [((r_now.pages_read or 0) / r_now.pages_total * 100) | round | int, 100] | min %}
                     <span class="reading-shortcut__bar"><i style="width: {{ r_pct }}%"></i></span>
                     <span class="reading-shortcut__pct">{{ r_pct }}%</span>
                     {% endif %}
                     {% else %}
-                    <span class="reading-shortcut__now">список пуст — добавь ссылку или книгу</span>
+                    <span class="reading-shortcut__now">список пуст</span>
                     {% endif %}
+                    <span class="reading-shortcut__arrow">&rarr;</span>
                 </a>
 
                 <div id="ai-warning-block" class="{% if not ai_warning %}hidden{% endif %} dash-quick-42__card mb-4 p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">

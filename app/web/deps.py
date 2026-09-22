@@ -357,6 +357,21 @@ async def load_period_entries_for_dashboard(
 templates_dir = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(templates_dir))
 
+# Статика: версия = время правки файла. Ссылка вида design.css?v=169… меняется
+# после каждой выкатки, поэтому браузер не может показать старый CSS
+# (с фиксированным ?v=1 он это делал, и правки выглядели «не приехавшими»).
+static_dir = Path(__file__).parent / "static"
+
+
+def static_v(rel_path: str) -> str:
+    try:
+        return "?v=" + str(int((static_dir / rel_path).stat().st_mtime))
+    except OSError:
+        return "?v=1"
+
+
+templates.env.globals["static_v"] = static_v
+
 _EMOJI_IN_NAME = re.compile(
     r"[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F600-\U0001F64F"
     r"\U0001F680-\U0001F6FF\U0001F1E0-\U0001F1FF\U00002702-\U000027B0"
