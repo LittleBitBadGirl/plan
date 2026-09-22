@@ -102,6 +102,12 @@ async def achievements_board(request: Request):
     return await _render_board(request)
 
 
+@router.get("/achievements/widget", response_class=HTMLResponse)
+async def achievements_widget(request: Request):
+    """Компактный блок достижений: подгружается в окно быстрой записи с дашборда."""
+    return await _render_widget(request)
+
+
 @router.post("/achievements", response_class=HTMLResponse)
 async def create_achievement(
     request: Request,

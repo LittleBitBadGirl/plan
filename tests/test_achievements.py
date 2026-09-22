@@ -173,3 +173,34 @@ async def test_widget_returns_widget_markup(client):
     assert 'id="achievements-board"' not in response.text
     assert "Записано из дашборда" in response.text
     assert "Ещё одно из дашборда" in response.text
+
+async def test_widget_route_returns_quick_form(client):
+    """Виджет достижений отдаётся и по GET — его подгружает кнопка с дашборда."""
+    page = await client.get("/achievements/widget")
+    assert page.status_code == 200
+    assert 'id="achievements-widget"' in page.text
+    assert 'name="widget" value="1"' in page.text
+
+
+async def test_dashboard_has_achievement_quick_add(client):
+    """На дашборде есть кнопка «+ достижение» и окно для неё."""
+    html = (await client.get("/")).text
+    assert 'onclick="openAchievementQuickAdd()"' in html
+    assert 'id="ach-quick"' in html
+    assert 'id="ach-quick-slot"' in html
+    assert "'/achievements/widget'" in html
+    assert "function closeAchievementQuickAdd()" in html
+
+
+async def test_quick_add_from_dashboard_records_and_returns_widget(client):
+    """Запись из окна на дашборде сохраняется и возвращает обновлённый виджет."""
+    resp = await client.post(
+        "/achievements",
+        data={"text": "Записала с дашборда", "sphere": "work", "widget": "1"},
+    )
+    assert resp.status_code == 200
+    assert "Записала с дашборда" in resp.text
+    assert 'id="achievements-widget"' in resp.text
+
+    items = await _all()
+    assert any(i.text == "Записала с дашборда" and i.sphere == "work" for i in items)

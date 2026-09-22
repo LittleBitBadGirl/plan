@@ -713,3 +713,81 @@ h3,
   margin: 2px 0 4px 12px;
   padding-left: 8px;
 }
+
+/* Окно быстрой записи достижения с дашборда: внутри — готовый виджет
+   /achievements/widget, поэтому стили полок и формы берутся из .acw. */
+.ach-quick {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 4.5rem 1rem 1.5rem;
+}
+.ach-quick.hidden {
+  display: none;
+}
+.ach-quick__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.66);
+}
+.ach-quick__panel {
+  position: relative;
+  width: 100%;
+  max-width: 30rem;
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
+  background: #14141a;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1rem 1.1rem 1.2rem;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+.ach-quick__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+.ach-quick__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+.ach-quick__head-right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.ach-quick__all {
+  font-size: 12px;
+  color: #a1a1aa;
+  text-decoration: none;
+  border-bottom: 1px dashed #52525b;
+}
+.ach-quick__all:hover {
+  color: #fbbf24;
+  border-color: #b45309;
+}
+.ach-quick__close {
+  border: 0;
+  background: transparent;
+  color: #8b8b95;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.15rem;
+}
+.ach-quick__close:hover {
+  color: #fff;
+}
+.ach-quick__slot {
+  min-height: 5rem;
+}
+/* Заголовок виджета в окне лишний: у окна свой заголовок. */
+.ach-quick .acw-head {
+  display: none;
+}
