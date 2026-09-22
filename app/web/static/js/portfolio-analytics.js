@@ -440,7 +440,13 @@
             var yMin = Math.max(0, Math.floor((min - range * 0.15) / 1000) * 1000);
             var yMax = Math.ceil((max + range * 0.15) / 1000) * 1000;
             var yRange = yMax - yMin || 1;
-            var W = 600, H = 100, padL = 55, padR = 15, padT = 10, padB = 20;
+            // Подписи осей не мельче 11px. Ширина viewBox берётся по факту
+            // блока, поэтому единица viewBox = пиксель и 11 единиц читаются как
+            // 11px и на телефоне, и на широком экране (при фиксированных 600
+            // единицах подписи на узком экране сжимались в полтора раза).
+            var W = Math.max(320, Math.round(sparkDiv.clientWidth || 600));
+            var H = 112, padL = 58, padR = 18, padT = 10, padB = 28;
+            var fs = 11;
             var cW = W - padL - padR, cH = H - padT - padB;
             var toX = function (i) { return padL + (i / (displaySnaps.length - 1)) * cW; };
             var toY = function (v) { return padT + cH - ((v - yMin) / yRange) * cH; };
@@ -451,15 +457,15 @@
                 var yp = toY(y);
                 var label = y >= 1000000 ? (y / 1e6).toFixed(1) + 'M' : y >= 1000 ? (y / 1000).toFixed(0) + 'k' : y;
                 gridHtml += '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + yp + '" y2="' + yp + '" stroke="#374151" stroke-width="0.5" stroke-dasharray="3,3"/>' +
-                    '<text x="' + (padL - 4) + '" y="' + (yp + 3) + '" fill="#6b7280" font-size="8" text-anchor="end">' + label + '</text>';
+                    '<text x="' + (padL - 6) + '" y="' + (yp + fs * 0.35) + '" fill="#6b7280" font-size="' + fs + '" text-anchor="end">' + label + '</text>';
             }
             sparkDiv.innerHTML =
                 '<p class="text-[10px] text-gray-500 mb-2">Динамика баланса</p>' +
                 '<svg class="w-full" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:120px">' +
                 gridHtml +
                 '<polyline fill="none" stroke="#ca8a04" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="' + allPts + '"/>' +
-                '<text x="' + padL + '" y="' + (H - 2) + '" fill="#6b7280" font-size="8">' + esc(displaySnaps[0].date) + '</text>' +
-                '<text x="' + (W - padR) + '" y="' + (H - 2) + '" fill="#6b7280" font-size="8" text-anchor="end">' +
+                '<text x="' + padL + '" y="' + (H - 6) + '" fill="#6b7280" font-size="' + fs + '">' + esc(displaySnaps[0].date) + '</text>' +
+                '<text x="' + (W - padR) + '" y="' + (H - 6) + '" fill="#6b7280" font-size="' + fs + '" text-anchor="end">' +
                 esc(displaySnaps[displaySnaps.length - 1].date) + '</text></svg>';
         },
 

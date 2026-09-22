@@ -130,11 +130,6 @@
     </div>
 
 
-    <!-- AI Warning -->
-    <div id="ai-warning-block" class="{% if not ai_warning %}hidden{% endif %} mb-6 p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">
-        <p class="text-yellow-300">{% if ai_warning %}{{ ai_warning }}{% endif %}</p>
-    </div>
-
     {# Выходной: рабочие задачи скрыты, кнопка возвращает их на экран #}
     {% if weekend_hide_work or weekend_show_work %}
     <div class="mb-6 flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-lg border border-dark-600 bg-dark-800/60">
@@ -170,9 +165,16 @@
         <div class="contents lg:block dash-main">
         <div class="order-1 lg:order-none space-y-6 dash-m-1">
             {# Быстрый ввод — первым в колонке: это главное действие на дашборде,
-               под «Регулярными» и списком он уезжал ниже и был не под рукой. #}
-            <div id="dashboard-quick-add-desktop" class="hidden lg:block bg-dark-800 rounded-xl border border-dark-600 p-3 shadow-lg">
-                {% include "partials/dashboard_quick_add_form.html" %}
+               под «Регулярными» и списком он уезжал ниже и был не под рукой.
+               Сводка по нагрузке («Сегодня 85 задач: …») стоит рядом с ним
+               второй половиной строки. #}
+            <div class="dash-top-row">
+                <div id="dashboard-quick-add-desktop" class="hidden lg:block bg-dark-800 rounded-xl border border-dark-600 p-3 shadow-lg">
+                    {% include "partials/dashboard_quick_add_form.html" %}
+                </div>
+                <div id="ai-warning-block" class="{% if not ai_warning %}hidden{% endif %} p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">
+                    <p class="text-yellow-300">{% if ai_warning %}{{ ai_warning }}{% endif %}</p>
+                </div>
             </div>
 
 

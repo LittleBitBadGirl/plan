@@ -713,3 +713,18 @@ h3,
   margin: 2px 0 4px 12px;
   padding-left: 8px;
 }
+
+/* Быстрый ввод и сводка по нагрузке делят строку пополам: ввод слева, сводка
+   справа. На телефоне форма уходит наверх страницы, поэтому в строке остаётся
+   только сводка во всю ширину. */
+.dash-top-row {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .dash-top-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
