@@ -73,6 +73,11 @@ async def tasks_page(request: Request, status: Optional[str] = None):
         filters = [task_is_active(), Task.due_date != None]
         if status:
             filters.append(Task.status == status)
+        else:
+            # Закрытое не «мелькает» в списке: место закрытой задачи — Архив.
+            # Явный фильтр по статусу остаётся рабочим — можно посмотреть
+            # «выполнена» осознанно.
+            filters.append(Task.completed_at.is_(None))
         result = await db.execute(
             select(Task)
             .options(selectinload(Task.category))

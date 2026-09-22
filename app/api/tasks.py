@@ -175,10 +175,19 @@ async def get_tasks_by_date(
     task_date: date,
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Получить задачи на конкретную дату"""
+    """Получить задачи на конкретную дату.
+
+    Закрытые в календарь не отдаём: закрытая задача навсегда остаётся со своей
+    датой, и день, в котором что-то делалось, выглядел как свалка закрытых
+    подзадач (их в базе сотни — они держатся у родителя для прогресса «N/M»).
+    """
     query = (
         select(Task)
-        .where(Task.due_date == task_date, task_is_active())
+        .where(
+            Task.due_date == task_date,
+            task_is_active(),
+            Task.completed_at.is_(None),
+        )
         .order_by(Task.due_date.asc(), Task.sort_order.asc())
     )
     result = await db.execute(query)
