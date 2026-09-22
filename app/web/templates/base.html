@@ -38,7 +38,7 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body class="bg-dark-950 text-stone-300 min-h-screen" x-data="{ sidebarOpen: false }">
-{% from 'partials/icons_macros.html' import icon_logo, icon_nav_dashboard, icon_calendar, icon_folder, icon_repeat, icon_nav_stats, icon_nav_inbox, icon_nav_archive, icon_nav_finance, icon_nav_logout %}
+{% from 'partials/icons_macros.html' import icon_nav_dashboard, icon_calendar, icon_folder, icon_repeat, icon_nav_stats, icon_nav_inbox, icon_nav_archive, icon_nav_finance, icon_nav_logout %}
 {# Навигация. Верхний уровень — раздел-хаб, внутри — его части. Название ведёт
    на страницу, раскрытие списка — отдельной кнопкой справа, поэтому «Дашборд»
    открывается одним кликом, а его разделы не мешают. Подсветку считаем от
@@ -63,7 +63,7 @@
                 <path x-show="sidebarOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
             </svg>
         </button>
-        <a class="pbar__name pbar__home" href="/" aria-label="На дашборд">{{ icon_logo('w-5 h-5') }}<span>Planner</span></a>
+        <a class="pbar__name pbar__home" href="/" aria-label="На дашборд"><span>Planner</span></a>
     </header>
 
     <div class="min-h-screen">
@@ -75,7 +75,7 @@
 
             <!-- Шапка меню -->
             <div class="p-4 border-b border-dark-600 flex justify-between items-center">
-                <span class="pbar__name">{{ icon_logo('w-6 h-6') }}<span>Planner</span></span>
+                <span class="pbar__name"><span>Planner</span></span>
                 <button type="button" @click="sidebarOpen = false" class="p-2 text-gray-400 hover:text-white rounded-lg" aria-label="Закрыть меню">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
