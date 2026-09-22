@@ -1134,6 +1134,7 @@ async def build_reading_context(db: AsyncSession, filters) -> dict:
     from app.services import reading_service as rs
 
     items = await rs.load_reading(db, filters)
+    found = await rs.count_reading(db, filters)
     categories = await rs.reading_categories(db)
     # Ключ называется cards, а не items: у словаря есть метод items(), и в Jinja
     # shelf.items вернул бы метод, а не список карточек.
@@ -1149,7 +1150,12 @@ async def build_reading_context(db: AsyncSession, filters) -> dict:
     tag_all = len(tag_pairs) <= rs.TAG_CHIPS_LIMIT or filters.all_tags
     return {
         "shelves": shelves,
-        "found": len(items),
+        # found — сколько всего подходит под фильтры, shown — сколько уже
+        # нарисовали (порция PAGE_SIZE, дальше кнопка «показать ещё»).
+        "found": found,
+        "shown": len(items),
+        "page_step": rs.PAGE_STEP,
+        "next_limit": min(filters.limit + rs.PAGE_STEP, rs.PAGE_SIZE_MAX),
         "total": await rs.total_reading(db, include_archived=True),
         "categories": [category.name for category in categories],
         "category_counts": await rs.category_counts(db, filters),

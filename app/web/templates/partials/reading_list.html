@@ -2,7 +2,7 @@
    фильтров и счётчик найденного: они лежат вне списка, htmx их не трогает. #}
 {% if oob %}
 {% with oob = True %}{% include "partials/reading_filters_chips.html" %}{% endwith %}
-<span id="reading-found" hx-swap-oob="true">Найдено {{ found }} из {{ total }}.</span>
+<span id="reading-found" hx-swap-oob="true">Найдено {{ found }} из {{ total }}{% if shown < found %} · показано {{ shown }}{% endif %}.</span>
 {% endif %}
 
 {% from 'partials/icons_macros.html' import icon_trash %}
@@ -173,8 +173,18 @@
             {% endfor %}
         </div>
     </section>
-    {% endfor %}
-{% else %}
+        {% endfor %}
+
+    {# Порция карточек кончилась, а записи ещё есть: догружаем следующим куском. #}
+    {% if shown and shown < found %}
+    <div class="reading-more">
+        <button type="submit" form="reading-filters" name="limit" value="{{ next_limit }}"
+                class="reading-more__btn">
+            показать ещё {{ page_step }} <span class="reading-more__note">{{ shown }} из {{ found }}</span>
+        </button>
+    </div>
+    {% endif %}
+else %}
     <div class="reading-empty">
         <p>Под выбранные условия ничего нет.</p>
         <p class="reading-empty__hint">Снять фильтры: кнопка «все категории» или очистка поиска.</p>

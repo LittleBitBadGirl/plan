@@ -279,3 +279,22 @@ async def test_archived_items_keep_their_category_shelves(client, db):
     assert "Прочитанная статья" in html
     assert "Активная статья" not in html
     assert "Карьера" in html
+
+
+@pytest.mark.asyncio
+async def test_limit_caps_cards_and_offers_more(client, db):
+    """Страница рисует порцией, дальше — кнопка «показать ещё»."""
+    for num in range(5):
+        await _add(client, f"Материал {num}")
+
+    default = (await client.get("/reading")).text
+    assert default.count('class="reading-card"') == 5      # порция большая, влезли все
+
+    capped = (await client.get("/reading", params={"limit": 2})).text
+    assert capped.count('class="reading-card"') == 2
+    assert "показать ещё" in capped
+    assert "показано 2" in capped
+
+    full = (await client.get("/reading", params={"limit": 10})).text
+    assert full.count('class="reading-card"') == 5
+    assert "показать ещё" not in full

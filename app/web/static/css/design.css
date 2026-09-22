@@ -1162,3 +1162,37 @@ h3,
 
 .reading-empty { padding: 2rem 0; color: #a8a29e; }
 .reading-empty__hint { font-size: 0.85rem; color: #78716c; margin-top: 0.3rem; }
+
+/* Порция карточек чтения: кнопка догрузки следующего куска */
+.reading-more {
+    display: flex;
+    justify-content: center;
+    margin: 1.25rem 0 0.5rem;
+}
+
+.reading-more__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.1rem;
+    border: 1px solid #57534e;
+    border-radius: 0.75rem;
+    background: transparent;
+    color: #e7e5e4;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+}
+
+.reading-more__btn:hover {
+    border-color: #f59e0b;
+    color: #fcd34d;
+}
+
+.reading-more__note {
+    color: #a8a29e;
+    text-transform: none;
+    letter-spacing: 0;
+}

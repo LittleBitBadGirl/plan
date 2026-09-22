@@ -9,7 +9,7 @@
             <h1 class="reading-page__title">Читать</h1>
             <p class="reading-page__lead">
                 Книги, статьи, видео и подкасты по категориям. Теги на карточках, фильтры ниже.
-                {% if found is not none %}<span id="reading-found">Найдено {{ found }} из {{ total }}.</span>{% endif %}
+                {% if found is not none %}<span id="reading-found">Найдено {{ found }} из {{ total }}{% if shown < found %} · показано {{ shown }}{% endif %}.</span>{% endif %}
                 {% if reading_now_count %}Читаю сейчас: {{ reading_now_count }}.{% endif %}
             </p>
         </div>

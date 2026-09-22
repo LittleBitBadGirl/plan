@@ -57,6 +57,13 @@ TAG_TODO = "разобрать"
 # Сколько тегов показываем сразу; остальные прячем под «ещё N тегов».
 TAG_CHIPS_LIMIT = 12
 
+# Порция карточек: у каждой в разметке лежит заметка целиком, поэтому при
+# сотнях записей страница распухает до мегабайтов и телефон её жуёт.
+# Дальше — кнопка «показать ещё».
+PAGE_SIZE = 60
+PAGE_STEP = 60
+PAGE_SIZE_MAX = 1000
+
 ARCHIVED_GROUP = "прочитанное"
 
 # Полка для записей, которым категорию не проставили (правило «не уверен — откладывай»).
@@ -74,6 +81,7 @@ class ReadingFilters:
     query: str = ""
     all_tags: bool = False        # показать все теги, а не первые 12
     sort: str = ""                # "" — сначала «читаю», "title" — по названию
+    limit: int = PAGE_SIZE        # сколько карточек рисуем за раз
 
     @property
     def is_plain(self) -> bool:
@@ -104,6 +112,11 @@ def parse_filters(source) -> ReadingFilters:
     status = one("status") or "active"
     if status not in ("active", "all", "arch"):
         status = "active"
+    try:
+        limit = int(one("limit") or PAGE_SIZE)
+    except ValueError:
+        limit = PAGE_SIZE
+    limit = max(1, min(limit, PAGE_SIZE_MAX))
     return ReadingFilters(
         category=one("cat"),
         formats=many("fmt"),
@@ -112,6 +125,7 @@ def parse_filters(source) -> ReadingFilters:
         query=one("q"),
         all_tags=one("all_tags") in ("1", "true", "yes"),
         sort="title" if one("sort") == "title" else "",
+        limit=limit,
     )
 
 
@@ -174,6 +188,7 @@ async def load_reading(db: AsyncSession, filters: ReadingFilters) -> list[Shoppi
     else:
         status_order = case((ShoppingItem.reading_status == "reading", 0), else_=1)
         query = query.order_by(status_order, ShoppingItem.created_at.desc())
+    query = query.limit(filters.limit)
     result = await db.execute(query)
     return list(result.scalars().all())
 
@@ -232,6 +247,17 @@ async def tag_counts(db: AsyncSession, filters: ReadingFilters | None = None) ->
         query = query.where(ShoppingItem.is_archived == False)  # noqa: E712
     result = await db.execute(query.group_by(Tag.name).order_by(func.count(shopping_item_tags.c.item_id).desc(), Tag.name))
     return [(row[0], row[1]) for row in result.all()]
+
+
+async def count_reading(db: AsyncSession, filters: ReadingFilters) -> int:
+    """Сколько записей подходит под фильтры — без порции карточек.
+
+    Нужен отдельно от load_reading: та отдаёт только PAGE_SIZE записей, а
+    «Найдено N» и кнопка «показать ещё» должны знать полное число.
+    """
+    inner = _base_query(filters).order_by(None).limit(None).subquery()
+    result = await db.execute(select(func.count()).select_from(inner))
+    return int(result.scalar_one() or 0)
 
 
 async def total_reading(db: AsyncSession, include_archived: bool = False) -> int:
