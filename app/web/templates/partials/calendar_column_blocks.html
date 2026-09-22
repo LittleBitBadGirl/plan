@@ -1,19 +1,6 @@
 <div id="calendar-column-blocks" class="space-y-6">
-    {% if calendar_sync_active %}
-    {# Подпись про Google/Яндекс убрана: смысл кнопки понятен из её названия. #}
-    <div class="flex items-center justify-end gap-2 px-1">
-        <span id="calendar-sync-spinner" class="htmx-indicator text-[11px] text-gray-600">синк…</span>
-        <button type="button"
-                hx-post="/api/calendar/sync"
-                hx-target="#calendar-column-blocks"
-                hx-swap="outerHTML"
-                hx-indicator="#calendar-sync-spinner"
-                class="shrink-0 text-[11px] text-gray-400 hover:text-amber-400 border border-gray-600 hover:border-amber-700/50 rounded px-2 py-1 whitespace-nowrap inline-flex items-center gap-1.5"
-                title="Обновление календаря">
-            <span aria-hidden="true">↻</span><span>Обновление календаря</span>
-        </button>
-    </div>
-    {% endif %}
+    {# Кнопка обновления календаря стоит в строке с «Личное» — отдельной строкой
+       над блоком она съедала место (см. calendar_personal_block.html). #}
     {% include "partials/calendar_events_block.html" %}
     {% include "partials/calendar_personal_block.html" %}
 </div>
