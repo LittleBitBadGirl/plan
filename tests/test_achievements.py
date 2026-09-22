@@ -186,10 +186,10 @@ async def test_dashboard_has_achievement_quick_add(client):
     """На дашборде есть кнопка «+ достижение» и окно для неё."""
     html = (await client.get("/")).text
     assert 'onclick="openAchievementQuickAdd()"' in html
-    assert html.count('onclick="openAchievementQuickAdd()"') == 4, (
-        "кнопка достижения нужна и на телефоне, и на десктопе, а форма быстрого "
-        "ввода включена на дашборде дважды (мобильная и десктопная) — итого четыре"
-    )
+    assert html.count('onclick="openAchievementQuickAdd()"') == 2, \
+        "кнопка достижения нужна в шапке: на телефоне и на десктопе"
+    # стиль один: кнопка достижения должна быть того же вида, что «Новая задача»
+    assert 'px-5 py-2.5 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-xl' in html
     assert 'id="ach-quick"' in html
     assert 'id="ach-quick-slot"' in html
     assert "'/achievements/widget'" in html

@@ -48,22 +48,6 @@
             </div>
         </div>
 
-        {# Достижение: на телефоне — компактная кнопка, на десктопе — кнопка
-           размером с «Новая задача» в шапке. #}
-        <button type="button" onclick="openAchievementQuickAdd()"
-                class="lg:hidden shrink-0 w-12 h-12 border border-amber-800/60 text-amber-500 rounded-xl transition-all flex items-center justify-center active:scale-95"
-                aria-label="Записать достижение" title="Записать достижение">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
-                      d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.6 9.7l5.8-.8z"></path>
-            </svg>
-        </button>
-        <button type="button" onclick="openAchievementQuickAdd()"
-                class="hidden lg:inline-flex shrink-0 items-center px-4 py-2.5 border border-amber-800/60 hover:border-amber-600 text-amber-500 hover:text-amber-400 text-sm font-bold rounded-xl transition-all whitespace-nowrap active:scale-95"
-                title="Записать достижение">
-            <span class="mr-1.5 text-lg leading-none">+</span> достижение
-        </button>
-
         <button type="submit"
                 class="lg:hidden shrink-0 w-12 h-12 bg-accent hover:bg-blue-600 active:scale-95 text-white font-bold rounded-xl transition-all flex items-center justify-center text-xl shadow-lg"
                 aria-label="Добавить задачу">

@@ -87,11 +87,21 @@
                     <span class="hidden sm:inline">Задачи на сегодня — </span>{{ today.strftime('%d.%m.%Y') }}
                 </p>
             </div>
-            <a href="/tasks/new"
-               aria-label="Новая задача"
-               class="lg:hidden shrink-0 w-11 h-11 min-w-[44px] bg-accent hover:bg-accent-hover text-white rounded-xl transition-all flex items-center justify-center text-2xl font-bold leading-none shadow-lg active:scale-95">
-                +
-            </a>
+            <div class="lg:hidden shrink-0 flex items-center gap-2">
+                <button type="button" onclick="openAchievementQuickAdd()"
+                        aria-label="Записать достижение" title="Записать достижение"
+                        class="w-11 h-11 min-w-[44px] bg-accent hover:bg-accent-hover text-white rounded-xl transition-all flex items-center justify-center shadow-lg active:scale-95">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
+                              d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.6 9.7l5.8-.8z"></path>
+                    </svg>
+                </button>
+                <a href="/tasks/new"
+                   aria-label="Новая задача"
+                   class="w-11 h-11 min-w-[44px] bg-accent hover:bg-accent-hover text-white rounded-xl transition-all flex items-center justify-center text-2xl font-bold leading-none shadow-lg active:scale-95">
+                    +
+                </a>
+            </div>
         </div>
 
         <div class="w-full lg:flex-1 lg:order-none flex flex-row gap-3 items-start">
@@ -123,10 +133,18 @@
             {% endif %}
         </div>
 
-        <a href="/tasks/new"
-           class="hidden lg:inline-flex shrink-0 items-center px-5 py-2.5 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 whitespace-nowrap">
-            <span class="mr-1.5 text-lg leading-none">+</span> Новая задача
-        </a>
+        {# Достижение и новая задача — одним стилем: раньше достижение было
+           мелкой кнопкой в кавычках-окантовке и выбивалось из шапки. #}
+        <div class="hidden lg:flex shrink-0 items-center gap-2">
+            <button type="button" onclick="openAchievementQuickAdd()"
+                    class="inline-flex items-center px-5 py-2.5 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 whitespace-nowrap">
+                <span class="mr-1.5 text-lg leading-none">+</span> Достижение
+            </button>
+            <a href="/tasks/new"
+               class="inline-flex items-center px-5 py-2.5 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 whitespace-nowrap">
+                <span class="mr-1.5 text-lg leading-none">+</span> Новая задача
+            </a>
+        </div>
     </div>
 
     {# Окно быстрой записи: содержимое — виджет /achievements/widget, запись уходит
