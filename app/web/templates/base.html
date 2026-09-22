@@ -100,12 +100,36 @@
                         </button>
                     </div>
                     <div class="pnav__children" id="nav-dash-children" x-show="open" x-cloak>
-                        <a href="/backlog" @click="sidebarOpen = false"
-                           class="pnav__child {% if on_backlog and v not in ('calendar', 'categories') %}is-active{% endif %}">Бэклог</a>
-                        <a href="/backlog?view=calendar" @click="sidebarOpen = false"
-                           class="pnav__child {% if on_backlog and v == 'calendar' %}is-active{% endif %}">Календарь</a>
-                        <a href="/backlog?view=categories" @click="sidebarOpen = false"
-                           class="pnav__child {% if on_backlog and v == 'categories' %}is-active{% endif %}">Категории задач</a>
+                        {# Бэклог, календарь и категории задач — вкладки одной страницы,
+                           поэтому в меню это одна сворачиваемая строка «Задачи», а не
+                           три отдельных пункта. #}
+                        <div class="pnav__group pnav__group--sub" x-data="{ open: false }">
+                            <div class="pnav__row">
+                                <button type="button"
+                                        class="pnav__child pnav__toggle {% if on_backlog %}is-active{% endif %}"
+                                        @click="open = !open"
+                                        :aria-expanded="open.toString()"
+                                        aria-controls="nav-tasks-children">
+                                    {{ icon_folder('w-4 h-4 shrink-0') }}
+                                    <span>Задачи</span>
+                                </button>
+                                <button type="button" class="pnav__chev" @click="open = !open"
+                                        :class="open ? 'is-open' : ''" :aria-expanded="open.toString()"
+                                        aria-controls="nav-tasks-children" aria-label="Вкладки раздела задач">
+                                    <svg class="pnav__chev-icon w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                </svg>
+                                </button>
+                            </div>
+                            <div class="pnav__children pnav__children--sub" id="nav-tasks-children" x-show="open" x-cloak>
+                                <a href="/backlog" @click="sidebarOpen = false"
+                                   class="pnav__child {% if on_backlog and v not in ('calendar', 'categories') %}is-active{% endif %}">Бэклог</a>
+                                <a href="/backlog?view=calendar" @click="sidebarOpen = false"
+                                   class="pnav__child {% if on_backlog and v == 'calendar' %}is-active{% endif %}">Календарь</a>
+                                <a href="/backlog?view=categories" @click="sidebarOpen = false"
+                                   class="pnav__child {% if on_backlog and v == 'categories' %}is-active{% endif %}">Категории задач</a>
+                            </div>
+                        </div>
                         <a href="/recurring" @click="sidebarOpen = false"
                            class="pnav__child {% if p == '/recurring' %}is-active{% endif %}">Периодические</a>
                         <a href="/archive" @click="sidebarOpen = false"

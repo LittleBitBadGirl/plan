@@ -18,7 +18,6 @@
                     <div class="ach-meta">
                         {% if a.tag %}<span class="ach-tag">{{ a.tag }}</span>{% endif %}
                         {% if a.happened_on %}<span class="ach-date">{{ a.happened_on.strftime('%d.%m.%Y') }}</span>{% endif %}
-                        {% if a.source %}<span class="ach-source">заметил(а): {{ a.source }}</span>{% endif %}
                     </div>
                     <div class="ach-actions">
                         <button type="button" class="ach-btn" onclick="achToggleEdit({{ a.id }})">Правка</button>
@@ -45,8 +44,6 @@
                         <input name="tag" maxlength="100" placeholder="Тема" value="{{ a.tag or '' }}">
                         <input type="date" name="happened_on"
                                value="{{ a.happened_on.isoformat() if a.happened_on else '' }}">
-                        <input name="source" maxlength="100" placeholder="Откуда запись"
-                               value="{{ a.source or '' }}">
                         <button type="submit" class="ach-btn ach-btn--primary">Сохранить</button>
                         <button type="button" class="ach-btn" onclick="achCancelEdit({{ a.id }})">Отмена</button>
                     </div>

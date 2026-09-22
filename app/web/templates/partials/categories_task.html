@@ -1,6 +1,6 @@
 {# Категории задач. Живут внутри страницы «Бэклог» вкладкой «Категории»:
    задачи относятся к бэклогу, поэтому и справочник лежит рядом с ними. #}
-<div class="mb-6">
+<div class="mb-6 cat-form">
     <form action="/categories/create" method="post" class="ach-form">
         <input type="hidden" name="type" value="task">
         <div class="ach-form-row">
@@ -18,7 +18,7 @@
 
     <!-- SECTIONS: TASKS -->
     <div class="mb-12">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="cat-grid">
             {% for gc in global_categories %}
             <div class="bg-dark-800 rounded-xl border border-dark-600 overflow-hidden flex flex-col shadow-lg hover:border-accent/50 transition-all group">
                 <div class="bg-dark-700/50 p-4 border-b border-dark-600 flex justify-between items-center gap-2">
@@ -38,14 +38,14 @@
                     <div class="space-y-1">
                         {% set subs = sub_categories.get(gc.id, []) %}
                         {% for sc in subs %}
-                        <div class="flex items-center justify-between group/item p-2 hover:bg-dark-700/30 rounded transition-colors" id="cat-title-{{ sc.id }}">
-                            <div class="flex items-center gap-2">
-                                <span class="text-gray-600 text-xs">└</span>
-                                <span class="text-sm text-gray-300">{{ sc.name | noemoji }}</span>
+                        <div class="cat-sub-row group/item" id="cat-title-{{ sc.id }}">
+                            <div class="cat-sub-name">
+                                <span class="text-gray-600 text-xs shrink-0">└</span>
+                                <span class="text-sm text-gray-300 break-words">{{ sc.name | noemoji }}</span>
                                 {% set sc_count = raw_counts.get(sc.id, 0) %}
                                 {% set sc_total = raw_total_counts.get(sc.id, 0) %}
                                 {% if sc_total > 0 %}
-                                <span class="text-[11px] text-gray-500 font-medium ml-1" title="активных / всего">({{ sc_count }} / {{ sc_total }})</span>
+                                <span class="cat-sub-count" title="активных / всего">({{ sc_count }} / {{ sc_total }})</span>
                                 {% endif %}
                             </div>
                             <div class="flex items-center gap-2 opacity-0 group-hover/item:opacity-100 transition-opacity">

@@ -127,3 +127,26 @@ async def test_backlog_tabs_highlight_current_one(client):
     page = await client.get("/backlog?view=categories")
 
     assert "Категории" in await _active_tab_label(page.text)
+
+async def test_task_tabs_collapse_into_one_entry(client):
+    """Бэклог, календарь и категории задач — вкладки одной страницы.
+
+    В меню это одна свёрнутая строка «Задачи»; три отдельных пункта раздували меню.
+    """
+    html = (await client.get("/backlog")).text
+
+    group = re.search(
+        r'<div class="pnav__group pnav__group--sub" x-data="\{ open: false \}">'
+        r'.*?<span>Задачи</span>',
+        html,
+        re.S,
+    )
+    assert group, "группа «Задачи» должна быть свёрнута по умолчанию"
+
+    block = re.search(r'id="nav-tasks-children"(.*?)</div>', html, re.S)
+    assert block, "в меню нет сворачиваемой группы вкладок задач"
+    for href in ("/backlog", "/backlog?view=calendar", "/backlog?view=categories"):
+        assert f'href="{href}"' in block.group(1), f"{href} не внутри группы «Задачи»"
+
+    assert 'class="pnav__child pnav__toggle is-active"' in html, \
+        "на странице бэклога строка «Задачи» должна быть подсвечена"

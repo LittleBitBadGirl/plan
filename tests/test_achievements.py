@@ -100,7 +100,6 @@ async def test_edit_moves_achievement_to_other_shelf_and_updates_fields(client):
             "sphere": "work",
             "tag": "Выступления",
             "happened_on": "2026-05-14",
-            "source": "Полина",
         },
     )
 
@@ -109,7 +108,17 @@ async def test_edit_moves_achievement_to_other_shelf_and_updates_fields(client):
     assert items[0].text == "Выступала на конференции"
     assert items[0].sphere == "work"
     assert items[0].happened_on == date(2026, 5, 14)
-    assert items[0].source == "Полина"
+
+
+async def test_form_has_no_source_field(client):
+    """Поле «Откуда запись» убрано из формы: ни в добавлении, ни в правке его нет."""
+    page = await client.get("/achievements")
+    assert page.status_code == 200
+    assert 'name="source"' not in page.text, "поле «Откуда запись» вернулось в разметку"
+
+    ach_id = await _add("Запись")
+    edit_form = await client.get(f"/achievements/{ach_id}/edit-form")
+    assert 'name="source"' not in edit_form.text
 
 
 async def test_edit_with_empty_text_keeps_old_value(client):

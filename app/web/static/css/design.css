@@ -638,3 +638,78 @@ h3,
     .dash-m-6 { order: 6; }   /* читать */
     .dash-m-7 { order: 7; }   /* месячные */
 }
+
+/* Справочник категорий: сетка сама решает, сколько карточек в ряд, —
+   раньше страница упиралась в 768px и по краям оставалась пустота. */
+.cat-grid {
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+    align-items: start;
+}
+
+@media (max-width: 43rem) {
+    .cat-grid { grid-template-columns: 1fr; gap: 1rem; }
+}
+
+/* Категории и календарь полезнее на всю ширину окна, список задач — нет:
+   длинные строки труднее читать. */
+.wide-page {
+    max-width: 110rem;
+    margin-inline: auto;
+}
+
+/* Строка подкатегории: название может переноситься, счётчик — нет. */
+.cat-sub-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+}
+.cat-sub-row:hover { background: rgba(55, 65, 81, 0.3); }
+.cat-sub-name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+.cat-sub-count {
+    font-size: 11px;
+    color: #6b7280;
+    font-weight: 500;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Форма добавления категории — компактная панель: поле имени не должно
+   растягиваться на всю ширину окна. */
+.cat-form {
+    max-width: 46rem;
+}
+
+/* Вкладки одной страницы («Задачи» → бэклог, календарь, категории) свёрнуты
+   в одну строку: иначе три пункта одного раздела раздувают меню. */
+.pnav__group--sub {
+  margin: 0;
+}
+.pnav__group--sub .pnav__row {
+  gap: 2px;
+}
+.pnav__toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.pnav__children--sub {
+  margin: 2px 0 4px 12px;
+  padding-left: 8px;
+}

@@ -17,7 +17,6 @@ router = APIRouter()
 
 MAX_TEXT = 2000
 MAX_TAG = 100
-MAX_SOURCE = 100
 
 
 def _clean(value: str | None) -> str | None:
@@ -110,7 +109,6 @@ async def create_achievement(
     sphere: str = Form("personal"),
     tag: str = Form(""),
     happened_on: str = Form(""),
-    source: str = Form(""),
     widget: str = Form(""),
 ):
     body = _clean(text)
@@ -122,7 +120,6 @@ async def create_achievement(
                     sphere=_sphere(sphere),
                     tag=_cut(tag, MAX_TAG),
                     happened_on=_parse_date(happened_on),
-                    source=_cut(source, MAX_SOURCE),
                 )
             )
             await db.commit()
@@ -137,7 +134,6 @@ async def update_achievement(
     sphere: str = Form("personal"),
     tag: str = Form(""),
     happened_on: str = Form(""),
-    source: str = Form(""),
 ):
     body = _clean(text)
     if body:
@@ -148,7 +144,6 @@ async def update_achievement(
                 item.sphere = _sphere(sphere)
                 item.tag = _cut(tag, MAX_TAG)
                 item.happened_on = _parse_date(happened_on)
-                item.source = _cut(source, MAX_SOURCE)
                 await db.commit()
     return await _render_board(request)
 
