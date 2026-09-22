@@ -8,11 +8,11 @@
         <div class="bg-dark-800 rounded-xl p-3 border border-dark-600 group" id="calendar-event-{{ ev.id }}">
             <div class="flex justify-between items-start gap-2">
                 <div class="flex-1 min-w-0">
-                    <p class="text-[10px] text-stone-400 font-mono">
+                    <p class="text-[11px] text-stone-400 font-mono">
                         {{ ev.start_at.strftime('%H:%M') }}{% if ev.end_at %}–{{ ev.end_at.strftime('%H:%M') }}{% endif %}
                     </p>
                     <h3 class="font-semibold text-stone-200 text-sm truncate" title="{{ ev.title }}">{{ ev.title }}</h3>
-                    <p class="text-[8px] text-gray-500 mt-0.5 truncate">{{ ev.calendar_name }}</p>
+                    <p class="text-[11px] text-gray-500 mt-0.5 truncate">{{ ev.calendar_name }}</p>
                 </div>
                 <div class="flex flex-col items-end gap-1 shrink-0">
                     {% if ev.is_recurring %}
@@ -24,7 +24,7 @@
                           hx-confirm="{% if ev.is_recurring %}Скрыть всю повторяющуюся серию «{{ ev.title }}»?{% else %}Скрыть эту встречу?{% endif %}"
                           class="lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                         <button type="submit"
-                                class="text-[9px] text-gray-400 hover:text-amber-400 border border-gray-600 hover:border-amber-700/50 rounded px-1.5 py-0.5 whitespace-nowrap"
+                                class="text-[11px] text-gray-400 hover:text-amber-400 border border-gray-600 hover:border-amber-700/50 rounded px-1.5 py-0.5 whitespace-nowrap"
                                 title="{% if ev.is_recurring %}Не хожу на эту серию{% else %}Не пойду{% endif %}">
                             Не пойду
                         </button>

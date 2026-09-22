@@ -97,7 +97,7 @@
         <div class="w-full lg:flex-1 lg:order-none flex flex-row gap-3 items-start">
             <div class="flex-1">
                 <div class="flex justify-between items-center mb-1 px-1">
-                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Прогресс</span>
+                    <span class="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Прогресс</span>
                     <span id="today-stats-counter" class="font-bold text-sm text-amber-600">{{ completed }}/{{ total }}</span>
                 </div>
                 <div class="w-full bg-dark-800 rounded-full h-1.5 border border-dark-600 overflow-hidden">
@@ -109,7 +109,7 @@
             {% if subtask_progress.parent_total > 0 %}
             <div id="today-subtask-stats-block" class="flex-1">
                 <div class="flex justify-between items-center mb-1 px-1">
-                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Подзадачи</span>
+                    <span class="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Подзадачи</span>
                     <span id="today-subtask-counter" class="font-bold text-sm text-amber-600">{{ subtask_progress.parent_done }}/{{ subtask_progress.parent_total }}</span>
                 </div>
                 <div id="today-subtask-bar" class="w-full bg-dark-800 rounded-full h-1.5 border border-dark-600 overflow-hidden flex">
@@ -166,9 +166,44 @@
        order-* и на обёртках contents. #}
     <div class="flex flex-col gap-6 dash-grid">
         
-        <!-- СТОЛБЕЦ 1: ЗАДАЧИ (широкий) -->
+        <!-- СТОЛБЕЦ 1: РЕГУЛЯРНЫЕ И ЗАДАЧИ (широкий) -->
         <div class="contents lg:block dash-main">
-        <div class="order-1 lg:order-none space-y-6">
+        <div class="order-1 lg:order-none space-y-6 dash-m-1">
+
+            <!-- Регулярные: это задачи по расписанию, поэтому место — в основной колонке, выше разового на сегодня. -->
+            {% if recurring_tasks %}
+            <div class="space-y-4">
+                <h2 class="text-xl font-bold text-stone-300 px-1">Регулярные</h2>
+                <div class="dash-recurring">
+                    {% for rt in recurring_tasks %}
+                    <div class="bg-dark-800 rounded-xl p-3 border border-dark-600 hover:border-amber-700/40 transition group" id="recurring-{{ rt.id }}">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <h3 class="font-semibold text-stone-300 text-sm">{{ rt.title }}</h3>
+                                <div class="flex items-center gap-2 mt-1">
+                                    <span class="text-[11px] uppercase tracking-wider text-stone-500 font-bold">
+                                        {% if rt.recurrence_type == 'daily' %}ежедневно
+                                        {% elif rt.recurrence_type == 'weekly' %}еженедельно
+                                        {% else %}ежемесячно{% endif %}
+                                    </span>
+                                    <span class="text-[11px] text-gray-500">вып: {{ rt.completed_count or 0 }} · проп: {{ rt.missed_count or 0 }}</span>
+                                </div>
+                            </div>
+                            <form hx-post="/api/recurring/{{ rt.id }}/complete"
+                                  hx-target="#recurring-{{ rt.id }}"
+                                  hx-swap="outerHTML"
+                                  class="inline lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                                <button type="submit" class="icon-action icon-action--success" title="Выполнить">
+                                    {{ icon_check() }}
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
             <h2 class="text-xl font-bold text-white px-1">Задачи на сегодня</h2>
 
             <!-- Quick Add — desktop: stays in the tasks column. Mobile form is at page top. -->
@@ -182,120 +217,27 @@
         </div>
         </div>
 
-        <!-- СТОЛБЕЦ 2: ТРЕКЕРЫ И МЕСЯЧНЫЕ (широкий, под задачами) -->
+        <!-- СТОЛБЕЦ 2: МЕНЕДЖЕРЫ И МЕСЯЧНЫЕ (широкий, под задачами) -->
         <div class="contents lg:block lg:space-y-8 dash-under">
             <!-- Менеджеры: сбор обратной связи (клик по имени → попап) -->
-            <div class="order-4 lg:order-none">
+            <div class="order-4 lg:order-none dash-m-2">
                 {% include "partials/managers_widget.html" %}
             </div>
 
-            <!-- Habit Trackers — last on mobile -->
-            <div class="order-[70] lg:order-none space-y-4">
-                <div class="flex items-center justify-between px-1">
-                    <h2 class="text-xl font-bold text-white">Трекеры</h2>
-                    <button onclick="document.getElementById('add-habit-modal').classList.toggle('hidden')" 
-                            class="text-[10px] bg-dark-700 hover:bg-dark-600 text-gray-400 px-2 py-1 rounded-lg border border-dark-500 transition-colors uppercase font-bold">
-                        + Добавить
-                    </button>
-                </div>
-
-                <div id="add-habit-modal" class="hidden bg-dark-800 border border-dark-600 rounded-xl p-4 shadow-2xl">
-                    <form action="/api/habits/create" method="POST" class="flex flex-col gap-3">
-                        <input type="text" name="title" placeholder="Название..." required
-                               class="bg-dark-700 border border-dark-500 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-accent">
-                        <input type="date" name="start_date" value="{{ today.isoformat() }}" required
-                               class="bg-dark-700 border border-dark-500 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-accent">
-                        <button type="submit" class="bg-accent text-white rounded-lg px-4 py-2 text-sm font-bold">Создать</button>
-                    </form>
-                </div>
-
-                <div class="grid grid-cols-1 gap-4">
-                    {% for h_item in habits_data %}
-                    <div class="bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg flex flex-col group">
-                        <div class="flex justify-between items-center mb-3 gap-2">
-                            <h3 class="font-bold text-gray-100 text-sm truncate min-w-0">{{ h_item.habit.title }}</h3>
-                            <div class="flex items-center gap-1.5 shrink-0">
-                                <button type="button"
-                                        onclick="openHabitHistory({{ h_item.habit.id }})"
-                                        class="inline-flex items-center justify-center h-6 px-2 text-[10px] leading-none bg-dark-700 text-gray-400 rounded border border-dark-500 hover:border-accent hover:text-accent transition-all font-bold uppercase whitespace-nowrap"
-                                        title="История отметок">
-                                    История
-                                </button>
-                                <form action="/api/habits/{{ h_item.habit.id }}/next-cycle" method="POST" class="inline-flex items-center m-0" onsubmit="return confirm('Начать следующие 30 дней?')">
-                                    <button type="submit" class="inline-flex items-center justify-center h-6 px-2 text-[10px] leading-none bg-amber-900/20 text-amber-400 rounded border border-amber-700/30 hover:bg-amber-700 hover:text-white transition-all font-bold uppercase whitespace-nowrap opacity-0 group-hover:opacity-100">
-                                        След. 30 дней
-                                    </button>
-                                </form>
-                                <form action="/api/habits/{{ h_item.habit.id }}/archive" method="POST" class="inline-flex items-center m-0" onsubmit="return confirm('Архивировать трекер?')">
-                                    <button type="submit" class="inline-flex items-center justify-center h-6 w-6 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
-                        
-                        <div class="grid grid-cols-7 gap-1 self-center">
-                            <div class="text-[7px] text-gray-600 text-center font-bold">ПН</div>
-                            <div class="text-[7px] text-gray-600 text-center font-bold">ВТ</div>
-                            <div class="text-[7px] text-gray-600 text-center font-bold">СР</div>
-                            <div class="text-[7px] text-gray-600 text-center font-bold">ЧТ</div>
-                            <div class="text-[7px] text-gray-600 text-center font-bold">ПТ</div>
-                            <div class="text-[7px] text-gray-600 text-center font-bold">СБ</div>
-                            <div class="text-[7px] text-gray-600 text-center font-bold">ВС</div>
-
-                            {% for _ in range(h_item.start_weekday) %}
-                                <div class="w-6 h-6"></div>
-                            {% endfor %}
-
-                            {% for dt in h_item.dates %}
-                                {% set date_str = dt.isoformat() %}
-                                {% set is_checked = date_str in h_item.logs %}
-                                {% set is_today = dt == today %}
-                                <button 
-                                    type="button"
-                                    title="{{ dt.strftime('%d.%m.%Y') }}"
-                                    onclick="toggleHabit({{ h_item.habit.id }}, '{{ date_str }}', this)"
-                                    class="w-6 h-6 rounded-sm flex items-center justify-center transition-all border text-[9px] font-bold
-                                    {{ 'bg-accent border-accent text-white' if is_checked else 'bg-dark-700 border-dark-500 text-gray-600 hover:border-gray-400' }}
-                                    {{ 'ring-1 ring-white/30' if is_today else '' }}">
-                                    {{ loop.index }}
-                                </button>
-                            {% endfor %}
-                        </div>
-
-                        <div class="mt-3 flex items-end justify-between gap-3">
-                            <div class="w-1/2 min-w-0">
-                                <div class="text-[8px] text-gray-500 uppercase tracking-widest mb-1">Прогресс</div>
-                                <div class="bg-dark-700 rounded-full h-1 overflow-hidden">
-                                    <div class="bg-accent h-full transition-all duration-500" style="width: {{ (h_item.progress / 30 * 100)|round }}%"></div>
-                                </div>
-                            </div>
-                            <div class="flex flex-col items-end gap-0.5 shrink-0">
-                                <span class="text-[10px] font-bold text-accent tabular-nums">{{ h_item.progress }}/30</span>
-                                <div class="flex items-center gap-1.5 text-[9px] text-gray-500">
-                                    <span>Старт {{ h_item.habit.start_date.strftime('%d.%m') }}</span>
-                                    <span class="bg-dark-700 px-1.5 py-0.5 rounded text-gray-400 font-bold uppercase">Цикл {{ h_item.habit.current_cycle }}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
 
             <!-- Period Tracker Card — always last in column 2 on desktop -->
-            <div class="order-50 lg:order-none bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg flex flex-col" id="period-tracker-card">
+            <div class="order-50 lg:order-none dash-m-7 bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg flex flex-col" id="period-tracker-card">
                 <div class="flex justify-between items-start mb-3 gap-2">
                     <div class="min-w-0">
                         <h3 class="font-bold text-gray-100 text-sm">Месячные</h3>
-                        <p class="text-[10px] text-gray-500 mt-0.5">{{ period_data.month_label }}</p>
+                        <p class="text-[11px] text-gray-500 mt-0.5">{{ period_data.month_label }}</p>
                     </div>
                     {% if period_data.has_data %}
                     <div class="text-right shrink-0">
-                        <span class="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase period-phase-pill--{{ period_data.current_phase }}">
+                        <span class="text-[11px] px-2 py-0.5 rounded-full font-bold uppercase period-phase-pill--{{ period_data.current_phase }}">
                             {{ period_data.current_phase_label }}
                         </span>
-                        <p class="text-[10px] text-gray-400 mt-1">
+                        <p class="text-[11px] text-gray-400 mt-1">
                             день {{ period_data.current_cycle_day }}
                             {% if period_data.days_until_next is not none and period_data.days_until_next > 0 %}
                             · ~{{ period_data.days_until_next }} до след.
@@ -307,7 +249,7 @@
 
                 <div class="grid grid-cols-7 gap-1 self-center w-full max-w-[11rem] mx-auto">
                     {% for wd in ['ПН','ВТ','СР','ЧТ','ПТ','СБ','ВС'] %}
-                    <div class="text-[7px] text-gray-600 text-center font-bold pb-0.5">{{ wd }}</div>
+                    <div class="text-[11px] text-gray-600 text-center font-bold pb-0.5">{{ wd }}</div>
                     {% endfor %}
 
                     {% for _ in range(period_data.start_weekday) %}
@@ -336,7 +278,7 @@
 
                 {% if period_data.has_data %}
                 {% set prog_pct = [(period_data.current_cycle_day / period_data.avg_cycle * 100)|round, 100]|min %}
-                <div class="mt-3 flex justify-between items-center text-[9px]">
+                <div class="mt-3 flex justify-between items-center text-[11px]">
                     <span class="text-gray-600 uppercase tracking-wider">Цикл</span>
                     <span class="text-rose-400 font-bold">{{ period_data.current_cycle_day }}/~{{ period_data.avg_cycle }}</span>
                 </div>
@@ -345,7 +287,7 @@
                 </div>
                 {% endif %}
 
-                <p class="text-[8px] text-gray-700 text-center mt-2.5">тап: мазня → мес. → боль → снять</p>
+                <p class="text-[11px] text-gray-700 text-center mt-2.5">тап: мазня → мес. → боль → снять</p>
             </div>
 
             <div id="habit-history-modal"
@@ -355,48 +297,110 @@
             </div>
         </div>
 
-        <!-- СТОЛБЕЦ 3: КАЛЕНДАРЬ, РЕГУЛЯРНЫЕ, ПОКУПКИ, ЧИТАТЬ (узкий, справа) -->
+        <!-- СТОЛБЕЦ 3: КАЛЕНДАРЬ, ТРЕКЕРЫ, ПОКУПКИ, ЧИТАТЬ (узкий, справа) -->
         <div class="contents lg:block lg:space-y-6 dash-side">
-            <div class="order-20 lg:order-none">
+            <div class="order-20 lg:order-none dash-m-3">
                 {% include "partials/calendar_column_blocks.html" %}
             </div>
 
-            <!-- Recurring Tasks -->
-            {% if recurring_tasks %}
-            <div class="order-30 lg:order-none space-y-4">
-                <h2 class="text-xl font-bold text-stone-300 px-1">Регулярные</h2>
-                <div class="space-y-3">
-                    {% for rt in recurring_tasks %}
-                    <div class="bg-dark-800 rounded-xl p-3 border border-dark-600 hover:border-amber-700/40 transition group" id="recurring-{{ rt.id }}">
-                        <div class="flex justify-between items-start">
-                            <div class="flex-1">
-                                <h3 class="font-semibold text-stone-300 text-sm">{{ rt.title }}</h3>
-                                <div class="flex items-center gap-2 mt-1">
-                                    <span class="text-[8px] uppercase tracking-wider text-stone-500 font-bold">
-                                        {% if rt.recurrence_type == 'daily' %}ежедневно
-                                        {% elif rt.recurrence_type == 'weekly' %}еженедельно
-                                        {% else %}ежемесячно{% endif %}
-                                    </span>
-                                    <span class="text-[8px] text-gray-500">вып: {{ rt.completed_count or 0 }} · проп: {{ rt.missed_count or 0 }}</span>
+
+            <!-- Трекеры: ежедневные отметки — в правой колонке, рядом с календарём -->
+            <div class="order-30 lg:order-none space-y-4 dash-m-4">
+                <div class="flex items-center justify-between px-1">
+                    <h2 class="text-xl font-bold text-white">Трекеры</h2>
+                    <button onclick="document.getElementById('add-habit-modal').classList.toggle('hidden')" 
+                            class="text-[11px] bg-dark-700 hover:bg-dark-600 text-gray-400 px-2 py-1 rounded-lg border border-dark-500 transition-colors uppercase font-bold">
+                        + Добавить
+                    </button>
+                </div>
+
+                <div id="add-habit-modal" class="hidden bg-dark-800 border border-dark-600 rounded-xl p-4 shadow-2xl">
+                    <form action="/api/habits/create" method="POST" class="flex flex-col gap-3">
+                        <input type="text" name="title" placeholder="Название..." required
+                               class="bg-dark-700 border border-dark-500 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-accent">
+                        <input type="date" name="start_date" value="{{ today.isoformat() }}" required
+                               class="bg-dark-700 border border-dark-500 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-accent">
+                        <button type="submit" class="bg-accent text-white rounded-lg px-4 py-2 text-sm font-bold">Создать</button>
+                    </form>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4">
+                    {% for h_item in habits_data %}
+                    <div class="bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg flex flex-col group">
+                        <div class="flex justify-between items-center mb-3 gap-2">
+                            <h3 class="font-bold text-gray-100 text-sm truncate min-w-0">{{ h_item.habit.title }}</h3>
+                            <div class="flex items-center gap-1.5 shrink-0">
+                                <button type="button"
+                                        onclick="openHabitHistory({{ h_item.habit.id }})"
+                                        class="inline-flex items-center justify-center h-6 px-2 text-[11px] leading-none bg-dark-700 text-gray-400 rounded border border-dark-500 hover:border-accent hover:text-accent transition-all font-bold uppercase whitespace-nowrap"
+                                        title="История отметок">
+                                    История
+                                </button>
+                                <form action="/api/habits/{{ h_item.habit.id }}/next-cycle" method="POST" class="inline-flex items-center m-0" onsubmit="return confirm('Начать следующие 30 дней?')">
+                                    <button type="submit" class="inline-flex items-center justify-center h-6 px-2 text-[11px] leading-none bg-amber-900/20 text-amber-400 rounded border border-amber-700/30 hover:bg-amber-700 hover:text-white transition-all font-bold uppercase whitespace-nowrap opacity-0 group-hover:opacity-100">
+                                        След. 30 дней
+                                    </button>
+                                </form>
+                                <form action="/api/habits/{{ h_item.habit.id }}/archive" method="POST" class="inline-flex items-center m-0" onsubmit="return confirm('Архивировать трекер?')">
+                                    <button type="submit" class="inline-flex items-center justify-center h-6 w-6 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-7 gap-1 self-center">
+                            <div class="text-[11px] text-gray-600 text-center font-bold">ПН</div>
+                            <div class="text-[11px] text-gray-600 text-center font-bold">ВТ</div>
+                            <div class="text-[11px] text-gray-600 text-center font-bold">СР</div>
+                            <div class="text-[11px] text-gray-600 text-center font-bold">ЧТ</div>
+                            <div class="text-[11px] text-gray-600 text-center font-bold">ПТ</div>
+                            <div class="text-[11px] text-gray-600 text-center font-bold">СБ</div>
+                            <div class="text-[11px] text-gray-600 text-center font-bold">ВС</div>
+
+                            {% for _ in range(h_item.start_weekday) %}
+                                <div class="w-6 h-6"></div>
+                            {% endfor %}
+
+                            {% for dt in h_item.dates %}
+                                {% set date_str = dt.isoformat() %}
+                                {% set is_checked = date_str in h_item.logs %}
+                                {% set is_today = dt == today %}
+                                <button 
+                                    type="button"
+                                    title="{{ dt.strftime('%d.%m.%Y') }}"
+                                    onclick="toggleHabit({{ h_item.habit.id }}, '{{ date_str }}', this)"
+                                    class="w-6 h-6 rounded-sm flex items-center justify-center transition-all border text-[11px] font-bold
+                                    {{ 'bg-accent border-accent text-white' if is_checked else 'bg-dark-700 border-dark-500 text-gray-600 hover:border-gray-400' }}
+                                    {{ 'ring-1 ring-white/30' if is_today else '' }}">
+                                    {{ loop.index }}
+                                </button>
+                            {% endfor %}
+                        </div>
+
+                        <div class="mt-3 flex items-end justify-between gap-3">
+                            <div class="w-1/2 min-w-0">
+                                <div class="text-[11px] text-gray-500 uppercase tracking-widest mb-1">Прогресс</div>
+                                <div class="bg-dark-700 rounded-full h-1 overflow-hidden">
+                                    <div class="bg-accent h-full transition-all duration-500" style="width: {{ (h_item.progress / 30 * 100)|round }}%"></div>
                                 </div>
                             </div>
-                            <form hx-post="/api/recurring/{{ rt.id }}/complete"
-                                  hx-target="#recurring-{{ rt.id }}"
-                                  hx-swap="outerHTML"
-                                  class="inline lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                                <button type="submit" class="icon-action icon-action--success" title="Выполнить">
-                                    {{ icon_check() }}
-                                </button>
-                            </form>
+                            <div class="flex flex-col items-end gap-0.5 shrink-0">
+                                <span class="text-[11px] font-bold text-accent tabular-nums">{{ h_item.progress }}/30</span>
+                                <div class="flex items-center gap-1.5 text-[11px] text-gray-500">
+                                    <span>Старт {{ h_item.habit.start_date.strftime('%d.%m') }}</span>
+                                    <span class="bg-dark-700 px-1.5 py-0.5 rounded text-gray-400 font-bold uppercase">Цикл {{ h_item.habit.current_cycle }}</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     {% endfor %}
                 </div>
             </div>
-            {% endif %}
 
-            <!-- Shopping List — above trackers on mobile -->
-            <div class="order-[60] lg:order-none space-y-4">
+
+            <!-- Shopping List -->
+            <div class="order-[60] lg:order-none space-y-4 dash-m-5">
                 <div class="flex items-center justify-between px-1">
                     <h2 class="text-xl font-bold text-stone-300 px-1">Покупки</h2>
                     <div class="flex items-center gap-2">
@@ -404,7 +408,7 @@
                         <button hx-post="/api/shopping/send-to-telegram"
                                 hx-target="#tg-send-status"
                                 hx-swap="innerHTML"
-                                class="text-[9px] bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 px-2 py-1 rounded-lg border border-amber-700/30 transition-all font-bold uppercase">
+                                class="text-[11px] bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 px-2 py-1 rounded-lg border border-amber-700/30 transition-all font-bold uppercase">
                             В ТГ
                         </button>
                     </div>
@@ -429,7 +433,7 @@
             </div>
 
             <!-- Reading List -->
-            <div class="order-40 lg:order-none space-y-4">
+            <div class="order-40 lg:order-none space-y-4 dash-m-6">
                 <div class="flex items-center justify-between px-1">
                     <h2 class="text-xl font-bold text-stone-300 px-1">Читать</h2>
                 </div>
