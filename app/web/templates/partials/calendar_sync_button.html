@@ -1,0 +1,19 @@
+{# Кнопка обновления календаря. У каждого блока своя: кнопка у «Встреч» тянет
+   только рабочий календарь, кнопка у «Личного» — только личный. Так одна
+   не ждёт другую и не может случайно переписать чужой список. #}
+{% macro calendar_sync_button(kind, active) %}
+{% if active %}
+<div class="shrink-0 flex items-center gap-2">
+    <span id="calendar-sync-spinner-{{ kind }}" class="htmx-indicator text-[11px] text-gray-600">синк…</span>
+    <button type="button"
+            hx-post="/api/calendar/sync?kind={{ kind }}"
+            hx-target="#calendar-column-blocks"
+            hx-swap="outerHTML"
+            hx-indicator="#calendar-sync-spinner-{{ kind }}"
+            class="shrink-0 text-[11px] text-gray-400 hover:text-amber-400 border border-gray-600 hover:border-amber-700/50 rounded px-2 py-1 whitespace-nowrap inline-flex items-center gap-1.5"
+            title="{% if kind == 'work' %}Обновить рабочий календарь{% else %}Обновить личный календарь{% endif %}">
+        <span aria-hidden="true">↻</span><span>Обновление календаря</span>
+    </button>
+</div>
+{% endif %}
+{% endmacro %}

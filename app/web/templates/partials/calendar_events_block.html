@@ -1,8 +1,12 @@
 {% from 'partials/icons_macros.html' import icon_repeat %}
+{% from 'partials/calendar_sync_button.html' import calendar_sync_button %}
 
 {% if calendar_events %}
 <div id="calendar-meetings-block" class="space-y-4">
-    <h2 class="text-xl font-bold text-stone-300 px-1">Встречи</h2>
+    <div class="flex items-center justify-between gap-2 px-1">
+        <h2 class="text-xl font-bold text-stone-300">Встречи</h2>
+        {{ calendar_sync_button('work', calendar_sync_active) }}
+    </div>
     <div class="space-y-2">
         {% for ev in calendar_events %}
         <div class="bg-dark-800 rounded-xl p-3 border border-dark-600 group" id="calendar-event-{{ ev.id }}">
@@ -36,5 +40,14 @@
     </div>
 </div>
 {% else %}
-<div id="calendar-meetings-block"></div>
+<div id="calendar-meetings-block" class="space-y-2">
+    {% if calendar_sync_active %}
+    {# Пустой день: заголовок и кнопка остаются, иначе обновить календарь нечем. #}
+    <div class="flex items-center justify-between gap-2 px-1">
+        <h2 class="text-xl font-bold text-stone-300">Встречи</h2>
+        {{ calendar_sync_button('work', calendar_sync_active) }}
+    </div>
+    <p class="text-[11px] text-gray-500 px-1 leading-snug">На сегодня нет встреч в рабочем календаре.</p>
+    {% endif %}
+</div>
 {% endif %}

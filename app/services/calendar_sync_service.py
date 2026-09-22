@@ -77,8 +77,14 @@ def _calendar_sync_active() -> bool:
     return calendar_sync_active()
 
 
-async def refresh_calendar_events(timeout: float = 45.0) -> dict[str, int]:
-    """Синхронизация календарей с mutex — параллельные вызовы не дублируют fetch."""
+async def refresh_calendar_events(
+    timeout: float = 45.0, kind: str | None = None
+) -> dict[str, int]:
+    """Синхронизация календарей с mutex — параллельные вызовы не дублируют fetch.
+
+    kind: "work" | "personal" | None. Кнопка обновления стоит у каждого блока
+    отдельно, поэтому каждый вызов тянет только свой календарь.
+    """
     if not calendar_sync_active():
         return {"skipped": 1}
 
@@ -86,7 +92,7 @@ async def refresh_calendar_events(timeout: float = 45.0) -> dict[str, int]:
         return {"skipped": 1, "in_progress": 1}
 
     async with _sync_lock:
-        return await asyncio.wait_for(sync_calendar_events(), timeout=timeout)
+        return await asyncio.wait_for(sync_calendar_events(kind=kind), timeout=timeout)
 
 
 _UID_PRELOAD_CHUNK = 500
@@ -110,10 +116,14 @@ async def _load_existing_events_by_uid(
     return existing_map
 
 
-async def sync_calendar_events() -> dict[str, int]:
+async def sync_calendar_events(kind: str | None = None) -> dict[str, int]:
     """
     Pull CalDAV + Google iCal и upsert в БД.
     Возвращает счётчики: fetched, upserted, hidden.
+
+    kind ограничивает работу одним календарём ("work" | "personal"): чужие
+    события не перезаписываются и — что важнее — не помечаются устаревшими.
+    Без kind ведём себя как раньше: тянем всё.
     """
     if not _calendar_sync_active():
         return {"skipped": 1}
@@ -123,6 +133,9 @@ async def sync_calendar_events() -> dict[str, int]:
     except Exception as e:
         app_logger.error(f"Calendar sync error: {e}")
         return {"error": 1}
+
+    if kind:
+        rows = [r for r in rows if (r.get("calendar_kind") or "work") == kind]
 
     cfg = load_calendar_sync_config()
     sync_cfg = cfg.get("sync", {})
@@ -207,16 +220,21 @@ async def sync_calendar_events() -> dict[str, int]:
             upserted += 1
 
         if seen_uids:
-            stale_result = await db.execute(
-                select(CalendarEvent).where(
-                    and_(
-                        CalendarEvent.external_uid.not_in(seen_uids),
-                        CalendarEvent.start_at >= window_start,
-                        CalendarEvent.start_at <= window_end,
-                        CalendarEvent.ignored_at.is_(None),
-                    )
+            stale_query = select(CalendarEvent).where(
+                and_(
+                    CalendarEvent.external_uid.not_in(seen_uids),
+                    CalendarEvent.start_at >= window_start,
+                    CalendarEvent.start_at <= window_end,
+                    CalendarEvent.ignored_at.is_(None),
                 )
             )
+            # Синк одного календаря не должен объявлять чужие события пропавшими:
+            # в seen_uids лежат uid только этого календаря.
+            if kind:
+                stale_query = stale_query.where(
+                    CalendarEvent.calendar_kind == kind
+                )
+            stale_result = await db.execute(stale_query)
             for stale in stale_result.scalars().all():
                 stale.planner_visible = False
                 stale.filter_reason = "stale"
@@ -224,7 +242,8 @@ async def sync_calendar_events() -> dict[str, int]:
         await db.commit()
 
     app_logger.info(
-        f"Calendar sync: fetched={len(rows)} upserted={upserted} hidden={hidden}"
+        f"Calendar sync: kind={kind or 'all'} fetched={len(rows)}"
+        f" upserted={upserted} hidden={hidden}"
     )
     return {"fetched": len(rows), "upserted": upserted, "hidden": hidden}
 

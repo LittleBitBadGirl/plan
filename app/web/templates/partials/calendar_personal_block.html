@@ -1,28 +1,12 @@
 {% from 'partials/icons_macros.html' import icon_repeat %}
 
-{# Кнопка обновления календаря: стоит справа в строке с заголовком «Личное». #}
-{% macro calendar_sync_button() %}
-{% if calendar_sync_active %}
-<div class="shrink-0 flex items-center gap-2">
-    <span id="calendar-sync-spinner" class="htmx-indicator text-[11px] text-gray-600">синк…</span>
-    <button type="button"
-            hx-post="/api/calendar/sync"
-            hx-target="#calendar-column-blocks"
-            hx-swap="outerHTML"
-            hx-indicator="#calendar-sync-spinner"
-            class="shrink-0 text-[11px] text-gray-400 hover:text-amber-400 border border-gray-600 hover:border-amber-700/50 rounded px-2 py-1 whitespace-nowrap inline-flex items-center gap-1.5"
-            title="Обновление календаря">
-        <span aria-hidden="true">↻</span><span>Обновление календаря</span>
-    </button>
-</div>
-{% endif %}
-{% endmacro %}
+{% from 'partials/calendar_sync_button.html' import calendar_sync_button %}
 
 {% if calendar_personal_events %}
 <div id="calendar-personal-block" class="space-y-4">
     <div class="flex items-center justify-between gap-2 px-1">
         <h2 class="text-xl font-bold text-stone-300">Личное</h2>
-        {{ calendar_sync_button() }}
+        {{ calendar_sync_button('personal', calendar_sync_active) }}
     </div>
     <div class="space-y-2">
         {% for ev in calendar_personal_events %}
@@ -63,7 +47,7 @@
     {% if calendar_sync_active %}
     <div class="flex items-center justify-between gap-2 px-1">
         <h2 class="text-xl font-bold text-stone-300">Личное</h2>
-        {{ calendar_sync_button() }}
+        {{ calendar_sync_button('personal', calendar_sync_active) }}
     </div>
     <p class="text-[11px] text-gray-500 px-1 leading-snug">На сегодня нет событий в календаре «Личный».</p>
     {% endif %}

@@ -40,9 +40,11 @@ from app.services.calendar_sync_service import (
 )
 
 
-async def _calendar_blocks_response(request: Request, *, sync: bool = False):
+async def _calendar_blocks_response(
+    request: Request, *, sync: bool = False, kind: str | None = None
+):
     if sync:
-        await refresh_calendar_events()
+        await refresh_calendar_events(kind=kind)
 
     today = date.today()
     async with async_session() as db:
@@ -70,9 +72,16 @@ async def calendar_page():
 
 
 @router.post("/api/calendar/sync", response_class=HTMLResponse)
-async def sync_calendar_blocks(request: Request):
-    """HTMX: подтянуть CalDAV/Google и обновить блоки встреч/личного на дашборде."""
-    return await _calendar_blocks_response(request, sync=True)
+async def sync_calendar_blocks(request: Request, kind: str | None = None):
+    """HTMX: подтянуть CalDAV/Google и обновить блоки встреч/личного.
+
+    kind=work — только рабочий календарь, kind=personal — только личный:
+    у каждого блока своя кнопка и она дёргает только свой календарь.
+    Без kind (старые вызовы, бот, cron) тянем оба.
+    """
+    if kind not in (None, "work", "personal"):
+        raise HTTPException(status_code=400, detail="Неизвестный календарь")
+    return await _calendar_blocks_response(request, sync=True, kind=kind)
 
 
 @router.post("/api/calendar/{event_id}/decline", response_class=HTMLResponse)
