@@ -57,6 +57,14 @@ class TestPages:
         # поэтому порядок сверяется по шаблону, а не по готовой странице.
         template = (project_root / "app/web/templates/dashboard.html").read_text(encoding="utf-8")
         assert template.index(desktop_mark) < template.index("{% if recurring_tasks %}")
+
+        # Сводка по нагрузке живёт в правой колонке, над календарём: у формы ввода
+        # она спорила за место.
+        side_mark = 'class="order-20 lg:order-none dash-m-3"'
+        cal_mark = 'id="calendar-column-blocks"'
+        warn_mark = 'id="ai-warning-block"'
+        assert html.index(side_mark) < html.index(warn_mark) < html.index(cal_mark)
+        assert "dash-top-row" not in html
         assert html.index(desktop_mark) < html.index('id="tasks-list"')
 
     async def test_dashboard_task_url_is_linkified(self, client, db):

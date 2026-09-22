@@ -784,7 +784,7 @@ def ai_warning_oob_from(warning: Optional[str]) -> str:
     if warning:
         return (
             f'<div id="ai-warning-block" hx-swap-oob="true" '
-            f'class="p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">'
+            f'class="mb-4 p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">'
             f'<p class="text-yellow-300">{warning}</p></div>'
         )
     return '<div id="ai-warning-block" hx-swap-oob="true" class="hidden"></div>'

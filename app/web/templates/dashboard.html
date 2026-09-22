@@ -165,16 +165,9 @@
         <div class="contents lg:block dash-main">
         <div class="order-1 lg:order-none space-y-6 dash-m-1">
             {# Быстрый ввод — первым в колонке: это главное действие на дашборде,
-               под «Регулярными» и списком он уезжал ниже и был не под рукой.
-               Сводка по нагрузке («Сегодня 85 задач: …») стоит рядом с ним
-               второй половиной строки. #}
-            <div class="dash-top-row">
-                <div id="dashboard-quick-add-desktop" class="hidden lg:block bg-dark-800 rounded-xl border border-dark-600 p-3 shadow-lg">
-                    {% include "partials/dashboard_quick_add_form.html" %}
-                </div>
-                <div id="ai-warning-block" class="{% if not ai_warning %}hidden{% endif %} p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">
-                    <p class="text-yellow-300">{% if ai_warning %}{{ ai_warning }}{% endif %}</p>
-                </div>
+               под «Регулярными» и списком он уезжал ниже и был не под рукой. #}
+            <div id="dashboard-quick-add-desktop" class="hidden lg:block bg-dark-800 rounded-xl border border-dark-600 p-3 shadow-lg">
+                {% include "partials/dashboard_quick_add_form.html" %}
             </div>
 
 
@@ -303,6 +296,12 @@
         <!-- СТОЛБЕЦ 3: КАЛЕНДАРЬ, ТРЕКЕРЫ, ПОКУПКИ, ЧИТАТЬ (узкий, справа) -->
         <div class="contents lg:block lg:space-y-6 dash-side">
             <div class="order-20 lg:order-none dash-m-3">
+                {# Сводка по нагрузке («Сегодня 85 задач: …») — рядом с календарём:
+                   слева она спорила за место с формой ввода, а тут она к месту,
+                   и на телефоне остаётся прямо над календарём (dash-m-3). #}
+                <div id="ai-warning-block" class="{% if not ai_warning %}hidden{% endif %} mb-4 p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">
+                    <p class="text-yellow-300">{% if ai_warning %}{{ ai_warning }}{% endif %}</p>
+                </div>
                 {% include "partials/calendar_column_blocks.html" %}
             </div>
 
