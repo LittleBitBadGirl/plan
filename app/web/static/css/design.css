@@ -791,3 +791,47 @@ h3,
 .ach-quick .acw-head {
   display: none;
 }
+
+/* Блок ввода задачи и карточка сводки — одной высоты 42px: рядом они должны
+   смотреться аккуратно, а не вразнобой. На телефоне высота не фиксируется:
+   там кнопки 44px под палец. */
+@media (min-width: 1024px) {
+  .dash-quick-42 {
+    height: 42px;
+    display: flex;
+    align-items: center;
+  }
+  .dash-quick-42 form {
+    width: 100%;
+    display: block;
+  }
+  .dash-quick-42 > div {
+    width: 100%;
+  }
+  .dash-quick-42 textarea {
+    height: 28px;
+    min-height: 28px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    line-height: 18px;
+  }
+  .dash-quick-42 .dash-quick-42__icon,
+  .dash-quick-42 button[type="submit"] {
+    width: 28px;
+    height: 28px;
+    min-height: 28px;
+    padding: 0;
+    font-size: 13px;
+  }
+  .dash-quick-42__card {
+    height: 42px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+  }
+  .dash-quick-42__card p {
+    font-size: 13px;
+    line-height: 18px;
+    margin: 0;
+  }
+}

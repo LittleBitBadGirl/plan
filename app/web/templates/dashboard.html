@@ -133,16 +133,16 @@
             {% endif %}
         </div>
 
-        {# Достижение и новая задача — одним стилем: раньше достижение было
-           мелкой кнопкой в кавычках-окантовке и выбивалось из шапки. #}
+        {# Достижение и новая задача — одним стилем. Плюсы убраны, отступы
+           поджаты: кнопки занимают меньше места, а смысл читается по слову. #}
         <div class="hidden lg:flex shrink-0 items-center gap-2">
             <button type="button" onclick="openAchievementQuickAdd()"
-                    class="inline-flex items-center px-5 py-2.5 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 whitespace-nowrap">
-                <span class="mr-1.5 text-lg leading-none">+</span> Достижение
+                    class="inline-flex items-center px-3.5 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 whitespace-nowrap">
+                Достижение
             </button>
             <a href="/tasks/new"
-               class="inline-flex items-center px-5 py-2.5 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 whitespace-nowrap">
-                <span class="mr-1.5 text-lg leading-none">+</span> Новая задача
+               class="inline-flex items-center px-3.5 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 whitespace-nowrap">
+                Новая задача
             </a>
         </div>
     </div>
@@ -200,7 +200,8 @@
         <div class="order-1 lg:order-none space-y-6 dash-m-1">
             {# Быстрый ввод — первым в колонке: это главное действие на дашборде,
                под «Регулярными» и списком он уезжал ниже и был не под рукой. #}
-            <div id="dashboard-quick-add-desktop" class="hidden lg:block bg-dark-800 rounded-xl border border-dark-600 p-3 shadow-lg">
+            {# Класс .dash-quick-42 держит высоту блока ввода 42px — как у сводки. #}
+            <div id="dashboard-quick-add-desktop" class="hidden lg:block dash-quick-42 bg-dark-800 rounded-xl border border-dark-600 p-3 shadow-lg">
                 {% include "partials/dashboard_quick_add_form.html" %}
             </div>
 
@@ -333,7 +334,7 @@
                 {# Сводка по нагрузке («Сегодня 85 задач: …») — рядом с календарём:
                    слева она спорила за место с формой ввода, а тут она к месту,
                    и на телефоне остаётся прямо над календарём (dash-m-3). #}
-                <div id="ai-warning-block" class="{% if not ai_warning %}hidden{% endif %} mb-4 p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">
+                <div id="ai-warning-block" class="{% if not ai_warning %}hidden{% endif %} dash-quick-42__card mb-4 p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">
                     <p class="text-yellow-300">{% if ai_warning %}{{ ai_warning }}{% endif %}</p>
                 </div>
                 {% include "partials/calendar_column_blocks.html" %}
