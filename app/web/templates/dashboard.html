@@ -169,6 +169,12 @@
         <!-- СТОЛБЕЦ 1: РЕГУЛЯРНЫЕ И ЗАДАЧИ (широкий) -->
         <div class="contents lg:block dash-main">
         <div class="order-1 lg:order-none space-y-6 dash-m-1">
+            {# Быстрый ввод — первым в колонке: это главное действие на дашборде,
+               под «Регулярными» и списком он уезжал ниже и был не под рукой. #}
+            <div id="dashboard-quick-add-desktop" class="hidden lg:block bg-dark-800 rounded-xl border border-dark-600 p-3 shadow-lg">
+                {% include "partials/dashboard_quick_add_form.html" %}
+            </div>
+
 
             <!-- Регулярные: это задачи по расписанию, поэтому место — в основной колонке, выше разового на сегодня. -->
             {% if recurring_tasks %}
@@ -205,11 +211,6 @@
             {% endif %}
 
             <h2 class="text-xl font-bold text-white px-1">Задачи на сегодня</h2>
-
-            <!-- Quick Add — desktop: stays in the tasks column. Mobile form is at page top. -->
-            <div id="dashboard-quick-add-desktop" class="hidden lg:block bg-dark-800 rounded-xl border border-dark-600 p-3 shadow-lg">
-                {% include "partials/dashboard_quick_add_form.html" %}
-            </div>
 
             <div id="tasks-list">
                 {% include "partials/tasks_list_split.html" %}

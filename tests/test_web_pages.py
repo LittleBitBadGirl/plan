@@ -23,7 +23,11 @@ class TestPages:
         assert "Task Planner" in response.text or "Дашборд" in response.text
 
     async def test_dashboard_quick_add_mobile_first_desktop_in_column(self, client):
-        """Мобильный quick-add — первый в контенте; десктопный остаётся в колонке задач."""
+        """Мобильный quick-add — первый в контенте, десктопный — первым в основной колонке.
+
+        Быстрый ввод — главное действие на дашборде: под «Регулярными» и списком он
+        уезжал ниже и был не под рукой.
+        """
         html = (await client.get("/")).text
         mobile_mark = 'id="dashboard-quick-add-mobile"'
         desktop_mark = 'id="dashboard-quick-add-desktop"'
@@ -42,9 +46,17 @@ class TestPages:
         css = (project_root / "app/web/static/css/design.css").read_text(encoding="utf-8")
         assert ".dash-grid" in css and "grid-template-columns" in css
         assert ".dash-side" in css
+        column_mark = 'class="order-1 lg:order-none space-y-6 dash-m-1"'
+
         assert html.index(mobile_mark) < html.index(h1_mark)
-        assert html.index(h1_mark) < html.index(heading_mark)
-        assert html.index(heading_mark) < html.index(desktop_mark)
+        # десктопная форма — первым блоком основной колонки, выше списка задач
+        assert html.index(column_mark) < html.index(desktop_mark)
+        assert html.index(desktop_mark) < html.index(heading_mark)
+
+        # …и выше «Регулярных». Блок регулярных рендерится только когда они есть,
+        # поэтому порядок сверяется по шаблону, а не по готовой странице.
+        template = (project_root / "app/web/templates/dashboard.html").read_text(encoding="utf-8")
+        assert template.index(desktop_mark) < template.index("{% if recurring_tasks %}")
         assert html.index(desktop_mark) < html.index('id="tasks-list"')
 
     async def test_dashboard_task_url_is_linkified(self, client, db):
