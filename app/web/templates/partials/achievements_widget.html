@@ -1,0 +1,47 @@
+{% set shelf_order = ['work', 'personal'] %}
+{# Компактный блок для дашборда: быстрая запись и по три свежих достижения на полке. #}
+<div id="achievements-widget" class="acw">
+    <div class="acw-head">
+        <h2 class="acw-title">Достижения</h2>
+        <a class="acw-all" href="/achievements">все {{ total }}</a>
+    </div>
+
+    <form class="acw-form"
+          hx-post="/achievements"
+          hx-target="#achievements-widget"
+          hx-swap="outerHTML"
+          hx-on::after-request="if (event.detail.successful) this.reset()">
+        <input type="hidden" name="widget" value="1">
+        <textarea name="text" rows="2" maxlength="2000"
+                  placeholder="Что получилось? Своими словами" required></textarea>
+        <div class="acw-row">
+            <select name="sphere">
+                {% for value in shelf_order %}
+                <option value="{{ value }}">{{ labels[value] }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="acw-submit">Записать</button>
+        </div>
+    </form>
+
+    {% for key in shelf_order %}
+    <div class="acw-shelf">
+        <div class="acw-shelf-head">
+            <span>{{ labels[key] }}</span>
+            <span class="acw-count">{{ shelves[key]|length }}</span>
+        </div>
+        {% if shelves[key] %}
+        <ul class="acw-list">
+            {% for a in shelves[key][:3] %}
+            <li>{{ a.text }}</li>
+            {% endfor %}
+        </ul>
+        {% if shelves[key]|length > 3 %}
+        <a class="acw-more" href="/achievements">и ещё {{ shelves[key]|length - 3 }}</a>
+        {% endif %}
+        {% else %}
+        <p class="acw-empty">пусто</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>

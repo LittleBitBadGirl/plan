@@ -1,10 +1,14 @@
-"""SSR smoke tests for /portfolio page (T4 UI)."""
+"""SSR smoke tests: портфель живёт вкладкой «Портфель» внутри «Финансов»."""
+
+from datetime import date
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import delete
 
 from app.db.seed_portfolios import seed_portfolios
+from app.models.category import Category
+from app.models.finance import Transaction
 from app.models.goal import FinancialGoal
 from app.models.investment import InvestmentFlow, InvestmentSnapshot
 from app.models.portfolio import ImportLog, Instrument, Portfolio, PortfolioGoal, Position
@@ -42,14 +46,14 @@ async def portfolio_page_db(db):
 
 
 async def test_portfolio_page_returns_200(client, portfolio_page_db):
-    response = await client.get("/portfolio")
+    response = await client.get("/finance?view=portfolio")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "Портфель" in response.text
 
 
 async def test_portfolio_page_has_four_tabs(client, portfolio_page_db):
-    response = await client.get("/portfolio")
+    response = await client.get("/finance?view=portfolio")
     html = response.text
     for slug, name in [
         ("iis", "ИИС"),
@@ -57,25 +61,25 @@ async def test_portfolio_page_has_four_tabs(client, portfolio_page_db):
         ("broker-1", "Брокерский 1"),
         ("broker-2", "Брокерский 2"),
     ]:
-        assert f'/portfolio?tab={slug}' in html
+        assert f'/finance?view=portfolio&tab={slug}' in html
         assert name in html
 
 
 async def test_portfolio_page_active_tab_highlight(client, portfolio_page_db):
-    response = await client.get("/portfolio?tab=broker-1")
+    response = await client.get("/finance?view=portfolio&tab=broker-1")
     assert response.status_code == 200
     assert "bg-yellow-600/20" in response.text
     assert "Брокерский 1" in response.text
 
 
 async def test_portfolio_page_goal_progress(client, portfolio_page_db):
-    response = await client.get("/portfolio?tab=broker-1")
+    response = await client.get("/finance?view=portfolio&tab=broker-1")
     assert "Цель: Автомобиль" in response.text
     assert 'id="portfolioGoals"' in response.text
 
 
 async def test_portfolio_page_ui_shell_elements(client, portfolio_page_db):
-    response = await client.get("/portfolio?tab=iis")
+    response = await client.get("/finance?view=portfolio&tab=iis")
     html = response.text
     assert 'id="portfolioRoot"' in html
     assert 'data-portfolio-id="' in html
@@ -88,7 +92,34 @@ async def test_portfolio_page_ui_shell_elements(client, portfolio_page_db):
 
 
 async def test_sidebar_portfolio_link(client, portfolio_page_db):
-    response = await client.get("/portfolio")
+    response = await client.get("/finance?view=portfolio")
     html = response.text
-    assert 'href="/portfolio"' in html
+    assert 'href="/finance?view=portfolio"' in html
     assert ">Портфель</span>" in html or ">Портфель<" in html
+
+
+async def test_portfolio_tab_opens_requested_portfolio_with_month_data(client, portfolio_page_db, db):
+    """Регрессия: вкладка портфеля открывала ПЕРВЫЙ портфель, когда в месяце были траты.
+
+    В маршруте финансов переменная цикла месяцев называлась `tab` и перетирала
+    query-параметр со slug портфеля — вкладка «Брокерский 1» показывала «ИИС».
+    """
+    category = Category(name="Продукты", type="finance")
+    db.add(category)
+    await db.commit()
+    await db.refresh(category)
+    db.add(
+        Transaction(
+            amount=1000.0,
+            description="Магазин",
+            date=date(2026, 3, 15),
+            category_id=category.id,
+            source="manual",
+        )
+    )
+    await db.commit()
+
+    response = await client.get("/finance?view=portfolio&tab=broker-1")
+
+    assert response.status_code == 200
+    assert "Цель: Автомобиль" in response.text, "должен открыться Брокерский 1, а не первый портфель"

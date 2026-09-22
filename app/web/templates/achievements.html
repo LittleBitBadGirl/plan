@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Достижения — Планировщик{% endblock %}
+
+{% block content %}
+<div class="ach-page">
+    <header class="ach-page-head">
+        <h1 class="ach-h1">Достижения</h1>
+        <p class="ach-lead">
+            То, что уже сделано. Своими словами, без формулировок «для резюме».
+            Две полки: рабочее и личное.
+        </p>
+    </header>
+
+    <form class="ach-form"
+          hx-post="/achievements"
+          hx-target="#achievements-board"
+          hx-swap="outerHTML"
+          hx-on::after-request="if (event.detail.successful) this.reset()">
+        <textarea name="text" rows="2" maxlength="2000"
+                  placeholder="Что получилось? Можно писать как есть, без редактуры" required></textarea>
+        <div class="ach-form-row">
+            <select name="sphere">
+                {% for key in ['work', 'personal'] %}
+                <option value="{{ key }}">{{ labels[key] }}</option>
+                {% endfor %}
+            </select>
+            <input name="tag" maxlength="100" placeholder="Тема (тело, проекты, команда)">
+            <input type="date" name="happened_on" aria-label="Когда">
+            <input name="source" maxlength="100" placeholder="Откуда запись (Полина, Миша)">
+            <button type="submit" class="ach-btn ach-btn--primary">Добавить</button>
+        </div>
+    </form>
+
+    {% include "partials/achievements_board.html" %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Правка записи: показываем форму вместо текста. Функции живут на странице,
+// а не в партиале — script из подставленного html не исполняется.
+function achToggleEdit(id) {
+    const read = document.getElementById('ach-read-' + id);
+    const form = document.getElementById('ach-edit-' + id);
+    if (!read || !form) return;
+    read.style.display = 'none';
+    form.style.display = 'block';
+    const area = form.querySelector('textarea');
+    if (area) area.focus();
+}
+function achCancelEdit(id) {
+    const read = document.getElementById('ach-read-' + id);
+    const form = document.getElementById('ach-edit-' + id);
+    if (!read || !form) return;
+    form.style.display = 'none';
+    read.style.display = 'block';
+}
+</script>
+{% endblock %}

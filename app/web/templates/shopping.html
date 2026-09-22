@@ -3,7 +3,10 @@
 {% block title %}Покупки — Планировщик{% endblock %}
 
 {% block content %}
-<div class="max-w-3xl mx-auto" x-data="{ showBulk: false }">
+{# x-data выше модалки: раньше showBulk жил на внутреннем блоке, а окно импорта —
+   вне его области видимости, поэтому Alpine падал с «showBulk is not defined». #}
+<div x-data="{ showBulk: false }">
+<div class="max-w-3xl mx-auto">
     <div class="flex items-center justify-between mb-8">
         <div>
             <h1 class="text-3xl font-bold text-white">🛒 Покупки</h1>
@@ -86,5 +89,6 @@
             </div>
         </form>
     </div>
+</div>
 </div>
 {% endblock %}

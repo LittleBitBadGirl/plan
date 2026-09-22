@@ -1,0 +1,62 @@
+{% set shelf_order = ['work', 'personal'] %}
+{# Две полки: рабочее и личное. Партиал отдаётся и целиком (hx-target="#achievements-board"),
+   и внутрь страницы — поэтому корневой элемент всегда с тем же id. #}
+<div id="achievements-board" class="ach-board">
+    {% for key in shelf_order %}
+    <section class="ach-shelf" data-sphere="{{ key }}">
+        <div class="ach-shelf-head">
+            <h3 class="ach-shelf-title">{{ labels[key] }}</h3>
+            <span class="ach-count">{{ shelves[key]|length }}</span>
+        </div>
+
+        {% if shelves[key] %}
+        <ul class="ach-list">
+            {% for a in shelves[key] %}
+            <li class="ach-card">
+                <div class="ach-read" id="ach-read-{{ a.id }}">
+                    <p class="ach-text">{{ a.text }}</p>
+                    <div class="ach-meta">
+                        {% if a.tag %}<span class="ach-tag">{{ a.tag }}</span>{% endif %}
+                        {% if a.happened_on %}<span class="ach-date">{{ a.happened_on.strftime('%d.%m.%Y') }}</span>{% endif %}
+                        {% if a.source %}<span class="ach-source">заметил(а): {{ a.source }}</span>{% endif %}
+                    </div>
+                    <div class="ach-actions">
+                        <button type="button" class="ach-btn" onclick="achToggleEdit({{ a.id }})">Правка</button>
+                        <form hx-post="/achievements/{{ a.id }}/delete"
+                              hx-target="#achievements-board"
+                              hx-swap="outerHTML"
+                              onsubmit="return confirm('Удалить достижение?')">
+                            <button type="submit" class="ach-btn ach-btn--danger">Удалить</button>
+                        </form>
+                    </div>
+                </div>
+
+                <form class="ach-edit" id="ach-edit-{{ a.id }}" style="display:none"
+                      hx-post="/achievements/{{ a.id }}"
+                      hx-target="#achievements-board"
+                      hx-swap="outerHTML">
+                    <textarea name="text" rows="3" maxlength="2000" required>{{ a.text }}</textarea>
+                    <div class="ach-edit-row">
+                        <select name="sphere">
+                            {% for value in shelf_order %}
+                            <option value="{{ value }}" {% if a.sphere == value %}selected{% endif %}>{{ labels[value] }}</option>
+                            {% endfor %}
+                        </select>
+                        <input name="tag" maxlength="100" placeholder="Тема" value="{{ a.tag or '' }}">
+                        <input type="date" name="happened_on"
+                               value="{{ a.happened_on.isoformat() if a.happened_on else '' }}">
+                        <input name="source" maxlength="100" placeholder="Откуда запись"
+                               value="{{ a.source or '' }}">
+                        <button type="submit" class="ach-btn ach-btn--primary">Сохранить</button>
+                        <button type="button" class="ach-btn" onclick="achCancelEdit({{ a.id }})">Отмена</button>
+                    </div>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="ach-empty">Пока пусто. Запишите первое — своими словами, без формулировок «для резюме».</p>
+        {% endif %}
+    </section>
+    {% endfor %}
+</div>

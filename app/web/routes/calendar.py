@@ -59,13 +59,14 @@ async def _calendar_blocks_response(request: Request, *, sync: bool = False):
         },
     )
 
-@router.get("/calendar", response_class=HTMLResponse)
-async def calendar_page(request: Request):
-    """Календарь"""
-    return templates.TemplateResponse(request, "calendar.html", {
-        "request": request,
-        "today": date.today().isoformat(),
-    })
+@router.get("/calendar")
+async def calendar_page():
+    """Календарь переехал во вкладку «Календарь» на странице Бэклога.
+
+    Старая страница не удаляется из навигации одним щелчком: ссылки, закладки и
+    PWA-ярлык продолжают работать — просто ведут на нужную вкладку.
+    """
+    return RedirectResponse(url="/backlog?view=calendar", status_code=302)
 
 
 @router.post("/api/calendar/sync", response_class=HTMLResponse)

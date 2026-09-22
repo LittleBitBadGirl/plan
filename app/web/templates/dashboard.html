@@ -11,7 +11,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 9px;
+        font-size: 11px;
         font-weight: 700;
         transition: all 0.15s ease;
         position: relative;
@@ -160,10 +160,14 @@
     </script>
     {% endif %}
 
-    <div class="flex flex-col lg:grid lg:grid-cols-3 gap-6">
+    {# Дашборд: два столбца вместо трёх. Раскладку задаёт .dash-grid в design.css
+       (сборки Tailwind в репозитории нет, поэтому новые Tailwind-классы не
+       сработали бы). На телефоне порядок блоков прежний — он держится на
+       order-* и на обёртках contents. #}
+    <div class="flex flex-col gap-6 dash-grid">
         
-        <!-- COLUMN 1: TASKS -->
-        <div class="contents lg:block">
+        <!-- СТОЛБЕЦ 1: ЗАДАЧИ (широкий) -->
+        <div class="contents lg:block dash-main">
         <div class="order-1 lg:order-none space-y-6">
             <h2 class="text-xl font-bold text-white px-1">Задачи на сегодня</h2>
 
@@ -178,8 +182,8 @@
         </div>
         </div>
 
-        <!-- COLUMN 2: HABITS & PERIOD -->
-        <div class="contents lg:block lg:space-y-8">
+        <!-- СТОЛБЕЦ 2: ТРЕКЕРЫ И МЕСЯЧНЫЕ (широкий, под задачами) -->
+        <div class="contents lg:block lg:space-y-8 dash-under">
             <!-- Менеджеры: сбор обратной связи (клик по имени → попап) -->
             <div class="order-4 lg:order-none">
                 {% include "partials/managers_widget.html" %}
@@ -351,8 +355,8 @@
             </div>
         </div>
 
-        <!-- COLUMN 3: CALENDAR, RECURRING & SHOPPING -->
-        <div class="contents lg:block lg:space-y-6">
+        <!-- СТОЛБЕЦ 3: КАЛЕНДАРЬ, РЕГУЛЯРНЫЕ, ПОКУПКИ, ЧИТАТЬ (узкий, справа) -->
+        <div class="contents lg:block lg:space-y-6 dash-side">
             <div class="order-20 lg:order-none">
                 {% include "partials/calendar_column_blocks.html" %}
             </div>

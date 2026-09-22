@@ -46,7 +46,7 @@
                 {% endif %}
                 {# Show content preview if non-link item has content #}
                 {% if not item.url and item.content %}
-                <p class="text-[10px] text-gray-500 mt-0.5 line-clamp-2">{{ item.content }}</p>
+                <p class="text-[10px] text-gray-500 mt-0.5 line-clamp-2 break-words">{{ item.content }}</p>
                 {% endif %}
             </div>
 

@@ -9,7 +9,7 @@ import re
 import json
 
 from app.db.database import async_session
-from app.models.task import Task
+from app.models.task import Task, task_is_active
 from app.models.category import Category
 from app.models.recurring import RecurringTask
 from app.models.shopping import ShoppingItem
@@ -70,7 +70,7 @@ from app.services.postpones_service import apply_manual_plan
 async def tasks_page(request: Request, status: Optional[str] = None):
     """Все задачи"""
     async with async_session() as db:
-        filters = [Task.is_archived == False, Task.due_date != None]
+        filters = [task_is_active(), Task.due_date != None]
         if status:
             filters.append(Task.status == status)
         result = await db.execute(
@@ -386,7 +386,7 @@ async def _hide_root_task_oob(db: AsyncSession, task_id: int, request=None) -> s
 
 async def _sync_parent(db: AsyncSession, parent_id: int):
     subs_res = await db.execute(
-        select(Task).where(Task.parent_task_id == parent_id, Task.is_archived == False)
+        select(Task).where(Task.parent_task_id == parent_id, task_is_active())
     )
     subs = subs_res.scalars().all()
     if not subs:

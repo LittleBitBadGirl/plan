@@ -2,8 +2,23 @@
 
 {% block title %}Финансы — Планировщик{% endblock %}
 
+{% block extra_head %}
+{% if view == 'portfolio' %}{% include "partials/portfolio_head.html" %}{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="max-w-7xl mx-auto pb-20">
+    <!-- Финансы — хаб: обзор месяца, справочник фин. категорий и портфель -->
+    <nav class="btabs" aria-label="Разделы финансов">
+        <a href="/finance" class="btab {% if view == 'overview' %}is-active{% endif %}"
+           {% if view == 'overview' %}aria-current="page"{% endif %}>Обзор</a>
+        <a href="/finance?view=categories" class="btab {% if view == 'categories' %}is-active{% endif %}"
+           {% if view == 'categories' %}aria-current="page"{% endif %}>Фин. категории</a>
+        <a href="/finance?view=portfolio" class="btab {% if view == 'portfolio' %}is-active{% endif %}"
+           {% if view == 'portfolio' %}aria-current="page"{% endif %}>Портфель</a>
+    </nav>
+
+    {% if view == 'overview' %}
     <!-- Header -->
     <div class="flex items-center justify-between mb-4">
         <div>
@@ -160,7 +175,7 @@
                         <div x-show="editingGoal !== {{ goal.id }}">
                             <p class="text-base font-bold text-white tracking-tight tabular-nums">{{ "{:,.0f}".format(goal.current_amount).replace(',', ' ') }}</p>
                             {% if portfolio_slugs.get(goal.id) %}
-                            <a href="/portfolio?tab={{ portfolio_slugs[goal.id] }}"
+                            <a href="/finance?view=portfolio&tab={{ portfolio_slugs[goal.id] }}"
                                class="text-[8px] text-accent hover:text-blue-400 transition-colors mt-1 inline-block">
                                 Аналитика →
                             </a>
@@ -368,10 +383,26 @@
             {% include "partials/finance_expense_chart.html" %}
         </div>
     </div>
+    {% elif view == 'categories' %}
+    <div class="mb-4">
+        <h1 class="text-2xl font-bold text-white">Фин. категории</h1>
+        <p class="text-gray-500 text-sm mt-0.5">Группы и категории, по которым раскладываются транзакции</p>
+    </div>
+    {% set fin_global_categories = fin_parent_cats %}
+    {% set fin_sub_categories = fin_sub_cats_by_parent %}
+    {% include "partials/categories_finance.html" %}
+    {% elif view == 'portfolio' %}
+    <div class="mb-4">
+        <h1 class="text-2xl font-bold text-white">Портфель</h1>
+        <p class="text-gray-500 text-sm mt-0.5">Отчёты брокеров, цели и состав портфелей</p>
+    </div>
+    {% include "partials/portfolio_body.html" %}
+    {% endif %}
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
+{% if view == 'overview' %}
 <script>
 function createGoalForm(form) {
     const fd = new FormData(form);
@@ -512,5 +543,9 @@ document.addEventListener('alpine:init', () => {
     }
 })();
 </script>
+{% endif %}
+{% endif %}
+{% if view == 'portfolio' %}
+<script src="/web/static/js/portfolio-analytics.js?v=20260814-cf-names"></script>
 {% endif %}
 {% endblock %}

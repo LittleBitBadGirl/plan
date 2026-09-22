@@ -1,8 +1,4 @@
-{% extends "base.html" %}
-
-{% block title %}Портфель — Планировщик{% endblock %}
-
-{% block content %}
+{# Тело «Портфеля». Живёт внутри «Финансов» вкладкой — отдельной страницы нет. #}
 <div class="max-w-6xl mx-auto" id="portfolioRoot"
      {% if active_portfolio %}data-portfolio-id="{{ active_portfolio.id }}"{% endif %}>
 
@@ -10,7 +6,7 @@
 
     <nav class="flex flex-wrap gap-2 mb-6" id="portfolioTabs">
         {% for p in portfolios %}
-        <a href="/portfolio?tab={{ p.slug }}"
+        <a href="/finance?view=portfolio&tab={{ p.slug }}"
            class="px-4 py-2 rounded-lg text-sm font-medium transition border
                   {% if p.slug == active_tab %}
                   bg-yellow-600/20 border-yellow-600 text-yellow-300
@@ -132,61 +128,3 @@
     </div>
     <div id="paDrillBody" class="flex-1 overflow-auto p-4"></div>
 </div>
-{% endblock %}
-
-{% block extra_head %}
-<style>
-  .pa-cf-grid {
-    overflow: auto;
-    max-height: 55vh;
-  }
-  .pa-cf-grid table { border-collapse: separate; border-spacing: 0; }
-  .pa-cf-grid thead th {
-    position: sticky; top: 0; z-index: 20;
-    background: #1e1e27;
-    box-shadow: inset 0 -1px 0 #363645;
-  }
-  .pa-cf-grid thead th:first-child { left: 0; z-index: 30; min-width: 13rem; max-width: 18rem; }
-  .pa-cf-grid tbody td:first-child {
-    position: sticky; left: 0; z-index: 10;
-    background: #1e1e27;
-    box-shadow: 6px 0 8px -4px rgba(0,0,0,.55);
-    min-width: 13rem; max-width: 18rem;
-  }
-  .pa-cf-name {
-    white-space: normal;
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    word-break: break-word;
-    line-height: 1.3;
-  }
-  .pa-comp-table {
-    table-layout: fixed;
-    width: 100%;
-    border-collapse: collapse;
-    min-width: 640px;
-  }
-  .pa-comp-col-ticker { width: 5.5rem; }
-  .pa-comp-col-pct { width: 4.25rem; }
-  .pa-comp-col-qty { width: 5rem; }
-  .pa-comp-col-value { width: 7.75rem; }
-  .pa-comp-col-mat { width: 6.5rem; }
-  .pa-comp-table th:nth-child(2),
-  .pa-comp-table td:nth-child(2) {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .pa-comp-table td:nth-child(3),
-  .pa-comp-table td:nth-child(4),
-  .pa-comp-table td:nth-child(5) {
-    white-space: nowrap;
-  }
-</style>
-{% endblock %}
-
-{% block extra_scripts %}
-<script src="/web/static/js/portfolio-analytics.js?v=20260814-cf-names"></script>
-{% endblock %}

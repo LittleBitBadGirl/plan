@@ -16,6 +16,7 @@ from app.models.shopping import ShoppingItem
 from app.models.report import AIReport
 from app.models.finance import Transaction
 from app.models.goal_history import GoalHistory
+from app.services.portfolio_service import list_portfolios
 from app.config import settings
 
 # Reflected tables for investment analytics
@@ -70,6 +71,8 @@ def sparkline(history):
 
 router = APIRouter()
 
+FINANCE_VIEWS = ("overview", "categories", "portfolio")
+
 import datetime as dt
 from sqlalchemy import desc, case
 from app.models.goal import FinancialGoal
@@ -80,8 +83,19 @@ from app.models.portfolio import Portfolio
 SAVINGS_CATEGORY_IDS = [37, 61, 157, 144, 159, 36]
 
 @router.get("/finance", response_class=HTMLResponse)
-async def finance_page(request: Request, month: Optional[int] = None, year: Optional[int] = None):
-    """Страница финансов (Excel-вид)"""
+async def finance_page(
+    request: Request,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    view: str = "overview",
+    tab: Optional[str] = None,
+):
+    """Финансы: обзор месяца, фин. категории и портфель — вкладками одной страницы.
+
+    Устроено как дашборд: «Финансы» — точка входа, а справочник категорий и
+    портфель живут внутри, а не отдельными пунктами меню.
+    """
+    view = view if view in FINANCE_VIEWS else "overview"
     today = dt.date.today()
     
     MONTH_NAMES = {
@@ -105,9 +119,12 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         year_groups = {}
         for row in available_months:
             y, m = int(row.year), int(row.month)
-            tab = {"month": m, "year": y, "name": f"{MONTH_NAMES[m]}"}
-            month_tabs.append(tab)
-            year_groups.setdefault(y, []).append(tab)
+            # Имя переменной не должно быть `tab`: так называется query-параметр
+            # страницы (slug портфеля), и цикл его перетирал — вкладка портфеля
+            # тогда молча открывала первый портфель.
+            month_tab = {"month": m, "year": y, "name": f"{MONTH_NAMES[m]}"}
+            month_tabs.append(month_tab)
+            year_groups.setdefault(y, []).append(month_tab)
         # Sort months within each year chronologically (Jan left, Dec right)
         for y in year_groups:
             year_groups[y].sort(key=lambda t: t["month"])
@@ -490,6 +507,19 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
             if c.parent_id:
                 fin_sub_cats_by_parent.setdefault(c.parent_id, []).append(c)
         
+    # Вкладка «Фин. категории» берёт справочник из fin_parent_cats/fin_sub_cats_by_parent,
+    # вкладке «Портфель» нужны сами портфели.
+    portfolios: List = []
+    active_tab = ""
+    active_portfolio = None
+    if view == "portfolio":
+        async with async_session() as pdb:
+            portfolios = await list_portfolios(pdb)
+            active_portfolio = next((p for p in portfolios if p["slug"] == (tab or "iis")), None)
+            if active_portfolio is None and portfolios:
+                active_portfolio = portfolios[0]
+            active_tab = active_portfolio["slug"] if active_portfolio else ""
+
     response = templates.TemplateResponse(request, "finance.html", {
         "request": request,
         "transactions": transactions,
@@ -530,7 +560,11 @@ async def finance_page(request: Request, month: Optional[int] = None, year: Opti
         },
         "month_name": f"{MONTH_NAMES[view_month]} {view_year}",
         "month_short": MONTH_NAMES[view_month],
-        "today": today
+        "today": today,
+        "view": view,
+        "portfolios": portfolios,
+        "active_tab": active_tab,
+        "active_portfolio": active_portfolio,
     })
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"

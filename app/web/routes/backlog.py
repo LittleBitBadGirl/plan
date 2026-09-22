@@ -10,7 +10,7 @@ import re
 import json
 
 from app.db.database import async_session
-from app.models.task import Task
+from app.models.task import Task, task_is_active
 from app.models.category import Category
 from app.models.recurring import RecurringTask
 from app.models.shopping import ShoppingItem
@@ -42,7 +42,7 @@ async def _load_backlog(db: AsyncSession) -> tuple[list[Task], dict[int, list[Ta
         select(Task)
         .options(selectinload(Task.category).selectinload(Category.parent))
         .where(
-            Task.is_archived == False,
+            task_is_active(),
             Task.due_date == None,
             Task.parent_task_id == None,
         )
@@ -54,7 +54,7 @@ async def _load_backlog(db: AsyncSession) -> tuple[list[Task], dict[int, list[Ta
     if tasks:
         task_ids = [t.id for t in tasks]
         subtasks_result = await db.execute(
-            select(Task).where(Task.parent_task_id.in_(task_ids))
+            select(Task).where(Task.parent_task_id.in_(task_ids), task_is_active())
         )
         for st in subtasks_result.scalars().all():
             subtasks_map[st.parent_task_id].append(st)
@@ -71,19 +71,84 @@ async def _render_backlog_list(request: Request, db: AsyncSession) -> str:
     })
 
 
+async def _load_task_categories(db: AsyncSession) -> dict:
+    """Категории задач и счётчики — для вкладки «Категории» внутри Бэклога.
+
+    У каждой категории два числа: активные задачи и всего задач в ней (общий
+    объём — включая выполненные и архив). Вера читает это как «сколько сейчас /
+    сколько всего было».
+    """
+    result = await db.execute(
+        select(Category).order_by(Category.is_global.desc(), Category.name)
+    )
+    categories = list(result.scalars().all())
+
+    # «Активные» = не в архиве и ещё не завершены: Вера читает это число как
+    # «сколько сейчас в работе», а не «сколько строк в категории».
+    counts_result = await db.execute(
+        select(Task.category_id, func.count(Task.id))
+        .where(task_is_active(), Task.completed_at.is_(None))
+        .group_by(Task.category_id)
+    )
+    task_counts = {row[0]: row[1] for row in counts_result.all()}
+
+    totals_result = await db.execute(
+        select(Task.category_id, func.count(Task.id)).group_by(Task.category_id)
+    )
+    total_counts = {row[0]: row[1] for row in totals_result.all()}
+
+    task_cats = [c for c in categories if c.type == "task"]
+    global_cats = [c for c in task_cats if c.is_global]
+    sub_cats = {gc.id: [c for c in task_cats if c.parent_id == gc.id] for gc in global_cats}
+
+    # Подкатегории сворачиваем в родителя — отдельно активные и «всего»
+    final_counts = dict(task_counts)
+    final_totals = dict(total_counts)
+    for cat in categories:
+        if not cat.is_global and cat.parent_id:
+            active = task_counts.get(cat.id, 0)
+            if active > 0:
+                final_counts[cat.parent_id] = final_counts.get(cat.parent_id, 0) + active
+            everything = total_counts.get(cat.id, 0)
+            if everything > 0:
+                final_totals[cat.parent_id] = final_totals.get(cat.parent_id, 0) + everything
+
+    return {
+        "global_categories": global_cats,
+        "sub_categories": sub_cats,
+        "task_counts": final_counts,          # активные, с подкатегориями
+        "raw_counts": task_counts,            # активные в самой категории
+        "total_counts": final_totals,         # всего, с подкатегориями
+        "raw_total_counts": total_counts,     # всего в самой категории
+    }
+
+
+BACKLOG_VIEWS = ("tasks", "calendar", "categories")
+
+
 @router.get("/backlog", response_class=HTMLResponse)
-async def backlog_page(request: Request):
-    """Бэклог — задачи без даты"""
+async def backlog_page(request: Request, view: str = "tasks"):
+    """Бэклог: задачи без даты, месячный календарь и категории задач — вкладками.
+
+    Календарь раньше был отдельной страницей, категории задач — отдельной
+    страницей «Категории». Обе живут здесь, рядом с самими задачами.
+    """
+    view = view if view in BACKLOG_VIEWS else "tasks"
+
     async with async_session() as db:
         tasks, subtasks_map = await _load_backlog(db)
-    categories = await get_categories_list()
+        categories_ctx = await _load_task_categories(db) if view == "categories" else {}
 
-    return templates.TemplateResponse(request, "backlog.html", {
+    context = {
         "request": request,
         "tasks": tasks,
         "subtasks_map": subtasks_map,
-        "categories": categories,
-    })
+        "categories": await get_categories_list(),
+        "view": view,
+    }
+    context.update(categories_ctx)
+
+    return templates.TemplateResponse(request, "backlog.html", context)
 
 
 @router.post("/backlog/create", response_class=HTMLResponse)

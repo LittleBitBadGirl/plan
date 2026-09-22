@@ -91,8 +91,17 @@ async def create_category_from_form(
     request: Request,
     name: str = Form(...),
     parent_id: str = Form(""),
+    type: str = Form(""),
 ):
-    """Создать категорию из формы веб-интерфейса"""
+    """Создать категорию из формы веб-интерфейса.
+
+    Тип приходит из формы (скрытое поле): задачи создаются во вкладке Бэклога,
+    финансы — во вкладке Финансов. После создания возвращаем на ту же вкладку.
+    """
+    cat_type = (type or request.query_params.get("type") or "task").strip()
+    if cat_type not in ("task", "finance"):
+        cat_type = "task"
+
     async with async_session() as db:
         # Если выбран родитель, создаем подкатегорию
         final_parent_id = int(parent_id) if parent_id else None
@@ -102,61 +111,25 @@ async def create_category_from_form(
             name=name,
             is_global=is_global,
             parent_id=final_parent_id,
-            type=request.query_params.get("type", "task")
+            type=cat_type,
         )
         db.add(category)
         await db.commit()
 
-    # Перенаправляем обратно на страницу категорий
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/categories", status_code=303)
+
+    target = "/finance?view=categories" if cat_type == "finance" else "/backlog?view=categories"
+    return RedirectResponse(url=target, status_code=303)
 
 
-@router.get("/categories", response_class=HTMLResponse)
-async def categories_page(request: Request):
-    """Управление категориями"""
-    async with async_session() as db:
-        result = await db.execute(
-            select(Category).order_by(Category.is_global.desc(), Category.name)
-        )
-        categories = result.scalars().all()
+@router.get("/categories")
+async def categories_page():
+    """Категории разделены по назначению и живут там, где нужны.
 
-        counts_result = await db.execute(
-            select(Task.category_id, func.count(Task.id))
-            .where(Task.is_archived == False)
-            .group_by(Task.category_id)
-        )
-        task_counts = {row[0]: row[1] for row in counts_result.all()}
-
-        # Разделяем категории по ТИПУ
-    task_cats = [c for c in categories if c.type == 'task']
-    finance_cats = [c for c in categories if c.type == 'finance']
-    
-    # Иерархия задач
-    global_cats = [c for c in task_cats if c.is_global]
-    sub_cats = {gc.id: [c for c in task_cats if c.parent_id == gc.id] for gc in global_cats}
-
-    # Иерархия финансов (Группы -> Категории)
-    fin_global_cats = [c for c in finance_cats if c.is_global]
-    fin_sub_cats = {gc.id: [c for c in finance_cats if c.parent_id == gc.id] for gc in fin_global_cats}
-
-    final_counts = task_counts.copy()
-    for cat in categories:
-        if not cat.is_global and cat.parent_id:
-            count = task_counts.get(cat.id, 0)
-            if count > 0:
-                final_counts[cat.parent_id] = final_counts.get(cat.parent_id, 0) + count
-
-    return templates.TemplateResponse(request, "categories.html", {
-        "request": request,
-        "global_categories": global_cats,
-        "sub_categories": sub_cats,
-        "fin_global_categories": fin_global_cats,
-        "fin_sub_categories": fin_sub_cats,
-        "categories": categories,
-        "task_counts": final_counts,
-        "raw_counts": task_counts,
-    })
+    Категории задач — вкладка в Бэклоге (рядом с самими задачами), финансовые —
+    вкладка в Финансах. Старый общий адрес ведёт к задачам.
+    """
+    return RedirectResponse(url="/backlog?view=categories", status_code=302)
 
 
 @router.get("/categories/{category_id}/edit-form", response_class=HTMLResponse)

@@ -9,7 +9,7 @@ import re
 import json
 
 from app.db.database import async_session
-from app.models.task import Task
+from app.models.task import Task, task_is_active
 from app.models.category import Category
 from app.models.recurring import RecurringTask
 from app.models.shopping import ShoppingItem
@@ -76,7 +76,7 @@ async def stats_page(request: Request, period: str = "month"):
         completed_result = await db.execute(select(func.count(Task.id)).where(Task.status == "выполнена"))
         total_completed = completed_result.scalar() or 0
 
-        active_result = await db.execute(select(func.count(Task.id)).where(Task.is_archived == False, Task.status != "выполнена"))
+        active_result = await db.execute(select(func.count(Task.id)).where(task_is_active(), Task.status != "выполнена"))
         total_active = active_result.scalar() or 0
 
         cat_stats_query = (
@@ -127,7 +127,7 @@ async def stats_page(request: Request, period: str = "month"):
                    func.sum(Task.postpones).label("total_postpones"),
                    func.avg(Task.postpones).label("avg_postpones"))
             .join(Task, Task.category_id == Category.id)
-            .where(Task.postpones > 0, Task.status != "выполнена", Task.is_archived == False)
+            .where(Task.postpones > 0, Task.status != "выполнена", task_is_active())
             .group_by(Category.name)
             .order_by(func.sum(Task.postpones).desc())
         )
@@ -381,7 +381,7 @@ async def _direct_analyze(db, today):
         .options(selectinload(Task.category))
         .where(
             Task.status.in_(["новая", "в работе"]),
-            Task.is_archived == False,
+            task_is_active(),
             (Task.postpones >= 2) | (Task.chronic_task == True),
         )
         .order_by(Task.postpones.desc())
@@ -421,7 +421,7 @@ async def _direct_analyze(db, today):
 
     lxl_res = await db.execute(
         select(Task).options(selectinload(Task.category)).where(
-            Task.status.in_(["новая", "в работе"]), Task.is_archived == False,
+            Task.status.in_(["новая", "в работе"]), task_is_active(),
             Task.size.in_(["L", "XL"]), Task.postpones == 0,
         ).order_by(Task.size.desc(), Task.created_at.desc()).limit(8)
     )
@@ -484,7 +484,7 @@ async def _direct_analyze(db, today):
     )
     avg_daily = round((avg_res.scalar() or 0) / 14, 1)
     backlog_res = await db.execute(
-        select(func.count(Task.id)).where(Task.status.in_(["новая", "в работе"]), Task.is_archived == False)
+        select(func.count(Task.id)).where(Task.status.in_(["новая", "в работе"]), task_is_active())
     )
     backlog = backlog_res.scalar() or 0
     pred_lines.append(f"- Темп: **{avg_daily}** задач/день")
@@ -496,7 +496,7 @@ async def _direct_analyze(db, today):
 
     nd_res = await db.execute(
         select(Task).options(selectinload(Task.category)).where(
-            Task.status.in_(["новая", "в работе"]), Task.is_archived == False,
+            Task.status.in_(["новая", "в работе"]), task_is_active(),
             Task.postpones >= 3, Task.size == None,
         ).order_by(Task.postpones.desc())
     )

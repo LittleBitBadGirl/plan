@@ -1,9 +1,22 @@
 from datetime import date as date_type
 
-from sqlalchemy import Column, Integer, String, Boolean, Date, DateTime, Time, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, Date, DateTime, Time, Text, ForeignKey, or_, text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.models.base import Base
+
+
+def task_is_active():
+    """Задача не в архиве — включая строки, где is_archived = NULL.
+
+    Колонка заводилась позже данных: часть задач (их пишет интеграция с source
+    'hermes' в обход ORM) лежит с пустым is_archived. Сравнение
+    `Task.is_archived == False` в SQL отбрасывает NULL, и такие задачи исчезали
+    из бэклога, дашборда и счётчиков категорий. Считаем пустое значение
+    «не в архиве» — так задача не пропадает, а архив по-прежнему виден по
+    явной единице.
+    """
+    return or_(Task.is_archived.is_(None), Task.is_archived == False)  # noqa: E712
 
 
 class Task(Base):
@@ -22,7 +35,7 @@ class Task(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
     source = Column(String(20), default="web")  # telegram/web/screenshot
     parent_task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
-    is_archived = Column(Boolean, default=False, index=True)
+    is_archived = Column(Boolean, default=False, server_default=text("0"), index=True)
     item_kind = Column(String(20), default="task", nullable=False, index=True)  # task
     sort_order = Column(Integer, default=0)
     needs_review = Column(Boolean, default=False)

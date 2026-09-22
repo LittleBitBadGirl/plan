@@ -3,8 +3,11 @@ E2E тесты для веб-страниц (рендеринг шаблонов
 """
 import pytest
 from datetime import date, timedelta
+from pathlib import Path
 
 pytestmark = pytest.mark.asyncio
+
+project_root = Path(__file__).parent.parent
 
 
 # ==================== Основные страницы ====================
@@ -31,7 +34,14 @@ class TestPages:
         assert html.count(placeholder) == 2
         assert 'id="dashboard-quick-add-mobile" class="lg:hidden mb-4"' in html
         assert 'id="dashboard-quick-add-desktop" class="hidden lg:block' in html
-        assert "lg:grid lg:grid-cols-3" in html
+        # Раскладку задаёт .dash-grid из design.css: в репозитории нет сборки Tailwind,
+        # поэтому новая сетка классами Tailwind молча не сработала бы.
+        assert 'href="/web/static/css/design.css' in html
+        assert "dash-grid" in html
+        assert "dash-main" in html and "dash-side" in html
+        css = (project_root / "app/web/static/css/design.css").read_text(encoding="utf-8")
+        assert ".dash-grid" in css and "grid-template-columns" in css
+        assert ".dash-side" in css
         assert html.index(mobile_mark) < html.index(h1_mark)
         assert html.index(h1_mark) < html.index(heading_mark)
         assert html.index(heading_mark) < html.index(desktop_mark)
@@ -159,18 +169,30 @@ class TestPages:
         assert "Бэклог" in response.text
 
     async def test_calendar_page(self, client):
-        """Страница календаря"""
-        response = await client.get("/calendar")
-        assert response.status_code == 200
-        assert "text/html" in response.headers["content-type"]
-        assert "Календарь" in response.text
+        """Календарь переехал во вкладку Бэклога: старый адрес ведёт туда"""
+        response = await client.get("/calendar", follow_redirects=False)
+        assert response.status_code == 302
+        assert response.headers["location"] == "/backlog?view=calendar"
+
+        tab = await client.get("/backlog?view=calendar")
+        assert tab.status_code == 200
+        assert "text/html" in tab.headers["content-type"]
+        assert "Календарь" in tab.text
 
     async def test_categories_page(self, client):
-        """Страница категорий"""
-        response = await client.get("/categories")
-        assert response.status_code == 200
-        assert "text/html" in response.headers["content-type"]
-        assert "Категории" in response.text or "категор" in response.text.lower()
+        """Категории разделены по назначению: задачи — в Бэклоге, финансы — в Финансах"""
+        redirect = await client.get("/categories", follow_redirects=False)
+        assert redirect.status_code == 302
+        assert redirect.headers["location"] == "/backlog?view=categories"
+
+        tasks_page = await client.get("/backlog?view=categories")
+        assert tasks_page.status_code == 200
+        assert "text/html" in tasks_page.headers["content-type"]
+        assert 'name="type" value="task"' in tasks_page.text
+
+        money_page = await client.get("/finance?view=categories")
+        assert money_page.status_code == 200
+        assert 'name="type" value="finance"' in money_page.text
 
     async def test_recurring_page(self, client):
         """Страница периодических задач"""
@@ -215,11 +237,11 @@ class TestPages:
         assert "flash=duplicate" in dup.headers["location"]
 
     async def test_stats_page(self, client):
-        """Страница статистики"""
+        """Страница аналитики (в меню — «Аналитика»)"""
         response = await client.get("/stats")
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
-        assert "Статистика" in response.text
+        assert "Аналитика" in response.text
 
     async def test_archive_page(self, client):
         """Страница архива"""

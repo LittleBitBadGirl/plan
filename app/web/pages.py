@@ -2,6 +2,7 @@
 from fastapi import APIRouter
 
 from app.web.routes import (
+    achievements,
     archive,
     backlog,
     calendar,
@@ -34,6 +35,7 @@ router.include_router(career.router)
 router.include_router(managers.router)
 router.include_router(finance.router)
 router.include_router(portfolio.router)
+router.include_router(achievements.router)
 
 # Re-export for backward compatibility (e.g. app.api.recurring)
 from app.web.deps import get_today_stats  # noqa: F401

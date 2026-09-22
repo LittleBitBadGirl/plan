@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import async_session
-from app.models.task import Task
+from app.models.task import Task, task_is_active
 from app.models.category import Category
 from app.services.postpones_service import WORK_CATEGORY_NAMES
 
@@ -572,7 +572,7 @@ def _today_roots_filter(today: date, hide_work: bool = False) -> list:
     filters = [
         *_today_task_base_filter(today),
         or_(
-            Task.is_archived == False,
+            task_is_active(),
             and_(
                 Task.status == "выполнена",
                 Task.completed_at.isnot(None),
@@ -836,7 +836,7 @@ async def count_stale_in_progress_tasks(
     result = await db.execute(
         select(func.count(Task.id)).where(
             Task.status == "в_работе",
-            Task.is_archived == False,
+            task_is_active(),
             Task.parent_task_id == None,
             Task.item_kind == "task",
             Task.created_at <= cutoff,
@@ -1155,7 +1155,7 @@ async def get_tasks_today(db: AsyncSession, request: Request):
 
     filters = [
         Task.due_date == today,
-        Task.is_archived == False,
+        task_is_active(),
         Task.status.in_(["новая", "в_работе"]),
         Task.parent_task_id == None,
         Task.source.is_distinct_from("recurring"),

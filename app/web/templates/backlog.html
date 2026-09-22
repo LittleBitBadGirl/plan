@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% from 'partials/icons_macros.html' import icon_folder %}
 
-{% block title %}Бэклог — Планировщик{% endblock %}
+{% set view_titles = {'tasks': 'Бэклог', 'calendar': 'Календарь', 'categories': 'Категории задач'} %}
+{% set view_leads = {'tasks': 'Задачи без даты — запланируйте на нужный день',
+                     'calendar': 'Задачи и встречи по дням месяца',
+                     'categories': 'Справочник категорий задач: темы и подтемы. Число у категории — активные / всего задач'} %}
+{% set page_title = view_titles.get(view, 'Бэклог') %}
+
+{% block title %}{{ page_title }} — Планировщик{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -19,24 +25,51 @@
 {% block content %}
 <div class="backlog-page max-w-3xl mx-auto">
     <div class="mb-4">
-        <h1 class="text-2xl font-bold text-white">Бэклог</h1>
-        <p class="text-gray-500 text-sm mt-0.5">Задачи без даты — запланируйте на нужный день</p>
+        <h1 class="text-2xl font-bold text-white">{{ page_title }}</h1>
+        <p class="text-gray-500 text-sm mt-0.5">{{ view_leads.get(view, '') }}</p>
     </div>
 
-    <!-- Quick Add — desktop (top) -->
-    <div class="hidden lg:block bg-dark-800 rounded-xl border border-dark-600 p-3 shadow-lg mb-4">
-        {% include "partials/backlog_quick_add_form.html" %}
-    </div>
+    <!-- Вкладки: задачи без даты, месячный календарь и категории задач в одном месте -->
+    <nav class="btabs" aria-label="Разделы бэклога">
+        <a href="/backlog"
+           class="btab {% if view == 'tasks' %}is-active{% endif %}"
+           {% if view == 'tasks' %}aria-current="page"{% endif %}>
+            Задачи{% if tasks %}<span class="btab__count">{{ tasks|length }}</span>{% endif %}
+        </a>
+        <a href="/backlog?view=calendar"
+           class="btab {% if view == 'calendar' %}is-active{% endif %}"
+           {% if view == 'calendar' %}aria-current="page"{% endif %}>
+            Календарь
+        </a>
+        <a href="/backlog?view=categories"
+           class="btab {% if view == 'categories' %}is-active{% endif %}"
+           {% if view == 'categories' %}aria-current="page"{% endif %}>
+            Категории
+        </a>
+    </nav>
 
-    <div id="backlog-list">
-        {% include "partials/backlog_list.html" %}
-    </div>
+    {% if view == 'calendar' %}
+        {% include "partials/calendar_month.html" %}
+    {% elif view == 'categories' %}
+        {% include "partials/categories_task.html" %}
+    {% else %}
+        <!-- Quick Add — desktop (top) -->
+        <div class="hidden lg:block bg-dark-800 rounded-xl border border-dark-600 p-3 shadow-lg mb-4">
+            {% include "partials/backlog_quick_add_form.html" %}
+        </div>
+
+        <div id="backlog-list">
+            {% include "partials/backlog_list.html" %}
+        </div>
+    {% endif %}
 </div>
 
+{% if view == 'tasks' %}
 <!-- Quick Add — mobile (sticky bottom, thumb zone) -->
 <div class="lg:hidden fixed bottom-0 left-0 right-0 z-40 backlog-quick-add bg-dark-900/95 backdrop-blur-md border-t border-dark-600 px-3 pt-3 shadow-[0_-8px_24px_rgba(0,0,0,0.45)]">
     <div class="bg-dark-800 rounded-xl border border-dark-600 p-2.5 shadow-lg max-w-3xl mx-auto">
         {% include "partials/backlog_quick_add_form.html" %}
     </div>
 </div>
+{% endif %}
 {% endblock %}

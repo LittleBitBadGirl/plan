@@ -118,7 +118,7 @@ async def test_list_portfolios(client, portfolio_api_db):
 
 @pytest.mark.asyncio
 async def test_portfolio_page_ssr(client, portfolio_api_db):
-    response = await client.get("/portfolio?tab=podushka")
+    response = await client.get("/finance?view=portfolio&tab=podushka")
     assert response.status_code == 200
     assert "Портфель" in response.text
     assert "Подушка" in response.text

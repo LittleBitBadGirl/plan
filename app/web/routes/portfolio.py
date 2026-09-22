@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from app.db.database import async_session
 from app.services.portfolio_service import (
@@ -20,25 +20,10 @@ from app.web.deps import templates
 router = APIRouter()
 
 
-@router.get("/portfolio", response_class=HTMLResponse)
-async def portfolio_page(request: Request, tab: str = "iis"):
-    """SSR shell for portfolio analyzer (full UI in T4)."""
-    async with async_session() as db:
-        portfolios = await list_portfolios(db)
-        active = next((p for p in portfolios if p["slug"] == tab), None)
-        if active is None and portfolios:
-            active = portfolios[0]
-            tab = active["slug"]
-
-    return templates.TemplateResponse(
-        request,
-        "portfolio.html",
-        {
-            "portfolios": portfolios,
-            "active_tab": tab,
-            "active_portfolio": active,
-        },
-    )
+@router.get("/portfolio")
+async def portfolio_page(tab: str = "iis"):
+    """Портфель переехал во вкладку «Финансы»: старые ссылки и закладки ведут туда."""
+    return RedirectResponse(url=f"/finance?view=portfolio&tab={tab}", status_code=302)
 
 
 @router.get("/api/portfolios")
