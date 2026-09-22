@@ -4,11 +4,29 @@ from sqlalchemy import select
 
 from app.db.database import async_session
 from app.models.shopping import ShoppingItem
-from app.web.deps import _reading_list_response
+from app.web.deps import _reading_list_response, reading_items_view, templates
 
 router = APIRouter()
 
-from app.services.shopping_service import archive_purchased_item
+from app.services.shopping_service import archive_purchased_item, load_active_reading
+
+
+@router.get("/reading", response_class=HTMLResponse)
+async def reading_page(request: Request):
+    """Список «Читать» отдельной страницей: на дашборде для него было мало места."""
+    async with async_session() as db:
+        items = reading_items_view(await load_active_reading(db))
+    reading_now = sum(1 for i in items if i["status"] == "reading")
+    return templates.TemplateResponse(
+        request,
+        "reading.html",
+        {
+            "reading_items": items,
+            "total": len(items),
+            "reading_now_count": reading_now,
+            "want_to_read_count": len(items) - reading_now,
+        },
+    )
 
 
 @router.post("/api/reading/create", response_class=HTMLResponse)

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Читать — Планировщик{% endblock %}
+
+{% block content %}
+<div class="reading-page">
+    <header class="reading-page__head">
+        <div>
+            <h1 class="reading-page__title">Читать</h1>
+            <p class="reading-page__lead">
+                Своё чтиво в одном месте: ссылки, книги и заметки.
+                {% if total %}Сейчас {{ total }}: читаю {{ reading_now_count }}, к прочтению {{ want_to_read_count }}.{% endif %}
+            </p>
+        </div>
+        <a href="/archive" class="reading-page__archive">прочитанное — в архиве</a>
+    </header>
+
+    {# Добавление: поле + необязательные заметки. Список обновляется на месте. #}
+    <form class="reading-add"
+          hx-post="/api/reading/create"
+          hx-target="#reading-list"
+          hx-swap="innerHTML"
+          hx-on::after-request="this.reset()">
+        <input type="text" name="title" placeholder="Ссылка, книга или название..." required
+               class="reading-add__title">
+        <textarea name="content" rows="1" placeholder="Заметки: где взять, зачем читаю (необязательно)"
+                  class="reading-add__notes"></textarea>
+        <button type="submit" class="reading-add__submit">Добавить</button>
+    </form>
+
+    <div class="reading-page__list" id="reading-list">
+        {% include "partials/reading_list.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// PDF читаем прямо здесь: встроенный просмотрщик создаётся при первом клике,
+// чтобы страница не тянула все файлы сразу.
+function toggleReadingPdf(id) {
+    var box = document.getElementById('pdf-viewer-' + id);
+    if (!box) return;
+    if (box.classList.contains('hidden')) {
+        if (!box.querySelector('iframe')) {
+            var frame = document.createElement('iframe');
+            frame.src = box.getAttribute('data-src');
+            frame.className = 'reading-pdf__frame';
+            frame.setAttribute('title', 'Просмотр документа');
+            box.appendChild(frame);
+        }
+        box.classList.remove('hidden');
+        box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } else {
+        box.classList.add('hidden');
+    }
+}
+</script>
+{% endblock %}

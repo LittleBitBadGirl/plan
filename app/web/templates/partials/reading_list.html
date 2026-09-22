@@ -142,6 +142,19 @@
             <button type="submit" class="text-[9px] text-gray-600 hover:text-amber-400 transition">✓</button>
         </form>
         {% endif %}
+
+        {# PDF читаем не выходя со страницы: просмотрщик подгружается по клику #}
+        {% if item.url and '.pdf' in item.url.lower() %}
+        <div class="reading-pdf">
+            <button type="button" class="reading-pdf__toggle" onclick="toggleReadingPdf({{ item.id }})">
+                читать здесь
+            </button>
+            <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer" class="reading-pdf__open">
+                открыть в новой вкладке
+            </a>
+        </div>
+        <div id="pdf-viewer-{{ item.id }}" class="reading-pdf__box hidden" data-src="{{ item.url }}"></div>
+        {% endif %}
     </div>
     {% endfor %}
 

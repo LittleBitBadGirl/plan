@@ -335,6 +335,24 @@
                 {# Сводка по нагрузке («Сегодня 85 задач: …») — рядом с календарём:
                    слева она спорила за место с формой ввода, а тут она к месту,
                    и на телефоне остаётся прямо над календарём (dash-m-3). #}
+                {# Читать: список переехал на отдельную страницу (/reading), здесь —
+                   компактная кнопка с тем, что читается сейчас. #}
+                {% set r_now = (reading_items | selectattr('status', 'equalto', 'reading') | list | first) if reading_items else None %}
+                <a href="/reading" class="reading-shortcut mb-4">
+                    <span class="reading-shortcut__label">Читать</span>
+                    <span class="reading-shortcut__count">{{ reading_items | length }}</span>
+                    {% if r_now %}
+                    <span class="reading-shortcut__now">{{ r_now.title }}</span>
+                    {% if r_now.pages_total %}
+                    {% set r_pct = [((r_now.pages_read or 0) / r_now.pages_total * 100) | round | int, 100] | min %}
+                    <span class="reading-shortcut__bar"><i style="width: {{ r_pct }}%"></i></span>
+                    <span class="reading-shortcut__pct">{{ r_pct }}%</span>
+                    {% endif %}
+                    {% else %}
+                    <span class="reading-shortcut__now">список пуст — добавь ссылку или книгу</span>
+                    {% endif %}
+                </a>
+
                 <div id="ai-warning-block" class="{% if not ai_warning %}hidden{% endif %} dash-quick-42__card mb-4 p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">
                     <p class="text-yellow-300">{% if ai_warning %}{{ ai_warning }}{% endif %}</p>
                 </div>
@@ -466,29 +484,6 @@
                     <div id="shopping-list" class="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
                         {% set items = shopping_items %}
                         {% include "partials/shopping_list.html" %}
-                    </div>
-                </div>
-            </div>
-
-            <!-- Reading List -->
-            <div class="order-40 lg:order-none space-y-4 dash-m-6">
-                <div class="flex items-center justify-between px-1">
-                    <h2 class="text-xl font-bold text-stone-300 px-1">Читать</h2>
-                </div>
-
-                <div class="bg-dark-800 rounded-xl p-3 border border-dark-600 shadow-lg">
-                    <form hx-post="/api/reading/create"
-                          hx-target="#reading-list"
-                          hx-swap="innerHTML"
-                          hx-on::after-request="this.reset()"
-                          class="flex gap-2 mb-3">
-                        <input type="text" name="title" placeholder="+ Ссылка или книга..." required
-                               class="flex-1 bg-dark-700 border border-dark-500 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-amber-600">
-                        <button type="submit" class="bg-amber-700 hover:bg-amber-600 text-white font-bold px-3 rounded-lg text-sm transition-all">+</button>
-                    </form>
-
-                    <div id="reading-list" class="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
-                        {% include "partials/reading_list.html" %}
                     </div>
                 </div>
             </div>

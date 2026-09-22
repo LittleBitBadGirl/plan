@@ -635,7 +635,6 @@ h3,
     .dash-m-3 { order: 3; }   /* календарь: встречи и личное */
     .dash-m-4 { order: 4; }   /* трекеры */
     .dash-m-5 { order: 5; }   /* покупки */
-    .dash-m-6 { order: 6; }   /* читать */
     .dash-m-7 { order: 7; }   /* месячные */
 }
 
@@ -840,3 +839,150 @@ h3,
     margin: 0;
   }
 }
+
+
+/* ===== Страница «Читать» ==========================================
+   Раньше список жил блоком внизу дашборда: места хватало на две строки,
+   читать было неудобно. Теперь это отдельная страница, а на дашборде —
+   компактная кнопка-карточка. */
+.reading-page {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 0 1rem 3rem;
+}
+.reading-page__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1.5rem 0 1rem;
+  border-bottom: 1px solid #292524;
+}
+.reading-page__title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #f5f5f4;
+  line-height: 1.15;
+}
+.reading-page__lead {
+  margin-top: 0.35rem;
+  font-size: 0.9rem;
+  color: #a8a29e;
+}
+.reading-page__archive {
+  font-size: 0.85rem;
+  color: #78716c;
+  border-bottom: 1px dashed #44403c;
+}
+.reading-page__archive:hover { color: #fbbf24; border-color: #b45309; }
+
+/* Форма добавления: поле, заметки и кнопка в одну строку */
+.reading-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0 1.25rem;
+  padding: 0.75rem;
+  background: #1c1917;
+  border: 1px solid #44403c;
+  border-radius: 0.75rem;
+}
+.reading-add__title {
+  flex: 2 1 20rem;
+  min-width: 0;
+  background: #0c0a09;
+  border: 1px solid #57534e;
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  color: #fff;
+  font-size: 0.95rem;
+}
+.reading-add__notes {
+  flex: 1 1 14rem;
+  min-width: 0;
+  background: #0c0a09;
+  border: 1px solid #44403c;
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  color: #e7e5e4;
+  font-size: 0.9rem;
+  resize: vertical;
+}
+.reading-add__title:focus, .reading-add__notes:focus { outline: none; border-color: #b45309; }
+.reading-add__submit {
+  flex: 0 0 auto;
+  background: #b45309;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 0.6rem 1.25rem;
+  border-radius: 0.5rem;
+}
+.reading-add__submit:hover { background: #d97706; }
+
+/* Карточки: просторнее и крупнее, чем в старом тесном блоке */
+.reading-page__list { display: flex; flex-direction: column; gap: 0.75rem; }
+.reading-page .reading-item { padding: 0.9rem 1rem; gap: 0.75rem; }
+.reading-page .reading-item a.font-medium { font-size: 1rem; line-height: 1.35; }
+.reading-page .reading-item .h-2 { height: 0.6rem; }
+
+/* Встроенный просмотр PDF */
+.reading-pdf { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; padding-left: 1.5rem; }
+.reading-pdf__toggle, .reading-pdf__open {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 0.4rem;
+  border: 1px solid #57534e;
+  color: #d6d3d1;
+}
+.reading-pdf__toggle:hover, .reading-pdf__open:hover { color: #fbbf24; border-color: #b45309; }
+.reading-pdf__box { padding-left: 1.5rem; }
+.reading-pdf__frame {
+  width: 100%;
+  height: 70vh;
+  min-height: 24rem;
+  border: 1px solid #44403c;
+  border-radius: 0.75rem;
+  background: #0c0a09;
+}
+
+/* Компактная карточка «Читать» на дашборде — ведёт на страницу */
+.reading-shortcut {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 0.85rem;
+  background: #1c1917;
+  border: 1px solid #44403c;
+  border-radius: 0.75rem;
+  transition: border-color 0.15s ease;
+}
+.reading-shortcut:hover { border-color: #b45309; }
+.reading-shortcut__label { font-weight: 700; color: #e7e5e4; font-size: 0.95rem; }
+.reading-shortcut__count {
+  background: #b45309;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+.reading-shortcut__now {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #fcd34d;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reading-shortcut__bar {
+  flex: 0 0 5rem;
+  height: 0.4rem;
+  background: #292524;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.reading-shortcut__bar i { display: block; height: 100%; background: #d97706; }
+.reading-shortcut__pct { color: #a8a29e; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
