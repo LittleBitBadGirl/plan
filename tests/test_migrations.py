@@ -44,7 +44,7 @@ async def test_run_migrations_on_fresh_db():
                 text("SELECT version_num FROM alembic_version")
             )
             version = result.scalar_one()
-        assert version == "017_reading_import_unique"
+        assert version == "018_reading_format_document"
 
         sync = sqlite3.connect(db_path)
         task_cols = {row[1] for row in sync.execute("PRAGMA table_info(tasks)")}
@@ -150,7 +150,7 @@ async def test_achievements_migration_creates_table_itself():
         cols = {row[1] for row in sync.execute("PRAGMA table_info(achievements)")}
         sync.close()
 
-        assert version == "017_reading_import_unique"
+        assert version == "018_reading_format_document"
         assert "achievements" in tables
         assert {"text", "sphere", "is_archived", "created_at"} <= cols
 
@@ -226,5 +226,82 @@ async def test_is_archived_migration_fills_empty_values_and_guards_new_rows():
         ).fetchone()[0]
         sync.close()
         assert nulls_after_update == 0, "UPDATE до NULL не должен оставлять невидимых задач"
+
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reading_format_migration_renames_old_pdf_value():
+    """Миграция 018: «разбор PDF» → «документ» у записей чтения.
+
+    Трогает только чтение: формат у не-чтения не должен измениться.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = os.path.join(tmp, "reading_format_migrate.db")
+        url = f"sqlite+aiosqlite:///{db_path}"
+        engine = create_async_engine(url, connect_args={"check_same_thread": False})
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        sync = sqlite3.connect(db_path)
+        sync.execute(
+            "INSERT INTO shopping_items (title, item_kind, reading_format, reading_status) "
+            "VALUES ('PDF-разбор', 'reading', 'разбор PDF', 'want_to_read')"
+        )
+        sync.execute(
+            "INSERT INTO shopping_items (title, item_kind, reading_format, reading_status) "
+            "VALUES ('PDF-статья', 'reading', 'статья', 'want_to_read')"
+        )
+        sync.execute(
+            "INSERT INTO shopping_items (title, item_kind, reading_format, reading_status) "
+            "VALUES ('не чтение', 'shopping', 'разбор PDF', 'want_to_read')"
+        )
+        sync.commit()
+        sync.close()
+
+        from app.config import settings
+
+        prev_url = settings.database_url
+        settings.database_url = url
+        try:
+            run_migrations()
+        finally:
+            settings.database_url = prev_url
+
+        sync = sqlite3.connect(db_path)
+        renamed = sync.execute(
+            "SELECT reading_format FROM shopping_items WHERE title = 'PDF-разбор'"
+        ).fetchone()[0]
+        untouched = sync.execute(
+            "SELECT reading_format FROM shopping_items WHERE title = 'PDF-статья'"
+        ).fetchone()[0]
+        other_kind = sync.execute(
+            "SELECT reading_format FROM shopping_items WHERE title = 'не чтение'"
+        ).fetchone()[0]
+        sync.close()
+
+        assert renamed == "документ"
+        assert untouched == "статья"
+        assert other_kind == "разбор PDF", "формат не-чтения миграция не трогает"
+
+        # Повторный прогон (контейнер перезапускается) не должен ничего менять:
+        # в том числе «документ» не должен уехать обратно или в NULL.
+        settings.database_url = url
+        try:
+            run_migrations()
+        finally:
+            settings.database_url = prev_url
+
+        sync = sqlite3.connect(db_path)
+        after_rerun = dict(
+            sync.execute("SELECT title, reading_format FROM shopping_items").fetchall()
+        )
+        sync.close()
+        assert after_rerun == {
+            "PDF-разбор": "документ",
+            "PDF-статья": "статья",
+            "не чтение": "разбор PDF",
+        }, "повторный прогон миграции изменил данные"
 
         await engine.dispose()

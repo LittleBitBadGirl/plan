@@ -17,13 +17,32 @@ async def _add(client, title, **fields):
 
 @pytest.mark.asyncio
 async def test_create_assigns_category_format_and_tags(client, db):
-    await _add(client, "Паттерны AI-агентов", category="ИИ и агенты", reading_format="разбор PDF",
+    await _add(client, "Паттерны AI-агентов", category="ИИ и агенты", reading_format="документ",
                tags="агенты, Anthropic")
 
     item = (await db.execute(select(ShoppingItem).where(ShoppingItem.title.like("%Паттерны%")))).scalar_one()
     assert item.category is not None and item.category.name == "ИИ и агенты"
-    assert item.reading_format == "разбор PDF"
+    assert item.reading_format == "документ"
     assert sorted(tag.name for tag in item.tags) == ["Anthropic", "агенты"]
+
+
+@pytest.mark.asyncio
+async def test_new_formats_are_allowed(client, db):
+    """Новые форматы чтения (24.09.2026): гайд, отчёт, презентация, аудио, документ.
+
+    Старый «разбор PDF» больше не проходит: значение вне списка не сохраняется.
+    """
+    for fmt in ("гайд", "отчёт", "презентация", "аудио", "документ"):
+        await _add(client, f"Материал формата {fmt}", reading_format=fmt)
+    await _add(client, "Старый формат", reading_format="разбор PDF")
+
+    async def fmt_of(title):
+        row = (await db.execute(select(ShoppingItem).where(ShoppingItem.title == title))).scalar_one()
+        return row.reading_format
+
+    for fmt in ("гайд", "отчёт", "презентация", "аудио", "документ"):
+        assert await fmt_of(f"Материал формата {fmt}") == fmt
+    assert await fmt_of("Старый формат") is None
 
 
 @pytest.mark.asyncio
