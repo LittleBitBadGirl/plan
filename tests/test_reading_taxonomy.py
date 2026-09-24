@@ -15,6 +15,18 @@ async def _add(client, title, **fields):
     return resp
 
 
+def _extra_tags(html: str) -> list[str]:
+    """Имена тегов-чипсов, помеченных как скрытые на узком экране."""
+    found: list[str] = []
+    marker = 'type="checkbox" name="tag" value="'
+    for chunk in html.split('class="reading-chip')[1:]:
+        classes, _, rest = chunk.partition('"')
+        if "reading-chip--extra" not in classes or marker not in rest:
+            continue
+        found.append(rest.split(marker)[1].split('"')[0])
+    return found
+
+
 @pytest.mark.asyncio
 async def test_create_assigns_category_format_and_tags(client, db):
     await _add(client, "Паттерны AI-агентов", category="ИИ и агенты", reading_format="документ",
@@ -155,13 +167,28 @@ async def test_all_tags_are_rendered_and_extra_ones_hidden_by_css(client, db):
     chip = 'type="checkbox" name="tag"'
     short = (await client.get("/reading")).text
     assert short.count(chip) == 20
-    assert short.count("reading-chip--extra") == 8
+    hidden = _extra_tags(short)
+    assert len(hidden) == 8
     assert "ещё 8 тегов" in short
 
     full = (await client.get("/reading", params={"all_tags": "1"})).text
     assert full.count(chip) == 20
-    assert full.count("reading-chip--extra") == 0
+    assert _extra_tags(full) == []
     assert "свернуть теги" in full
+    # Кнопка в развёрнутом состоянии несёт all_tags=0: иначе клик по «свернуть»
+    # снова отправлял «1» и ничего не сворачивал.
+    assert 'name="all_tags" value="0"' in full
+
+    collapsed = (await client.get("/reading", params={"all_tags": "0"})).text
+    assert len(_extra_tags(collapsed)) == 8
+    assert 'name="all_tags" value="1"' in collapsed
+
+    # Выбранный тег из «лишних» показываем всегда: иначе на узком экране
+    # фильтр активен, а снять его нечем — чипса спрятана.
+    picked = hidden[0]
+    selected = (await client.get("/reading", params={"tag": picked})).text
+    assert picked not in _extra_tags(selected)
+    assert len(_extra_tags(selected)) == 7
 
 
 @pytest.mark.asyncio

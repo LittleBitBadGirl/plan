@@ -38,15 +38,18 @@
     <div class="reading-chips">
         {# На широком экране показываем все теги: лишние прячет CSS, а не срез на сервере,
            иначе на десктопе теги без причины сворачиваются в кнопку. #}
+        {# Выбранный тег показываем всегда — иначе на узком экране фильтр активен,
+           а снять его нечем: чипса спрятана. #}
         {% for name, count in tag_chips %}
-        <label class="reading-chip {% if loop.index0 >= tag_chips_limit and not tag_all %}reading-chip--extra{% endif %} {% if name in filters.tags %}reading-chip--on{% endif %}">
+        <label class="reading-chip {% if loop.index0 >= tag_chips_limit and not tag_all and name not in filters.tags %}reading-chip--extra{% endif %} {% if name in filters.tags %}reading-chip--on{% endif %}">
             <input type="checkbox" name="tag" value="{{ name }}" {% if name in filters.tags %}checked{% endif %}>
             {{ name }} <u>{{ count }}</u>
         </label>
         {% endfor %}
         {% if tag_pairs | length > tag_chips_limit %}
-        <button type="submit" name="all_tags" value="1"
-                class="reading-chip reading-chip--more{% if tag_all %} reading-chip--more-open{% endif %}">
+        {# value=0 реально сворачивает срез: parse_filters раскрывает только «1»/«true»/«yes». #}
+        <button type="submit" name="all_tags" value="{{ 0 if tag_all else 1 }}"
+                class="reading-chip reading-chip--more">
             {% if tag_all %}свернуть теги{% else %}ещё {{ tag_pairs | length - tag_chips_limit }} тегов{% endif %}
         </button>
         {% endif %}
