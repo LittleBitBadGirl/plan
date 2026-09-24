@@ -1162,8 +1162,10 @@ async def build_reading_context(db: AsyncSession, filters) -> dict:
         "formats": rs.READING_FORMATS,
         "format_counts": await rs.format_counts(db, filters),
         "tag_pairs": tag_pairs,
-        # Чипсы тегов показываем срезом, если не просили все.
-        "tag_chips": tag_pairs if tag_all else tag_pairs[: rs.TAG_CHIPS_LIMIT],
+        # Теги отдаём все: на широком экране срезать нечего — чипсы влезают целиком,
+        # а на узком лишние прячет CSS (класс reading-chip--extra), кнопка
+        # «ещё N тегов» остаётся мобильным управлением.
+        "tag_chips": tag_pairs,
         "tag_chips_limit": rs.TAG_CHIPS_LIMIT,
         "tag_all": tag_all,
         "filters": filters,

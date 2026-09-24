@@ -1149,6 +1149,13 @@ h3,
 .reading-chip--on u { color: rgba(255, 255, 255, 0.8); }
 .reading-chip--empty { opacity: 0.5; }
 .reading-chip--more { color: #f59e0b; border-style: dashed; }
+.reading-chip--extra { display: none; }
+/* На широком экране теги влезают целиком: показываем все чипсы и убираем
+   кнопку «ещё N тегов» — сворачивание остаётся мобильным поведением. */
+@media (min-width: 900px) {
+  .reading-chip--extra { display: inline-flex; }
+  .reading-chip--more { display: none; }
+}
 .reading-chip input { position: absolute; opacity: 0; width: 0; height: 0; }
 .reading-chip:has(input:focus-visible) { outline: 2px solid #f59e0b; outline-offset: 2px; }
 

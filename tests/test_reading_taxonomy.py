@@ -139,8 +139,14 @@ async def test_filter_by_no_category_shelf(client, db):
 
 
 @pytest.mark.asyncio
-async def test_all_tags_flag_expands_tag_chips(client, db):
-    """Сначала показываем 12 тегов, по флагу all_tags — все."""
+async def test_all_tags_are_rendered_and_extra_ones_hidden_by_css(client, db):
+    """Все теги есть в разметке: на широком экране видны все, лишние прячет CSS.
+
+    Срез на сервере убран — иначе на десктопе теги без причины сворачивались
+    в кнопку «ещё N тегов», хотя влезают целиком. Класс reading-chip--extra
+    помечает чипсы за пределами TAG_CHIPS_LIMIT; их показывает медиазапрос
+    от 900px, а кнопка «ещё N тегов» на широком экране скрыта.
+    """
     tags = ", ".join(f"тег{i}" for i in range(20))
     await _add(client, "Материал с кучей тегов", tags=tags)
 
@@ -148,10 +154,14 @@ async def test_all_tags_flag_expands_tag_chips(client, db):
     # на карточке тег — это кнопка с тем же именем поля.
     chip = 'type="checkbox" name="tag"'
     short = (await client.get("/reading")).text
-    assert short.count(chip) == 12
+    assert short.count(chip) == 20
+    assert short.count("reading-chip--extra") == 8
+    assert "ещё 8 тегов" in short
 
     full = (await client.get("/reading", params={"all_tags": "1"})).text
     assert full.count(chip) == 20
+    assert full.count("reading-chip--extra") == 0
+    assert "свернуть теги" in full
 
 
 @pytest.mark.asyncio

@@ -36,14 +36,17 @@
 <div class="reading-filters__group" id="reading-tag-group"{{ oob_attr | safe }}>
     <span class="reading-filters__label">теги</span>
     <div class="reading-chips">
+        {# На широком экране показываем все теги: лишние прячет CSS, а не срез на сервере,
+           иначе на десктопе теги без причины сворачиваются в кнопку. #}
         {% for name, count in tag_chips %}
-        <label class="reading-chip {% if name in filters.tags %}reading-chip--on{% endif %}">
+        <label class="reading-chip {% if loop.index0 >= tag_chips_limit and not tag_all %}reading-chip--extra{% endif %} {% if name in filters.tags %}reading-chip--on{% endif %}">
             <input type="checkbox" name="tag" value="{{ name }}" {% if name in filters.tags %}checked{% endif %}>
             {{ name }} <u>{{ count }}</u>
         </label>
         {% endfor %}
         {% if tag_pairs | length > tag_chips_limit %}
-        <button type="submit" name="all_tags" value="1" class="reading-chip reading-chip--more">
+        <button type="submit" name="all_tags" value="1"
+                class="reading-chip reading-chip--more{% if tag_all %} reading-chip--more-open{% endif %}">
             {% if tag_all %}свернуть теги{% else %}ещё {{ tag_pairs | length - tag_chips_limit }} тегов{% endif %}
         </button>
         {% endif %}
