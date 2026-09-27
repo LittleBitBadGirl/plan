@@ -388,8 +388,8 @@
                 <div class="grid grid-cols-1 gap-4">
                     {% for h_item in habits_data %}
                     <div class="bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg flex flex-col group">
-                        <div class="flex justify-between items-center mb-3 gap-2">
-                            <h3 class="font-bold text-gray-100 text-sm truncate min-w-0">{{ h_item.habit.title }}</h3>
+                        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-3">
+                            <h3 class="font-bold text-gray-100 text-sm leading-snug break-words min-w-0 sm:truncate">{{ h_item.habit.title }}</h3>
                             <div class="flex items-center gap-1.5 shrink-0">
                                 <button type="button"
                                         onclick="openHabitHistory({{ h_item.habit.id }})"
