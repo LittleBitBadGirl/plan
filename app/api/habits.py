@@ -2,7 +2,8 @@ from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Form, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, and_, update, tuple_
+from sqlalchemy import select, delete, and_, update, tuple_, func
+from sqlalchemy.exc import IntegrityError
 from app.db.database import async_session
 from app.models.habit import Habit
 from app.models.habit_log import HabitLog
@@ -21,17 +22,30 @@ class HabitToggle(BaseModel):
 
 
 def compute_next_cycle_start(habit: Habit, today: date) -> date:
-    """Дата старта следующего цикла: сразу после окна предыдущего (без разрыва).
+    """Дата старта следующего цикла — строго на день после окна предыдущего.
 
-    Если «След. 30 дней» нажали с опозданием — пропущенные дни попадают в начало
-    новой сетки. Если нажали раньше конца цикла — старт с сегодня.
+    Окно цикла — это `target_days` дней от старта включительно:
+    [start, start + target_days - 1]. Старт следующего = start + target_days,
+    поэтому последний день одного цикла и первый день следующего никогда не
+    совпадают, и ни один день не принадлежит двум циклам.
+
+    Циклы идут подряд и не делят между собой ни одного дня: новый начинается
+    ровно через `target_days` дней после начала текущего. Раньше, если нажали
+    «След. 30 дней» до конца окна, возвращалось `today`, и нажатие в последний
+    день начинало новый цикл в тот же день. Этот день попадал в оба цикла: в
+    сетке нового цикла он выглядел неотмеченным (отметка принадлежит прошлому
+    циклу), а повторная отметка на нём падала на старом ограничении
+    уникальности (habit_id, date) — «день не отмечается».
+
+    Нажатие в свой последний день теперь даёт старт нового цикла со следующего
+    дня; нажатие с опозданием оставляет пропущенные дни в начале новой сетки;
+    нажатие раньше конца окна уводит старт в будущее — это честнее, чем начать
+    цикл задним числом внутри уже идущего окна.
     """
+    if habit.start_date is None:
+        return today
     target_days = habit.target_days or 30
-    old_start = habit.start_date or today
-    scheduled = old_start + timedelta(days=target_days)
-    if scheduled <= today:
-        return scheduled
-    return today
+    return habit.start_date + timedelta(days=target_days)
 
 
 async def load_habit_logs_map(
@@ -63,6 +77,17 @@ def build_habit_cycle_grid(habit: Habit, today: date) -> dict:
         "start_weekday": start.weekday(),
         "target_days": target_days,
     }
+
+
+def cycle_window(habit: Habit) -> tuple[date, date]:
+    """Окно текущего цикла: [начало, конец], оба дня включительно.
+
+    Конец — за день до старта следующего цикла, поэтому окна соседних циклов
+    не пересекаются ни одним днём.
+    """
+    target_days = habit.target_days or 30
+    start = habit.start_date or date.today()
+    return start, start + timedelta(days=target_days - 1)
 
 
 def compute_cycle_start_dates(
@@ -164,6 +189,19 @@ async def toggle_habit(data: HabitToggle):
         if not habit:
             raise HTTPException(status_code=404, detail="Habit not found")
 
+        # День обязан лежать в окне текущего цикла. Страница, открытая до смены
+        # цикла, иначе запишет отметку прошлого дня в новый цикл — и день
+        # окажется отмеченным в двух циклах сразу.
+        window_start, window_end = cycle_window(habit)
+        if not (window_start <= data.date <= window_end):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"День {data.date.isoformat()} не входит в текущий цикл "
+                    f"({window_start.isoformat()} — {window_end.isoformat()})"
+                ),
+            )
+
         result = await db.execute(
             select(HabitLog).where(
                 and_(
@@ -187,7 +225,17 @@ async def toggle_habit(data: HabitToggle):
             db.add(new_log)
             action = "added"
         
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError:
+            # Старое ограничение (habit_id, date) на непересобранной базе: день
+            # уже отмечен в другом цикле. Пользователь должен видеть отказ, а не
+            # «нажал — и ничего не произошло».
+            await db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="Этот день уже отмечен в другом цикле — обнови страницу",
+            )
         return {"status": "success", "action": action}
 
 @router.post("/{habit_id}/archive")
@@ -228,7 +276,7 @@ async def habit_history(habit_id: int, request: Request):
 
 @router.post("/{habit_id}/next-cycle")
 async def restart_habit_cycle(habit_id: int):
-    """Завершить текущий цикл и начать новый (30 дней без разрыва календаря)."""
+    """Завершить текущий цикл и начать новый (циклы идут подряд, без нахлёста)."""
     today = date.today()
     async with async_session() as db:
         habit_res = await db.execute(select(Habit).where(Habit.id == habit_id))
@@ -236,8 +284,29 @@ async def restart_habit_cycle(habit_id: int):
         if not habit:
             raise HTTPException(status_code=404, detail="Habit not found")
 
-        habit.current_cycle += 1
-        habit.start_date = compute_next_cycle_start(habit, today)
+        # Цикл уже переведён, а новый ещё не начался — или начался сегодня:
+        # повторное нажатие сдвинуло бы старт ещё на 30 дней вперёд и пропустило
+        # бы целый начавшийся цикл. Переводить нечего.
+        if habit.start_date is not None and today <= habit.start_date:
+            return RedirectResponse(url="/", status_code=303)
+
+        new_start = compute_next_cycle_start(habit, today)
+        previous_cycle = habit.current_cycle or 1
+
+        # Одним UPDATE с условием на прежний номер цикла: при двойном сабмите
+        # второй запрос читает то же состояние до commit, и раньше это уводило
+        # цикл на два вперёд. rowcount показывает, нашёл ли UPDATE своё состояние.
+        moved = await db.execute(
+            update(Habit)
+            .where(
+                Habit.id == habit_id,
+                func.coalesce(Habit.current_cycle, 1) == previous_cycle,
+            )
+            .values(current_cycle=previous_cycle + 1, start_date=new_start)
+        )
+        if moved.rowcount != 1:
+            await db.rollback()
+            return RedirectResponse(url="/", status_code=303)
 
         await db.commit()
     return RedirectResponse(url="/", status_code=303)
