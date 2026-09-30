@@ -1,15 +1,45 @@
-{# Решение по мероприятию: «Иду» / «Не иду». Нажатие по выбранной кнопке
-   снимает отметку. ev_target и ev_board_flag задаёт тот блок, откуда нажали
-   (доска на странице или блок недели на дашборде). #}
-<form class="ev-actions"
-      hx-post="/api/events/{{ item.id }}/status"
-      hx-target="{{ ev_target|default('#events-board') }}"
-      hx-swap="outerHTML">
-    <input type="hidden" name="board" value="{{ ev_board_flag|default('1') }}">
-    <input type="hidden" name="month" value="{{ ev_month }}">
-    <input type="hidden" name="day" value="{{ ev_day }}">
-    <button type="submit" name="value" value="going"
-            class="ev-status ev-status--going {% if item.status == 'going' %}is-on{% endif %}">Иду</button>
-    <button type="submit" name="value" value="not_going"
-            class="ev-status ev-status--no {% if item.status == 'not_going' %}is-on{% endif %}">Не иду</button>
-</form>
+{# Решение по мероприятию. «Иду» — действие, а не отметка: нажатие просит день и
+   время сеанса (билет куплен), из них собирается событие календаря. «Не иду»
+   убрано: решение ничего не меняло. Мини-форма уезжает в общий слот
+   #ev-visit-slot, поэтому id не повторяются, даже когда мероприятие видно и в
+   дне, и в карточке; show: подтягивает слот в поле зрения — на телефоне форма
+   иначе открылась бы за краем экрана. ev_compact — для строк в узких блоках: там
+   короче подписи, но путь с напоминанием за сутки (.ics) остаётся и там. #}
+{% if item.has_visit %}
+<div class="ev-actions ev-actions--going">
+    <span class="ev-visit" title="Билет на руках">
+        <span class="ev-visit__mark">Иду</span>
+        <span class="ev-visit__when">{{ item.visit_label }}</span>
+    </span>
+    {% if item.calendar_url %}
+    <a class="ev-tool ev-tool--cal" href="{{ item.calendar_url }}" target="_blank" rel="noopener"
+       title="Откроется заполненное событие в Google Календаре">{% if ev_compact %}в календарь{% else %}В календарь{% endif %}</a>
+    {% endif %}
+    {% if item.calendar_ics %}
+    <a class="ev-tool ev-tool--cal" href="{{ item.calendar_ics }}"
+       title="Файл календаря: внутри напоминание за сутки">{% if ev_compact %}.ics{% else %}Файл .ics{% endif %}</a>
+    {% endif %}
+    {% if not ev_compact %}
+    <button type="button" class="ev-tool"
+            hx-get="/events/{{ item.id }}/visit-form?board={{ ev_board_flag|default('1') }}&month={{ ev_month|default('') }}&day={{ ev_day|default('') }}"
+            hx-target="#ev-visit-slot"
+            hx-swap="innerHTML show:#ev-visit-slot:top">Изменить день</button>
+    {% endif %}
+    <form class="ev-tool-form" hx-post="/api/events/{{ item.id }}/status"
+          hx-target="{{ ev_target|default('#events-board') }}" hx-swap="outerHTML">
+        <input type="hidden" name="board" value="{{ ev_board_flag|default('1') }}">
+        <input type="hidden" name="month" value="{{ ev_month|default('') }}">
+        <input type="hidden" name="day" value="{{ ev_day|default('') }}">
+        <button type="submit" class="ev-tool ev-tool--danger"
+                title="Снять отметку: брони нет">{% if ev_compact %}×{% else %}Отменить{% endif %}</button>
+    </form>
+</div>
+{% else %}
+<div class="ev-actions">
+    <button type="button" class="ev-status ev-status--going"
+            hx-get="/events/{{ item.id }}/visit-form?board={{ ev_board_flag|default('1') }}&month={{ ev_month|default('') }}&day={{ ev_day|default('') }}"
+            hx-target="#ev-visit-slot"
+            hx-swap="innerHTML show:#ev-visit-slot:top"
+            title="Скажи, когда идёшь — соберётся событие в календаре">Иду</button>
+</div>
+{% endif %}

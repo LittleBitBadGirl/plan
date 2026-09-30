@@ -1337,6 +1337,11 @@ h3,
     display: none;
 }
 
+/* Слот мини-формы похода: пустой — не занимает места */
+.ev-visit-slot:empty {
+    display: none;
+}
+
 .ev-board {
     display: grid;
     gap: 1.25rem;
@@ -1483,7 +1488,6 @@ h3,
 
 .ev-day--going .ev-day__mark { color: #34d399; }
 .ev-day--none .ev-day__mark { color: #fbbf24; }
-.ev-day--not_going .ev-day__mark { color: #78716c; }
 
 .ev-legend {
     display: flex;
@@ -1536,7 +1540,6 @@ h3,
 
 .ev-legend__dot--going { color: #34d399; }
 .ev-legend__dot--none { color: #fbbf24; }
-.ev-legend__dot--no { color: #78716c; }
 
 .ev-panel__head {
     display: flex;
@@ -1593,7 +1596,6 @@ h3,
 
 .ev-card-item--going { border-left-color: #34d399; }
 .ev-card-item--none { border-left-color: #fbbf24; }
-.ev-card-item--not_going { border-left-color: #78716c; }
 .ev-card-item.is-past { opacity: 0.6; }
 
 .ev-card-item__pic {
@@ -1732,7 +1734,6 @@ h3,
 }
 
 .ev-status--going:hover { border-color: #34d399; color: #34d399; }
-.ev-status--no:hover { border-color: #78716c; color: #d6d3d1; }
 
 .ev-status--going.is-on {
     background: rgba(16, 185, 129, 0.18);
@@ -1740,46 +1741,127 @@ h3,
     color: #6ee7b7;
 }
 
-.ev-status--no.is-on {
-    background: rgba(120, 113, 108, 0.2);
-    border-color: #78716c;
-    color: #d6d3d1;
-}
-
-/* Переключатель статуса в форме */
-.ev-form__status {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-}
-
-.ev-form__status .ev-status {
-    display: inline-flex;
+/* Поход: «иду» — это бронь на конкретный день, поэтому в карточке не кнопка, а
+   отметка с датой сеанса и выходы в календарь. */
+.ev-actions--going {
     align-items: center;
-    gap: 0.4rem;
-    text-transform: none;
-    letter-spacing: 0;
-    font-size: 0.8rem;
+    flex-wrap: wrap;
 }
 
-.ev-form__status .ev-status input { accent-color: var(--accent); }
-
-.ev-form__status .ev-status--going.is-on {
+.ev-visit {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    padding: 0.3rem 0.6rem;
+    border: 1px solid #34d399;
+    border-radius: 0.5rem;
     background: rgba(16, 185, 129, 0.18);
+}
+
+.ev-visit__mark {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6ee7b7;
+}
+
+.ev-visit__when {
+    font-size: 12px;
+    color: #ecfdf5;
+    white-space: nowrap;
+}
+
+.ev-tool--cal {
     border-color: #34d399;
     color: #6ee7b7;
 }
 
-.ev-form__status .ev-status--none.is-on {
-    background: rgba(251, 191, 36, 0.14);
-    border-color: #fbbf24;
-    color: #fcd34d;
+/* Мини-форма похода: слот общий для страницы и дашборда */
+.ev-visit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid #44403c;
+    border-radius: 0.75rem;
+    background: #1c1917;
 }
 
-.ev-form__status .ev-status--not_going.is-on {
-    background: rgba(120, 113, 108, 0.2);
-    border-color: #78716c;
-    color: #d6d3d1;
+.ev-visit-form__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.ev-visit-form__title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #e7e5e4;
+}
+
+.ev-visit-form__close {
+    border: none;
+    background: transparent;
+    color: #78716c;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.ev-visit-form__close:hover { color: #f87171; }
+
+.ev-visit-form__error {
+    margin: 0;
+    font-size: 12px;
+    color: #fca5a5;
+}
+
+.ev-visit-form__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.6rem;
+}
+
+.ev-visit-form__field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #a8a29e;
+}
+
+.ev-visit-form__field input {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #44403c;
+    border-radius: 0.5rem;
+    background: #0c0a09;
+    color: #e7e5e4;
+    font-size: 14px;
+    font-family: inherit;
+}
+
+.ev-visit-form__field input:focus { outline: 1px solid var(--accent); }
+
+.ev-visit-form__note {
+    margin: 0;
+    font-size: 12px;
+    color: #78716c;
+}
+
+@media (max-width: 640px) {
+    /* На телефоне поля и кнопка — в столбик: дата в одну строку не влезает. */
+    .ev-visit-form__row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .ev-visit-form__field input { width: 100%; }
 }
 
 .ev-rows {
@@ -1808,7 +1890,6 @@ h3,
 }
 
 .ev-row--going .ev-row__dot { background: #34d399; }
-.ev-row--not_going .ev-row__dot { background: #57534e; }
 
 .ev-row__main {
     flex: 1 1 auto;
@@ -2134,7 +2215,6 @@ h3,
 
 .ev-week-row--going { border-left-color: #34d399; }
 .ev-week-row--none { border-left-color: #fbbf24; }
-.ev-week-row--not_going { border-left-color: #57534e; }
 .ev-week-row.is-now { background: #221f1d; }
 
 .ev-week-row__day {

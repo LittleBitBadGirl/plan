@@ -1,4 +1,5 @@
-{# Карточка мероприятия: картинка, даты, описание, решение «иду / не иду». #}
+{# Карточка мероприятия: картинка, даты, описание, решение «иду» (см.
+   event_status.html: нажатие = бронь с днём и временем сеанса). #}
 <article class="ev-card-item ev-card-item--{{ item.status }}{% if item.is_past %} is-past{% endif %}">
     {% if item.image %}
     <div class="ev-card-item__pic">

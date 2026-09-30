@@ -63,18 +63,6 @@
                 {% endif %}
             </div>
         </div>
-        <div class="ev-field ev-field--wide">
-            <span>Решение</span>
-            <div class="ev-form__status">
-                {% for opt in status_options %}
-                <label class="ev-status ev-status--{{ opt.value }} {% if form.status == opt.value %}is-on{% endif %}">
-                    <input type="radio" name="status" value="{{ opt.value }}"
-                           {% if form.status == opt.value %}checked{% endif %}>
-                    {{ opt.label }}
-                </label>
-                {% endfor %}
-            </div>
-        </div>
     </div>
 
     <div class="ev-form__foot">

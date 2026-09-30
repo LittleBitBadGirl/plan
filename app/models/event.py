@@ -22,11 +22,16 @@ from app.models.base import Base
 
 STATUS_NONE = "none"
 STATUS_GOING = "going"
+# «Не иду» из интерфейса убрано: кнопка только отнимала выбор, а решение всё
+# равно не несло действия. Константа осталась для чтения старых строк —
+# normalize_status переводит их в «без отметки».
 STATUS_NOT_GOING = "not_going"
 
-# Решение Веры по мероприятию: иду / не иду. «Без отметки» — когда ещё не решила,
-# это состояние по умолчанию и его нельзя терять.
-EVENT_STATUSES = (STATUS_NONE, STATUS_GOING, STATUS_NOT_GOING)
+# Решение Веры по мероприятию: иду / без отметки. «Иду» — это не оценка, а факт
+# брони: билет куплен, сеанс известен, значит у записи есть день и время похода
+# (visit_date/visit_time) — из них собирается событие календаря с напоминанием.
+# «Без отметки» — состояние по умолчанию, его нельзя терять.
+EVENT_STATUSES = (STATUS_NONE, STATUS_GOING)
 
 
 def event_is_active():
@@ -53,6 +58,11 @@ class Event(Base):
     start_date = Column(Date, nullable=False, index=True)
     end_date = Column(Date, nullable=True)  # NULL = одна дата, не период
     start_time = Column(String(5), nullable=True)  # «19:00», необязательно
+    # Поход: «Иду» ставится, когда билет на руках. У сеанса есть свой день и
+    # время — они и лежат здесь, чтобы собрать событие календаря (напоминание за
+    # сутки) и показать на дашборде не «идёт до 13 окт», а «иду 5 окт, 14:00».
+    visit_date = Column(Date, nullable=True)
+    visit_time = Column(String(5), nullable=True)  # «14:00», необязательно
     status = Column(String(20), nullable=False, server_default=STATUS_NONE)
     source = Column(String(20), nullable=False, server_default="web")
     is_archived = Column(Integer, nullable=False, server_default="0")
@@ -76,3 +86,8 @@ class Event(Base):
     def is_range(self) -> bool:
         """Идёт несколько дней (выставка, фестиваль)."""
         return bool(self.end_date and self.end_date != self.start_date)
+
+    @property
+    def has_visit(self) -> bool:
+        """Поход назначен: «Иду» нажато и день сеанса известен."""
+        return self.visit_date is not None

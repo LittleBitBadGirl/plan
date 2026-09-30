@@ -1,7 +1,8 @@
 {# Строка мероприятия в блоке на дашборде: день, название, до какого числа
-   идёт (для выставки), решение. #}
+   идёт (для выставки), решение. Если билет уже на руках — в первой колонке день
+   похода: он и есть ближайшее событие, а не дата открытия. #}
 <div class="ev-week-row ev-week-row--{{ item.status }}{% if item.is_now %} is-now{% endif %}">
-    <span class="ev-week-row__day">{{ item.day_label }}</span>
+    <span class="ev-week-row__day">{% if item.has_visit %}{{ item.visit_day_label }}{% else %}{{ item.day_label }}{% endif %}</span>
     <span class="ev-week-row__body">
         <span class="ev-week-row__title">
             {% if item.url %}
@@ -15,5 +16,6 @@
             {% if item.location %}<span class="ev-week-row__place">{{ item.location }}</span>{% endif %}
         </span>
     </span>
+    {% set ev_compact = True %}
     {% include "partials/event_status.html" %}
 </div>

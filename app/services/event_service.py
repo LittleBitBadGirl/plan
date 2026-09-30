@@ -19,10 +19,10 @@ import json
 import re
 import socket
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 import httpx
 from sqlalchemy import and_, func, or_, select
@@ -42,10 +42,17 @@ from app.models.event import (
 
 STATUS_LABELS = {
     STATUS_GOING: "Иду",
-    STATUS_NOT_GOING: "Не иду",
     STATUS_NONE: "Без отметки",
 }
-STATUS_ORDER = (STATUS_GOING, STATUS_NONE, STATUS_NOT_GOING)
+# Порядок в форме: сначала решение «иду», потом «без отметки». «Не иду» убрано.
+STATUS_ORDER = (STATUS_GOING, STATUS_NONE)
+
+# Календарь похода: московское время (перехода на летнее не было с 2014), событие
+# в календаре на два часа и напоминание за сутки — ровно то, что просила Вера.
+CALENDAR_TZ = "Europe/Moscow"
+CALENDAR_UTC_OFFSET = 3
+VISIT_HOURS = 2
+REMINDER_HOURS_BEFORE = 24
 
 RU_WEEKDAYS = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
 RU_MONTHS_SHORT = (
@@ -108,6 +115,11 @@ def relative_label(day: date, today: date) -> str:
 
 
 def normalize_status(value: Optional[str]) -> str:
+    """Всё, кроме «иду», читается как «без отметки».
+
+    Так же читаются старые строки со статусом «не иду»: из интерфейса решение
+    убрано, и карточка не должна показывать его как действующее.
+    """
     value = (value or "").strip()
     return value if value in EVENT_STATUSES else STATUS_NONE
 
@@ -205,6 +217,8 @@ def event_view(ev: Event, today: date) -> dict:
         # Прошедшее мероприятие: «осталось -5 дней» показывать нечего.
         period_hint = ""
 
+    status = normalize_status(ev.status)
+    going = status == STATUS_GOING and bool(ev.visit_date)
     return {
         "id": ev.id,
         "title": ev.title,
@@ -219,8 +233,19 @@ def event_view(ev: Event, today: date) -> dict:
         "start_date_label": date_label(ev.start_date),
         "end_date_label": date_label(ev.end_date) if ev.end_date else "",
         "start_time": ev.start_time or "",
-        "status": normalize_status(ev.status),
-        "status_label": STATUS_LABELS[normalize_status(ev.status)],
+        "status": status,
+        "status_label": STATUS_LABELS[status],
+        # Поход: «иду 5 окт, 14:00». Показывается только когда бронь действительно
+        # поставлена, иначе дашборд рисовал бы «иду» без дня.
+        "has_visit": going,
+        "visit_date": ev.visit_date,
+        "visit_date_iso": ev.visit_date.isoformat() if ev.visit_date else "",
+        "visit_time": ev.visit_time or "",
+        "visit_label": visit_label(ev) if going else "",
+        # День похода отдельной подписью: в блоке недели он важнее даты открытия.
+        "visit_day_label": weekday_label(ev.visit_date) if going else "",
+        "calendar_url": google_calendar_url(ev) if going else "",
+        "calendar_ics": f"/events/{ev.id}/visit.ics" if going else "",
         "is_range": is_range,
         "last_day": last_day,
         "when": when,
@@ -235,6 +260,166 @@ def event_view(ev: Event, today: date) -> dict:
 
 def event_views(events: Iterable[Event], today: date) -> list[dict]:
     return [event_view(ev, today) for ev in events]
+
+
+# --------------------------------------------------------------------------
+# поход: «иду» — это бронь, из неё собирается событие календаря
+# --------------------------------------------------------------------------
+
+def visit_label(ev: Event) -> str:
+    """«5 окт, 14:00» — когда Вера идёт. Без времени — только день."""
+    if not ev.visit_date:
+        return ""
+    label = short_date(ev.visit_date)
+    moment = parse_time(ev.visit_time or "")
+    return f"{label}, {moment}" if moment else label
+
+
+def visit_datetime(ev: Event) -> Optional[datetime]:
+    """Момент похода: день брони + время.
+
+    Время берём из брони, иначе из времени начала мероприятия, иначе 12:00 —
+    так у выставки без времени сеанса всё равно получается осмысленное событие.
+    """
+    if not ev.visit_date:
+        return None
+    moment = parse_time(ev.visit_time or "") or parse_time(ev.start_time or "") or "12:00"
+    return datetime.combine(ev.visit_date, dtime(int(moment[:2]), int(moment[3:])))
+
+
+def calendar_window(ev: Event) -> Optional[tuple[datetime, datetime]]:
+    """Начало и конец события в календаре: поход на VISIT_HOURS часов."""
+    start = visit_datetime(ev)
+    if not start:
+        return None
+    return start, start + timedelta(hours=VISIT_HOURS)
+
+
+def google_calendar_url(ev: Event) -> str:
+    """Ссылка «добавить в Google Календарь»: открывается заполненная форма.
+
+    Это самый быстрый путь — ничего не надо настраивать, в отличие от доступа к
+    календарю по API. Напоминание Google при такой вставке не переносит, поэтому
+    рядом лежит файл .ics: там напоминание за сутки (VALARM) уже внутри.
+    """
+    window = calendar_window(ev)
+    if not window:
+        return ""
+    start, finish = window
+    description = " ".join(
+        part for part in ((ev.description or "").strip(), (ev.url or "").strip()) if part
+    )
+    fields = {
+        "action": "TEMPLATE",
+        "text": ev.title or "",
+        "dates": f"{start:%Y%m%dT%H%M%S}/{finish:%Y%m%dT%H%M%S}",
+        "ctz": CALENDAR_TZ,
+        "details": description,
+        "location": (ev.location or "").strip(),
+    }
+    query = "&".join(
+        f"{key}={quote(str(value))}" for key, value in fields.items() if value
+    )
+    return f"https://calendar.google.com/calendar/render?{query}"
+
+
+def _ics_escape(text: str) -> str:
+    """Экранирование по RFC 5545: запятые, точки с запятой, переводы строк."""
+    return (
+        (text or "")
+        .replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\r\n", "\\n")
+        .replace("\n", "\\n")
+    )
+
+
+def _ics_utc(moment: datetime) -> str:
+    """Момент похода в UTC: день и время в записи — московские, смещение +3.
+
+    МСК не переходит на летнее время с 2014 года, поэтому смещение постоянное.
+    """
+    return (moment - timedelta(hours=CALENDAR_UTC_OFFSET)).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _ics_fold(line: str, limit: int = 73) -> list[str]:
+    """RFC 5545: длинную строку режем по октетам, продолжение — с пробелом впереди.
+
+    Русское описание — это 2 байта на букву, поэтому без переноса строка уходит за
+    предел и строгие клиенты обрезают текст события. Пару «обратный слэш + символ»
+    (\\n, \\, вместо запятой и точки с запятой) не разрываем: иначе клиент прочитает
+    escape-последовательность как обычный текст.
+    """
+    chunks: list[str] = []
+    current = ""
+    size = 0
+    escaped = False
+    for char in line:
+        width = len(char.encode("utf-8"))
+        if not escaped and size + width > limit and current:
+            chunks.append(current)
+            current = ""
+            size = 0
+        current += char
+        size += width
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+    chunks.append(current)
+    return chunks
+
+
+def ics_filename(ev: Event) -> str:
+    """Имя файла для скачивания: название без символов, запрещённых в именах."""
+    stem = re.sub(r'[\\/:*?"<>|]+', " ", (ev.title or "").strip())
+    stem = re.sub(r"\s+", " ", stem).strip()[:60]
+    return f"{stem or f'мероприятие-{ev.id}'}.ics"
+
+
+def build_ics(ev: Event, *, now: Optional[datetime] = None) -> str:
+    """Файл календаря на поход: событие плюс напоминание за сутки (VALARM)."""
+    window = calendar_window(ev)
+    if not window:
+        return ""
+    start, finish = window
+    # DTSTAMP — момент создания файла в UTC. Берём настоящее UTC-время, а не
+    # локальное: результат не должен зависеть от часового пояса хоста.
+    stamp = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Planner//Мероприятия//RU",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "BEGIN:VEVENT",
+        f"UID:event-{ev.id}@planner",
+        f"DTSTAMP:{stamp:%Y%m%dT%H%M%SZ}",
+        f"DTSTART:{_ics_utc(start)}",
+        f"DTEND:{_ics_utc(finish)}",
+        f"SUMMARY:{_ics_escape(ev.title or '')}",
+    ]
+    if ev.location:
+        lines.append(f"LOCATION:{_ics_escape(ev.location)}")
+    description = " ".join(
+        part for part in ((ev.description or "").strip(), (ev.url or "").strip()) if part
+    )
+    if description:
+        lines.append(f"DESCRIPTION:{_ics_escape(description)}")
+    if ev.url:
+        lines.append(f"URL:{ev.url}")
+    lines += [
+        "BEGIN:VALARM",
+        f"TRIGGER:-PT{REMINDER_HOURS_BEFORE}H",
+        "ACTION:DISPLAY",
+        f"DESCRIPTION:{_ics_escape(ev.title or '')}",
+        "END:VALARM",
+        "END:VEVENT",
+        "END:VCALENDAR",
+        "",
+    ]
+    return "\r\n".join("\r\n ".join(_ics_fold(line)) for line in lines)
 
 
 # --------------------------------------------------------------------------

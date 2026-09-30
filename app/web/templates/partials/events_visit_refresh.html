@@ -1,0 +1,8 @@
+{# Ответ на бронь. В ответе только OOB-блоки: htmx ничего не кладёт в цель, слот
+   мини-формы пустеет (пустой слот приезжает с hx-swap-oob), а доска на /events и
+   блок «мероприятия» на дашборде обновляются молча. Так после «Билет на руках»
+   форма закрывается сама, и карточка сразу показывает поход и кнопки календаря. #}
+<div id="ev-visit-slot" class="ev-visit-slot" hx-swap-oob="true"></div>
+{% set ev_board_root = False %}
+{% set ev_oob = True %}{% include "partials/events_board.html" %}
+{% include "partials/events_week_block.html" %}

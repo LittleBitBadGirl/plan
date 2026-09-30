@@ -1,0 +1,34 @@
+{# Мини-форма похода. «Иду» = билет на руках, значит сеанс известен: день и время
+   уходят в запись, из них собирается событие календаря с напоминанием за сутки.
+   Живёт в общем слоте #ev-visit-slot — id не повторяются, даже когда то же
+   мероприятие видно и в дне, и в карточке. #}
+<div class="ev-visit-form" data-ev-visit="{{ visit_id }}">
+    <div class="ev-visit-form__head">
+        <span class="ev-visit-form__title">Когда идёшь: {{ visit_title }}</span>
+        <button type="button" class="ev-visit-form__close" title="Закрыть"
+                onclick="document.getElementById('ev-visit-slot').innerHTML=''">×</button>
+    </div>
+    {% if visit_error %}
+    <p class="ev-visit-form__error">{{ visit_error }}</p>
+    {% endif %}
+    <form class="ev-visit-form__row"
+          hx-post="/api/events/{{ visit_id }}/visit"
+          hx-target="#ev-visit-slot"
+          hx-swap="innerHTML">
+        <input type="hidden" name="board" value="{{ visit_board }}">
+        <input type="hidden" name="month" value="{{ visit_month }}">
+        <input type="hidden" name="day" value="{{ visit_day }}">
+        <label class="ev-visit-form__field">День
+            <input type="date" name="visit_date" value="{{ visit_date_value }}"
+                   min="{{ visit_min }}" max="{{ visit_max }}" required>
+        </label>
+        <label class="ev-visit-form__field">Время
+            <input type="time" name="visit_time" value="{{ visit_time_value }}">
+        </label>
+        <button type="submit" class="ev-status ev-status--going">Билет на руках</button>
+    </form>
+    <p class="ev-visit-form__note">
+        В календарь — двумя путями: ссылка откроет событие в Google Календаре, файл .ics
+        положит его с напоминанием за сутки.
+    </p>
+</div>

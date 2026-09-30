@@ -45,7 +45,7 @@ async def test_run_migrations_on_fresh_db():
                 text("SELECT version_num FROM alembic_version")
             )
             version = result.scalar_one()
-        assert version == "020_events"
+        assert version == "021_event_visit"
 
         sync = sqlite3.connect(db_path)
         task_cols = {row[1] for row in sync.execute("PRAGMA table_info(tasks)")}
@@ -127,6 +127,8 @@ async def test_run_migrations_on_fresh_db():
             "start_date",
             "end_date",
             "start_time",
+            "visit_date",
+            "visit_time",
             "status",
             "is_archived",
         } <= event_cols
@@ -172,7 +174,7 @@ async def test_achievements_migration_creates_table_itself():
         cols = {row[1] for row in sync.execute("PRAGMA table_info(achievements)")}
         sync.close()
 
-        assert version == "020_events"
+        assert version == "021_event_visit"
         assert "achievements" in tables
         assert {"text", "sphere", "is_archived", "created_at"} <= cols
 
@@ -414,7 +416,7 @@ async def test_habit_log_migration_replaces_legacy_unique_and_fixes_overlap():
             (2, 8, 1, "2026-09-28"),
         ], "отметки потерялись при пересборке таблицы"
         assert indexes >= {"ix_habit_logs_id", "ix_habit_logs_habit_cycle"}
-        assert version == "020_events"
+        assert version == "021_event_visit"
         assert start_date == "2026-09-29", "нахлёст не убран: цикл всё ещё начинается днём прошлого"
 
         # Повторный прогон (контейнер перезапускается) ничего не меняет.
@@ -444,5 +446,80 @@ async def test_habit_log_migration_replaces_legacy_unique_and_fixes_overlap():
         ).fetchone()[0]
         sync.close()
         assert same_day == 2, "день по-прежнему нельзя отметить в двух циклах"
+
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_event_visit_migration_clears_decisions_without_a_day():
+    """Миграция 021: у похода есть день, а решения без дня больше не держатся.
+
+    «Не иду» из интерфейса убрано. «Иду» без дня сеанса — не бронь: из такой
+    строки нельзя ни собрать событие календаря, ни показать «иду 5 окт», поэтому
+    её тоже переводим в «без отметки». Бронь с днём миграция не трогает.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = os.path.join(tmp, "event_visit_migrate.db")
+        url = f"sqlite+aiosqlite:///{db_path}"
+        engine = create_async_engine(url, connect_args={"check_same_thread": False})
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        from app.config import settings
+
+        prev_url = settings.database_url
+        settings.database_url = url
+        try:
+            run_migrations()
+
+            # Откатываем версию до 020 и кладём строки такими, какими их оставил
+            # прежний интерфейс: решение «не иду» и «иду» без дня похода.
+            sync = sqlite3.connect(db_path)
+            sync.execute("UPDATE alembic_version SET version_num = '020_events'")
+            sync.execute(
+                "INSERT INTO events (title, start_date, status, is_archived) "
+                "VALUES ('Не иду', '2026-10-05', 'not_going', 0)"
+            )
+            sync.execute(
+                "INSERT INTO events (title, start_date, status, is_archived) "
+                "VALUES ('Иду без дня', '2026-10-05', 'going', 0)"
+            )
+            sync.execute(
+                "INSERT INTO events (title, start_date, visit_date, visit_time, status, is_archived) "
+                "VALUES ('Иду 5 окт', '2026-10-05', '2026-10-05', '14:00', 'going', 0)"
+            )
+            sync.commit()
+            sync.close()
+
+            run_migrations()
+        finally:
+            settings.database_url = prev_url
+
+        sync = sqlite3.connect(db_path)
+        statuses = dict(sync.execute("SELECT title, status FROM events").fetchall())
+        visits = dict(sync.execute("SELECT title, visit_date FROM events").fetchall())
+        version = sync.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+        cols = {row[1] for row in sync.execute("PRAGMA table_info(events)")}
+        sync.close()
+
+        assert version == "021_event_visit"
+        assert {"visit_date", "visit_time"} <= cols
+        assert statuses["Не иду"] == "none"
+        assert statuses["Иду без дня"] == "none"
+        assert statuses["Иду 5 окт"] == "going", "бронь с днём миграция не трогает"
+        assert visits["Иду 5 окт"] == "2026-10-05"
+
+        # Повторный прогон (контейнер перезапускается) ничего не ломает.
+        settings.database_url = url
+        try:
+            run_migrations()
+        finally:
+            settings.database_url = prev_url
+
+        sync = sqlite3.connect(db_path)
+        again = dict(sync.execute("SELECT title, status FROM events").fetchall())
+        sync.close()
+        assert again == statuses, "повторный прогон миграции изменил решения"
 
         await engine.dispose()

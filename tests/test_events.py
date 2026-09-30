@@ -1,6 +1,10 @@
-"""Мероприятия: создание, статусы, диапазоны (выставки), метаданные по ссылке."""
+"""Мероприятия: создание, поход (бронь билета), диапазоны (выставки), метаданные.
 
-from datetime import date, timedelta
+«Иду» — это действие: нажатие сохраняет день и время сеанса, из которых собирается
+событие календаря с напоминанием за сутки (см. /api/events/{id}/visit).
+"""
+
+from datetime import date, datetime, timedelta
 
 import httpx
 import pytest
@@ -22,7 +26,6 @@ def _form(**overrides) -> dict:
         "start_date": TODAY.isoformat(),
         "end_date": "",
         "start_time": "19:00",
-        "status": STATUS_NONE,
         "board": "1",
         "month": TODAY.strftime("%Y-%m"),
         "day": TODAY.isoformat(),
@@ -102,47 +105,252 @@ async def test_single_day_event_has_no_end_date(client, db):
     assert events[0].is_range is False
 
 
-# ---------------------------------------------------------------- статусы
+# ---------------------------------------------------------------- поход
 
 @pytest.mark.asyncio
-async def test_status_button_toggles_and_resets(client, db):
-    """«Иду» → «Не иду» → повторное нажатие снимает отметку."""
-    await client.post("/api/events/create", data=_form())
+async def test_visit_button_saves_booking_and_offers_calendar(client, db):
+    """«Иду» — бронь: нажатие сохраняет день и время сеанса, дальше календарь."""
+    # Мероприятие с диапазоном: день похода обязан попадать внутрь него.
+    await client.post(
+        "/api/events/create",
+        data=_form(
+            start_date=TODAY.isoformat(),
+            end_date=(TODAY + timedelta(days=6)).isoformat(),
+        ),
+    )
     event = (await _events(db))[0]
 
-    going = await client.post(
-        f"/api/events/{event.id}/status", data={"value": STATUS_GOING, "board": "1"}
-    )
-    assert going.status_code == 200
-    assert "ev-status--going is-on" in going.text
+    form = await client.get(f"/events/{event.id}/visit-form")
+    assert form.status_code == 200
+    assert 'name="visit_date"' in form.text
+    assert 'name="visit_time"' in form.text
+    assert "Билет на руках" in form.text
 
-    not_going = await client.post(
-        f"/api/events/{event.id}/status", data={"value": STATUS_NOT_GOING, "board": "1"}
+    visit_day = TODAY + timedelta(days=3)
+    saved = await client.post(
+        f"/api/events/{event.id}/visit",
+        data={
+            "visit_date": visit_day.isoformat(),
+            "visit_time": "14:00",
+            "board": "1",
+        },
     )
-    assert "ev-status--no is-on" in not_going.text
+    assert saved.status_code == 200
+    assert "ev-visit" in saved.text
+    assert evs.short_date(visit_day) in saved.text
+    assert "calendar.google.com" in saved.text
+    assert f"/events/{event.id}/visit.ics" in saved.text
+    # Ответ только из OOB-блоков: слот мини-формы пустеет, доска обновляется.
+    assert 'id="ev-visit-slot" class="ev-visit-slot" hx-swap-oob="true"' in saved.text
 
-    reset = await client.post(
-        f"/api/events/{event.id}/status",
-        data={"value": STATUS_NOT_GOING, "board": "0"},
-    )
-    assert "ev-status--no is-on" not in reset.text
-    # board=0 — корневым блоком идёт блок недели (дашборд)
-    assert "events-week-block" in reset.text
+    fresh = (await _fresh_events())[0]
+    assert fresh.status == STATUS_GOING
+    assert fresh.visit_date == visit_day
+    assert fresh.visit_time == "14:00"
+    assert fresh.has_visit is True
 
 
 @pytest.mark.asyncio
-async def test_status_from_dashboard_updates_page_block_too(client, db):
-    """Нажатие в блоке недели обновляет и доску (она приезжает OOB)."""
+async def test_visit_without_day_keeps_status_and_shows_error(client, db):
+    """Без дня сеанса бронь не ставится: из пустой даты календарь не собрать."""
     await client.post("/api/events/create", data=_form())
     event = (await _events(db))[0]
 
     response = await client.post(
-        f"/api/events/{event.id}/status", data={"value": STATUS_GOING, "board": "0"}
+        f"/api/events/{event.id}/visit",
+        data={"visit_date": "", "visit_time": "14:00", "board": "1"},
     )
-    body = response.text
-    assert 'id="events-week-block"' in body
-    assert 'id="events-board"' in body
-    assert 'hx-swap-oob="true"' in body
+    assert response.status_code == 200
+    assert "Нужен день похода" in response.text
+    assert 'name="visit_date"' in response.text
+
+    fresh = (await _fresh_events())[0]
+    assert fresh.status == STATUS_NONE
+    assert fresh.visit_date is None
+
+
+@pytest.mark.asyncio
+async def test_visit_day_outside_event_is_rejected(client, db):
+    """День вне мероприятия не принимаем: событие в календаре уехало бы мимо.
+
+    Проверка живёт на сервере: <input type=date> с min/max обходится прямым POST.
+    """
+    await client.post(
+        "/api/events/create",
+        data=_form(
+            start_date=(TODAY + timedelta(days=1)).isoformat(),
+            end_date=(TODAY + timedelta(days=5)).isoformat(),
+        ),
+    )
+    event = (await _events(db))[0]
+
+    response = await client.post(
+        f"/api/events/{event.id}/visit",
+        data={"visit_date": (TODAY + timedelta(days=40)).isoformat(), "board": "1"},
+    )
+    assert response.status_code == 200
+    assert "вне мероприятия" in response.text
+
+    fresh = (await _fresh_events())[0]
+    assert fresh.status == STATUS_NONE
+    assert fresh.visit_date is None
+
+    # Тот же запрос внутри диапазона проходит.
+    inside = await client.post(
+        f"/api/events/{event.id}/visit",
+        data={"visit_date": (TODAY + timedelta(days=3)).isoformat(), "board": "1"},
+    )
+    assert "ev-visit__when" in inside.text
+    assert (await _fresh_events())[0].visit_date == TODAY + timedelta(days=3)
+
+
+@pytest.mark.asyncio
+async def test_cancel_clears_booking(client, db):
+    """Отмена снимает и отметку, и день похода: брони больше нет."""
+    await client.post(
+        "/api/events/create",
+        data=_form(end_date=(TODAY + timedelta(days=6)).isoformat()),
+    )
+    event = (await _events(db))[0]
+    await client.post(
+        f"/api/events/{event.id}/visit",
+        data={"visit_date": (TODAY + timedelta(days=2)).isoformat(), "board": "1"},
+    )
+
+    cancelled = await client.post(f"/api/events/{event.id}/status", data={"board": "1"})
+    assert cancelled.status_code == 200
+    # Отметки похода больше нет: остались только кнопка «Иду» и её ссылки.
+    assert "ev-visit__when" not in cancelled.text
+    assert "calendar.google.com" not in cancelled.text
+
+    fresh = (await _fresh_events())[0]
+    assert fresh.status == STATUS_NONE
+    assert fresh.visit_date is None
+    assert fresh.visit_time is None
+
+
+def test_legacy_not_going_is_read_as_none():
+    """Старое «не иду» больше не решение: читается как «без отметки»."""
+    assert evs.normalize_status(STATUS_NOT_GOING) == STATUS_NONE
+    assert evs.normalize_status(None) == STATUS_NONE
+    assert evs.normalize_status(STATUS_GOING) == STATUS_GOING
+    # «Иду» без дня похода — не бронь: календарь собрать не из чего.
+    event = Event(title="Иду без дня", start_date=TODAY, status=STATUS_GOING)
+    assert evs.event_view(event, TODAY)["has_visit"] is False
+
+
+def test_calendar_link_and_ics_carry_day_and_reminder():
+    """Ссылка в Google Календарь и файл .ics: день сеанса и напоминание за сутки."""
+    day = date(2026, 10, 5)
+    event = Event(
+        id=7,
+        title="Любовь — это...",
+        description="Выставка в темноте",
+        location="СПб, Гороховая 49Б",
+        url="https://gallery-way.ru/",
+        start_date=day,
+        visit_date=day,
+        visit_time="14:00",
+        status=STATUS_GOING,
+    )
+    link = evs.google_calendar_url(event)
+    assert link.startswith("https://calendar.google.com/calendar/render?")
+    # Формат Google: начало/конец без разделителя в часовом поясе ctz.
+    assert "dates=20261005T140000/20261005T160000" in link
+    assert "ctz=Europe/Moscow" in link
+    assert "%D0%9B%D1%8E%D0%B1%D0%BE%D0%B2%D1%8C" in link  # «Любовь» закодирована
+    assert "location=%D0%A1%D0%9F%D0%B1" in link
+
+    ics = evs.build_ics(event, now=datetime(2026, 9, 30, 12, 0))
+    assert ics.startswith("BEGIN:VCALENDAR")
+    assert "DTSTAMP:20260930T120000Z" in ics  # момент создания файла — в UTC
+    assert "DTSTART:20261005T110000Z" in ics  # 14:00 МСК = 11:00 UTC
+    assert "DTEND:20261005T130000Z" in ics
+    assert "TRIGGER:-PT24H" in ics
+    assert "BEGIN:VALARM" in ics
+    assert ics.rstrip().endswith("END:VCALENDAR")
+    assert evs.ics_filename(event) == "Любовь — это....ics"
+
+    # Длинные строки переносятся по октетам: иначе описание обрезают строгие клиенты.
+    long_event = Event(
+        id=8,
+        title="Конференция",
+        description="Очень длинное описание " * 12,
+        start_date=day,
+        visit_date=day,
+        status=STATUS_GOING,
+    )
+    long_ics = evs.build_ics(long_event, now=datetime(2026, 9, 30, 12, 0))
+    for line in long_ics.split("\r\n"):
+        assert len(line.encode("utf-8")) <= 74, f"строка не перенесена: {line[:40]}…"
+    assert "\r\n " in long_ics, "нет ни одной строки-продолжения"
+
+    # Перенос не разрезает escape-пару: иначе «\n» читалось бы как обычный текст.
+    escaped_line = "х" * 36 + "\\n" + "у" * 36
+    chunks = evs._ics_fold(escaped_line)
+    assert "".join(chunks) == escaped_line
+    assert all(chunk and not chunk.endswith("\\") for chunk in chunks)
+
+    # Без дня похода ни ссылки, ни файла: класть в календарь нечего.
+    assert evs.google_calendar_url(Event(title="Пустое", start_date=day)) == ""
+    assert evs.build_ics(Event(title="Пустое", start_date=day)) == ""
+
+
+@pytest.mark.asyncio
+async def test_visit_file_is_served_as_calendar(client, db):
+    """Файл .ics отдаётся как календарь: с названием мероприятия в имени."""
+    await client.post(
+        "/api/events/create",
+        data=_form(
+            title="Любовь — это...",
+            end_date=(TODAY + timedelta(days=6)).isoformat(),
+        ),
+    )
+    event = (await _events(db))[0]
+    await client.post(
+        f"/api/events/{event.id}/visit",
+        data={"visit_date": (TODAY + timedelta(days=2)).isoformat(), "board": "1"},
+    )
+
+    response = await client.get(f"/events/{event.id}/visit.ics")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/calendar")
+    assert "attachment" in response.headers["content-disposition"]
+    assert "BEGIN:VALARM" in response.text
+    assert "TRIGGER:-PT24H" in response.text
+
+
+@pytest.mark.asyncio
+async def test_visit_file_without_booking_is_404(client, db):
+    """Без брони файл не отдаём: сначала «Иду» и день, потом календарь."""
+    await client.post("/api/events/create", data=_form())
+    event = (await _events(db))[0]
+
+    response = await client.get(f"/events/{event.id}/visit.ics")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_visit_from_dashboard_updates_board_and_week_block(client, db):
+    """Бронь с дашборда обновляет и витрину, и блок недели."""
+    await client.post(
+        "/api/events/create",
+        data=_form(end_date=(TODAY + timedelta(days=6)).isoformat()),
+    )
+    event = (await _fresh_events())[0]
+
+    response = await client.post(
+        f"/api/events/{event.id}/visit",
+        data={
+            "visit_date": (TODAY + timedelta(days=2)).isoformat(),
+            "board": "1",
+            "month": "",
+            "day": "",
+        },
+    )
+    assert response.status_code == 200
+    assert "events-week-block" in response.text
+    assert "events-board" in response.text
 
 
 # ---------------------------------------------------------------- диапазоны
@@ -248,14 +456,18 @@ async def test_month_grid_marks_every_day_of_range(client, db):
 
 @pytest.mark.asyncio
 async def test_grid_state_prefers_going(client, db):
-    """Если в дне есть «иду» и «не иду», день помечается как «иду»."""
+    """День с забронированным мероприятием помечается как «иду»."""
     month = date(2026, 10, 1)
     going_day = date(2026, 10, 7).isoformat()
     await client.post("/api/events/create", data=_form(title="Пойду", start_date=going_day))
-    await client.post("/api/events/create", data=_form(title="Не пойду", start_date=going_day))
+    await client.post("/api/events/create", data=_form(title="Пока без брони", start_date=going_day))
     first, second = await _events(db)
-    await client.post(f"/api/events/{first.id}/status", data={"value": STATUS_GOING})
-    await client.post(f"/api/events/{second.id}/status", data={"value": STATUS_NOT_GOING})
+    await client.post(
+        f"/api/events/{first.id}/visit",
+        data={"visit_date": going_day, "visit_time": "14:00"},
+    )
+    # Второе мероприятие осталось без отметки: «не иду» больше не существует.
+    assert second.status == STATUS_NONE
 
     # Свежая сессия: в сессии теста статусы ещё прежние, и день выглядел бы
     # «без отметки» — проверка ловила бы не логику, а снимок.
@@ -406,6 +618,8 @@ def test_relative_and_range_labels():
         title="Выставка",
         start_date=today - timedelta(days=1),
         end_date=today + timedelta(days=4),
+        visit_date=today,
+        visit_time="14:00",
         status=STATUS_GOING,
     )
     view = evs.event_view(event, today)
@@ -413,6 +627,10 @@ def test_relative_and_range_labels():
     assert view["when"] == "идёт до 16 окт"
     assert view["period_hint"] == "осталось 4 дня"
     assert view["status_label"] == "Иду"
+    # Поход важнее даты открытия: «иду 12 окт, 14:00» и день похода в блоке недели.
+    assert view["has_visit"] is True
+    assert view["visit_label"] == "12 окт, 14:00"
+    assert view["visit_day_label"] == "Пн, 12 окт"
 
     last_day = Event(title="Последний день", start_date=today, end_date=today, status=STATUS_NONE)
     assert evs.event_view(last_day, today)["period_hint"] == "сегодня"
