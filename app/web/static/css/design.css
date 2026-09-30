@@ -1872,11 +1872,19 @@ h3,
 
 .ev-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
     padding: 0.45rem 0.55rem;
     border-radius: 0.6rem;
     background: rgba(255, 255, 255, 0.03);
+}
+
+/* Кнопки действий на компактной строке — на строку ниже: см. .ev-week-row. */
+.ev-row > .ev-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.45rem;
 }
 
 .ev-row.is-past { opacity: 0.55; }
@@ -2204,6 +2212,7 @@ h3,
 
 .ev-week-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
     gap: 0.5rem;
     padding: 0.5rem 0.6rem;
@@ -2255,6 +2264,18 @@ h3,
 
 .ev-week-row__range { color: #fbbf24; }
 .ev-week-row__hint { color: #a8a29e; }
+
+/* Кнопки действий на компактных строках: их четыре (отметка, две ссылки в
+   календарь, отмена) — в один ряд с названием они не влезают, и название
+   сжималось до одной буквы на строку. Переносим действия на строку ниже: на
+   любом экране тело строки занимает всю ширину. */
+.ev-week-row > .ev-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.45rem;
+    margin-top: 0.15rem;
+    padding-left: 0;
+}
 
 @media (max-width: 43rem) {
     .ev-month__grid { gap: 0.15rem; }
