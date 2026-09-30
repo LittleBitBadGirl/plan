@@ -20,3 +20,4 @@ from .investment import InvestmentSnapshot, InvestmentFlow
 from .manager import Manager, ManagerFeedback
 from .offline import OfflineAction, OfflineConflict
 from .achievement import Achievement
+from .event import Event

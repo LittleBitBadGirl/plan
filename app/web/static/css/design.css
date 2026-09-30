@@ -1217,3 +1217,977 @@ h3,
         opacity: 1 !important;
     }
 }
+
+/* --- мероприятия (/events) ---------------------------------------------- */
+/* Три цвета на всю доску: «иду» — зелёный, «без отметки» — янтарный,
+   «не иду» — серый. Период (выставка) рисуется полосой через свои дни. */
+
+.ev-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.ev-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.ev-head__title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.ev-head__lead {
+    margin-top: 0.15rem;
+    color: #a8a29e;
+    font-size: 0.85rem;
+    max-width: 46rem;
+}
+
+.ev-head__stat {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    padding: 0.5rem 0.9rem;
+    border: 1px solid #44403c;
+    border-radius: 0.75rem;
+    background: #14141a;
+}
+
+.ev-head__stat-num {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #fbbf24;
+    font-variant-numeric: tabular-nums;
+}
+
+.ev-head__stat-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #78716c;
+    font-weight: 700;
+}
+
+/* Строка добавления: ссылка и две кнопки в одну строку */
+.ev-add {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.6rem;
+    border: 1px solid #44403c;
+    border-radius: 0.75rem;
+    background: #1c1917;
+}
+
+.ev-add__input {
+    flex: 1 1 18rem;
+    min-width: 0;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid #44403c;
+    border-radius: 0.6rem;
+    background: #0c0a09;
+    color: #e7e5e4;
+    font-size: 0.85rem;
+}
+
+.ev-add__input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.ev-add__go,
+.ev-add__manual {
+    flex: 0 0 auto;
+    padding: 0.55rem 1rem;
+    border-radius: 0.6rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+
+.ev-add__go {
+    background: var(--accent);
+    color: #fff;
+}
+
+.ev-add__go:hover {
+    background: #b45309;
+}
+
+.ev-add__manual {
+    background: transparent;
+    border-color: #57534e;
+    color: #e7e5e4;
+}
+
+.ev-add__manual:hover {
+    border-color: var(--accent);
+    color: #fcd34d;
+}
+
+/* Слот формы: пока пусто — не занимает места */
+.ev-form-slot:empty {
+    display: none;
+}
+
+.ev-board {
+    display: grid;
+    gap: 1.25rem;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+}
+
+@media (min-width: 1100px) {
+    /* Слева месячная сетка, справа выбранный день. Списки — на всю ширину. */
+    .ev-board {
+        grid-template-columns: minmax(0, 2.2fr) minmax(19rem, 1fr);
+    }
+    .ev-panel--upcoming,
+    .ev-past {
+        grid-column: 1 / -1;
+    }
+}
+
+.ev-card {
+    background: #14141a;
+    border: 1px solid var(--line);
+    border-radius: 0.9rem;
+    padding: 1rem;
+}
+
+.ev-month__nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.9rem;
+}
+
+.ev-nav {
+    padding: 0.45rem 0.8rem;
+    border: 1px solid #44403c;
+    border-radius: 0.6rem;
+    background: #1c1917;
+    color: #d6d3d1;
+    font-size: 0.8rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.ev-nav:hover {
+    border-color: var(--accent);
+    color: #fcd34d;
+}
+
+.ev-month__title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #fff;
+    text-align: center;
+}
+
+.ev-month__weekdays,
+.ev-month__grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.25rem;
+}
+
+.ev-month__weekdays span {
+    text-align: center;
+    padding: 0.35rem 0;
+    font-size: 11px;
+    color: #78716c;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+}
+
+.ev-day {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    min-height: 4rem;
+    padding: 0.35rem 0.4rem;
+    border: 1px solid transparent;
+    border-radius: 0.6rem;
+    background: rgba(255, 255, 255, 0.02);
+    color: #d6d3d1;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+}
+
+.ev-day:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.ev-day--void {
+    background: transparent;
+    cursor: default;
+}
+
+.ev-day__num {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.ev-day__mark {
+    font-size: 11px;
+    line-height: 1;
+}
+
+.ev-day__count {
+    font-size: 11px;
+    color: #a8a29e;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Полоса периода: выставка «идёт» и в этот день */
+.ev-day__bar {
+    position: absolute;
+    left: 0.25rem;
+    right: 0.25rem;
+    bottom: 0.2rem;
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(251, 191, 36, 0.5);
+}
+
+.ev-day.is-today {
+    border-color: var(--accent);
+    background: rgba(217, 119, 6, 0.12);
+}
+
+.ev-day.is-today .ev-day__num {
+    color: #fbbf24;
+}
+
+.ev-day.is-selected {
+    border-color: #a855f7;
+    background: rgba(168, 85, 247, 0.16);
+}
+
+.ev-day.is-past .ev-day__num {
+    color: #78716c;
+}
+
+.ev-day--going .ev-day__mark { color: #34d399; }
+.ev-day--none .ev-day__mark { color: #fbbf24; }
+.ev-day--not_going .ev-day__mark { color: #78716c; }
+
+.ev-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 1.1rem;
+    margin-top: 1rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--line);
+    font-size: 11px;
+    color: #78716c;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+}
+
+.ev-legend__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.ev-legend__box {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 0.2rem;
+}
+
+.ev-legend__box--today {
+    background: rgba(217, 119, 6, 0.2);
+    border: 1px solid var(--accent);
+}
+
+.ev-legend__box--selected {
+    background: rgba(168, 85, 247, 0.2);
+    border: 1px solid #a855f7;
+}
+
+.ev-legend__box--range {
+    background: transparent;
+    border: 1px solid transparent;
+    border-bottom: 3px solid rgba(251, 191, 36, 0.5);
+    border-radius: 0;
+}
+
+.ev-legend__dot {
+    font-size: 0.9rem;
+    line-height: 1;
+}
+
+.ev-legend__dot--going { color: #34d399; }
+.ev-legend__dot--none { color: #fbbf24; }
+.ev-legend__dot--no { color: #78716c; }
+
+.ev-panel__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-bottom: 0.75rem;
+}
+
+.ev-panel__title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.ev-panel__meta {
+    font-size: 11px;
+    font-weight: 700;
+    color: #a8a29e;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 999px;
+    padding: 0.05rem 0.5rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.ev-empty {
+    color: #78716c;
+    font-size: 0.85rem;
+}
+
+.ev-empty a {
+    color: #fbbf24;
+}
+
+.ev-cards {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(21rem, 1fr));
+}
+
+@media (max-width: 43rem) {
+    .ev-cards { grid-template-columns: 1fr; }
+}
+
+.ev-card-item {
+    display: flex;
+    gap: 0.85rem;
+    padding: 0.85rem;
+    border: 1px solid #44403c;
+    border-left-width: 3px;
+    border-radius: 0.8rem;
+    background: #1c1917;
+}
+
+.ev-card-item--going { border-left-color: #34d399; }
+.ev-card-item--none { border-left-color: #fbbf24; }
+.ev-card-item--not_going { border-left-color: #78716c; }
+.ev-card-item.is-past { opacity: 0.6; }
+
+.ev-card-item__pic {
+    flex: 0 0 7.5rem;
+    height: 5.5rem;
+    border-radius: 0.6rem;
+    overflow: hidden;
+    background: #0c0a09;
+}
+
+.ev-card-item__pic img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.ev-card-item__body {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ev-card-item__top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 11px;
+    color: #a8a29e;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.ev-card-item__date { color: #d6d3d1; }
+
+.ev-card-item__range {
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.12);
+    border-radius: 0.4rem;
+    padding: 0.05rem 0.4rem;
+}
+
+.ev-card-item__hint { color: #78716c; }
+
+.ev-card-item__title {
+    margin-top: 0.3rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.3;
+    word-break: break-word;
+}
+
+.ev-card-item__title a { color: inherit; text-decoration: none; }
+.ev-card-item__title a:hover { color: #fcd34d; }
+
+.ev-card-item__place {
+    margin-top: 0.25rem;
+    font-size: 0.8rem;
+    color: #a8a29e;
+}
+
+.ev-card-item__text {
+    margin-top: 0.35rem;
+    font-size: 0.8rem;
+    color: #a8a29e;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.ev-card-item__foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: 0.7rem;
+}
+
+.ev-card-item__tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.ev-tool {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.6rem;
+    border: 1px solid #44403c;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: #a8a29e;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.ev-tool:hover {
+    border-color: var(--accent);
+    color: #fcd34d;
+}
+
+.ev-tool--danger:hover {
+    border-color: #b91c1c;
+    color: #f87171;
+}
+
+.ev-tool-form { display: inline-flex; margin: 0; }
+
+.ev-actions {
+    display: inline-flex;
+    gap: 0.35rem;
+    flex: 0 0 auto;
+}
+
+.ev-status {
+    padding: 0.3rem 0.6rem;
+    border: 1px solid #44403c;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: #a8a29e;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.ev-status--going:hover { border-color: #34d399; color: #34d399; }
+.ev-status--no:hover { border-color: #78716c; color: #d6d3d1; }
+
+.ev-status--going.is-on {
+    background: rgba(16, 185, 129, 0.18);
+    border-color: #34d399;
+    color: #6ee7b7;
+}
+
+.ev-status--no.is-on {
+    background: rgba(120, 113, 108, 0.2);
+    border-color: #78716c;
+    color: #d6d3d1;
+}
+
+/* Переключатель статуса в форме */
+.ev-form__status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.ev-form__status .ev-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.8rem;
+}
+
+.ev-form__status .ev-status input { accent-color: var(--accent); }
+
+.ev-form__status .ev-status--going.is-on {
+    background: rgba(16, 185, 129, 0.18);
+    border-color: #34d399;
+    color: #6ee7b7;
+}
+
+.ev-form__status .ev-status--none.is-on {
+    background: rgba(251, 191, 36, 0.14);
+    border-color: #fbbf24;
+    color: #fcd34d;
+}
+
+.ev-form__status .ev-status--not_going.is-on {
+    background: rgba(120, 113, 108, 0.2);
+    border-color: #78716c;
+    color: #d6d3d1;
+}
+
+.ev-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.ev-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.55rem;
+    border-radius: 0.6rem;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.ev-row.is-past { opacity: 0.55; }
+
+.ev-row__dot {
+    flex: 0 0 auto;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 999px;
+    background: #fbbf24;
+}
+
+.ev-row--going .ev-row__dot { background: #34d399; }
+.ev-row--not_going .ev-row__dot { background: #57534e; }
+
+.ev-row__main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.ev-row__title {
+    font-size: 0.85rem;
+    color: #e7e5e4;
+    word-break: break-word;
+}
+
+.ev-row__title a { color: inherit; text-decoration: none; }
+.ev-row__title a:hover { color: #fcd34d; }
+
+.ev-row__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem 0.6rem;
+    font-size: 11px;
+    color: #78716c;
+}
+
+.ev-row__range { color: #fbbf24; }
+
+.ev-past__summary {
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #a8a29e;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.ev-past__summary:hover { color: #d6d3d1; }
+.ev-past .ev-rows { margin-top: 0.7rem; }
+
+/* Форма мероприятия */
+.ev-form {
+    background: #14141a;
+    border: 1px solid #44403c;
+    border-radius: 0.9rem;
+    padding: 1rem;
+}
+
+.ev-form__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-bottom: 0.8rem;
+}
+
+.ev-form__title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.ev-form__close {
+    border: 0;
+    background: transparent;
+    color: #78716c;
+    font-size: 1.3rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.ev-form__close:hover { color: #f87171; }
+
+.ev-form__error {
+    margin-bottom: 0.7rem;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid #b91c1c;
+    border-radius: 0.6rem;
+    background: rgba(185, 28, 28, 0.15);
+    color: #fca5a5;
+    font-size: 0.85rem;
+}
+
+.ev-form__note {
+    margin-bottom: 0.7rem;
+    color: #a8a29e;
+    font-size: 0.8rem;
+}
+
+.ev-form__grid {
+    display: grid;
+    gap: 0.7rem;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+}
+
+.ev-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.ev-field--wide { grid-column: 1 / -1; }
+
+.ev-field > span {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+    color: #78716c;
+}
+
+.ev-field input[type="text"],
+.ev-field input[type="date"],
+.ev-field textarea {
+    width: 100%;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid #44403c;
+    border-radius: 0.6rem;
+    background: #0c0a09;
+    color: #e7e5e4;
+    font-size: 0.85rem;
+    font-family: inherit;
+}
+
+.ev-field input:focus,
+.ev-field textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.ev-field textarea { resize: vertical; }
+
+.ev-image {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.6rem;
+    border: 1px dashed #57534e;
+    border-radius: 0.6rem;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.ev-image__preview {
+    flex: 0 0 6rem;
+    height: 4.2rem;
+    object-fit: cover;
+    border-radius: 0.5rem;
+}
+
+.ev-image input[type="file"] {
+    flex: 1 1 14rem;
+    min-width: 0;
+    font-size: 0.8rem;
+    color: #a8a29e;
+}
+
+.ev-image__hint {
+    flex: 1 1 100%;
+    font-size: 11px;
+    color: #78716c;
+}
+
+.ev-image__pasted {
+    flex: 1 1 100%;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.ev-image__thumb-wrap {
+    position: relative;
+    display: inline-flex;
+}
+
+.ev-image__thumb {
+    width: 4.5rem;
+    height: 3.2rem;
+    object-fit: cover;
+    border-radius: 0.4rem;
+    border: 1px solid #44403c;
+}
+
+.ev-image__thumb-remove {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 1.1rem;
+    height: 1.1rem;
+    border: 0;
+    border-radius: 999px;
+    background: #b91c1c;
+    color: #fff;
+    font-size: 0.8rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.ev-image__remove {
+    flex: 1 1 100%;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: #a8a29e;
+}
+
+.ev-form__foot {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.9rem;
+}
+
+.ev-form__save {
+    padding: 0.55rem 1.2rem;
+    border: 0;
+    border-radius: 0.6rem;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.ev-form__save:hover { background: #b45309; }
+
+.ev-form__cancel {
+    padding: 0.55rem 0.9rem;
+    border: 1px solid #57534e;
+    border-radius: 0.6rem;
+    background: transparent;
+    color: #d6d3d1;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+/* Блок «Мероприятия» на дашборде: заголовок — ссылка в календарь */
+.ev-week {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+
+.ev-week__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    padding-bottom: 0.45rem;
+    border-bottom: 1px solid var(--line);
+}
+
+.ev-week__title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+}
+
+.ev-week__label {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.ev-week__title:hover .ev-week__label { color: #fcd34d; }
+
+.ev-week__count {
+    font-size: 11px;
+    font-weight: 700;
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.14);
+    border-radius: 999px;
+    padding: 0.05rem 0.45rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.ev-week__all {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #fbbf24;
+    text-decoration: none;
+    border-bottom: 1px dashed #b45309;
+    white-space: nowrap;
+}
+
+.ev-week__all:hover { color: #fcd34d; }
+
+.ev-week__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.ev-week__more {
+    font-size: 11px;
+    color: #a8a29e;
+    text-decoration: none;
+}
+
+.ev-week__more:hover { color: #fcd34d; }
+
+.ev-week__empty {
+    font-size: 0.8rem;
+    color: #78716c;
+}
+
+.ev-week__empty a { color: #fbbf24; }
+
+.ev-week-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid #44403c;
+    border-left-width: 3px;
+    border-radius: 0.6rem;
+    background: #1c1917;
+}
+
+.ev-week-row--going { border-left-color: #34d399; }
+.ev-week-row--none { border-left-color: #fbbf24; }
+.ev-week-row--not_going { border-left-color: #57534e; }
+.ev-week-row.is-now { background: #221f1d; }
+
+.ev-week-row__day {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #a8a29e;
+    white-space: nowrap;
+    padding-top: 0.1rem;
+}
+
+.ev-week-row__body {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.ev-week-row__title {
+    font-size: 0.85rem;
+    color: #e7e5e4;
+    word-break: break-word;
+}
+
+.ev-week-row__title a { color: inherit; text-decoration: none; }
+.ev-week-row__title a:hover { color: #fcd34d; }
+
+.ev-week-row__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.15rem 0.55rem;
+    font-size: 11px;
+    color: #78716c;
+}
+
+.ev-week-row__range { color: #fbbf24; }
+.ev-week-row__hint { color: #a8a29e; }
+
+@media (max-width: 43rem) {
+    .ev-month__grid { gap: 0.15rem; }
+    .ev-day { min-height: 3.4rem; padding: 0.25rem; }
+    .ev-week-row { flex-wrap: wrap; }
+    .ev-week-row__day { flex-basis: 100%; }
+    .ev-card-item__pic { flex-basis: 5.5rem; height: 4.2rem; }
+    /* Статус — кнопка под палец: ниже 38px по ней не попасть, а промах
+       переключает чужое мероприятие. */
+    .ev-status { min-height: 2.4rem; padding: 0.45rem 0.75rem; }
+    .ev-actions { gap: 0.5rem; }
+    .ev-nav { min-height: 2.6rem; }
+    /* «Открыть / Правка / ×» — тоже под палец: 28px промахиваются по соседней
+       кнопке, а рядом удаление. */
+    .ev-tool { min-height: 2.4rem; padding: 0.45rem 0.7rem; }
+}

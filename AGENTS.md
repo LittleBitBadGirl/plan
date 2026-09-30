@@ -44,6 +44,7 @@ plan/
 │   │       ├── recurring.py # /recurring
 │   │       ├── categories.py
 │   │       ├── reading.py
+│   │       ├── events.py    # /events — мероприятия: календарь, ближайшая неделя
 │   │       └── career.py
 │   │   ├── templates/       # Jinja2: base.html, dashboard.html, finance.html...
 │   │   │   └── partials/    # HTMX-компоненты: task_card, subtask_*, macros...

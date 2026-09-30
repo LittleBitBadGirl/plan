@@ -1,0 +1,57 @@
+{# Сетка месяца. Периоды (выставки) раскрашивают все свои дни, поэтому в
+   календаре видно полосу, а не одну точку в день открытия. #}
+<section class="ev-card ev-month">
+    <div class="ev-month__nav">
+        <button type="button" class="ev-nav"
+                hx-get="/events/board?month={{ grid.prev_query }}"
+                hx-target="#events-board" hx-swap="outerHTML">
+            ← Назад
+        </button>
+        <h2 class="ev-month__title">{{ grid.label }}</h2>
+        <button type="button" class="ev-nav"
+                hx-get="/events/board?month={{ grid.next_query }}"
+                hx-target="#events-board" hx-swap="outerHTML">
+            Далее →
+        </button>
+    </div>
+
+    <div class="ev-month__weekdays">
+        {% for name in grid.weekdays %}
+        <span>{{ name }}</span>
+        {% endfor %}
+    </div>
+
+    <div class="ev-month__grid">
+        {% for _ in range(grid.start_weekday) %}
+        <span class="ev-day ev-day--void"></span>
+        {% endfor %}
+
+        {% for cell in grid.days %}
+        <button type="button"
+                class="ev-day
+                       {% if cell.has_events %}ev-day--{{ cell.state }}{% endif %}
+                       {% if cell.is_today %}is-today{% endif %}
+                       {% if cell.is_selected %}is-selected{% endif %}
+                       {% if cell.is_past %}is-past{% endif %}"
+                hx-get="/events/board?month={{ grid.year }}-{{ '%02d'|format(grid.month) }}&day={{ cell.date_iso }}"
+                hx-target="#events-board" hx-swap="outerHTML"
+                {% if cell.titles %}title="{{ cell.titles }}"{% endif %}>
+            <span class="ev-day__num">{{ cell.day_num }}</span>
+            {% if cell.has_range %}<span class="ev-day__bar" aria-hidden="true"></span>{% endif %}
+            {% if cell.has_events %}
+            <span class="ev-day__mark" aria-hidden="true">●</span>
+            <span class="ev-day__count">{{ cell.count }}</span>
+            {% endif %}
+        </button>
+        {% endfor %}
+    </div>
+
+    <div class="ev-legend">
+        <span class="ev-legend__item"><span class="ev-legend__box ev-legend__box--today"></span>Сегодня</span>
+        <span class="ev-legend__item"><span class="ev-legend__box ev-legend__box--selected"></span>Выбрано</span>
+        <span class="ev-legend__item"><span class="ev-legend__dot ev-legend__dot--going"></span>Иду</span>
+        <span class="ev-legend__item"><span class="ev-legend__dot ev-legend__dot--none"></span>Без отметки</span>
+        <span class="ev-legend__item"><span class="ev-legend__dot ev-legend__dot--no"></span>Не иду</span>
+        <span class="ev-legend__item"><span class="ev-legend__box ev-legend__box--range"></span>Идёт несколько дней</span>
+    </div>
+</section>

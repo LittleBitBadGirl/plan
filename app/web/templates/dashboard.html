@@ -362,8 +362,11 @@
                     <p class="text-yellow-300">{% if ai_warning %}{{ ai_warning }}{% endif %}</p>
                 </div>
                 {% include "partials/calendar_column_blocks.html" %}
+                {# Мероприятия: заметный переход в календарь мероприятий и то, что
+                   попадает в ближайшую неделю (длящаяся выставка видна с датой
+                   окончания). Блок сам себя подменяет после смены статуса. #}
+                {% include "partials/events_week_block.html" %}
             </div>
-
 
             <!-- Трекеры: ежедневные отметки — в правой колонке, рядом с календарём -->
             <div class="order-30 lg:order-none space-y-4 dash-m-4">
@@ -397,7 +400,7 @@
                                         title="История отметок">
                                     История
                                 </button>
-                                <form action="/api/habits/{{ h_item.habit.id }}/next-cycle" method="POST" class="inline-flex items-center m-0" onsubmit="return confirm('Начать следующие 30 дней?')">
+                                <form action="/api/habits/{{ h_item.habit.id }}/next-cycle" method="POST" class="inline-flex items-center m-0" onsubmit="return evHabitNextCycle(this)">
                                     <button type="submit" class="inline-flex items-center justify-center h-6 px-2 tracker-action-soft text-[11px] leading-none bg-amber-900/20 text-amber-400 rounded border border-amber-700/30 hover:bg-amber-700 hover:text-white transition-all font-bold uppercase whitespace-nowrap opacity-0 group-hover:opacity-100">
                                         След. 30 дней
                                     </button>
@@ -591,6 +594,23 @@ async function togglePeriodDay(dateStr, btn) {
     }
 }
 
+// «След. 30 дней»: подтверждение и блокировка кнопки до ответа сервера.
+// Двойной сабмит раньше уводил цикл на два вперёд: второй запрос читал старое
+// состояние до commit. disable ставим в следующий тик, чтобы не отменить отправку.
+function evHabitNextCycle(form) {
+    if (form.dataset.busy === '1') return false;
+    if (!confirm('Начать следующие 30 дней?')) return false;
+    form.dataset.busy = '1';
+    setTimeout(function () {
+        const button = form.querySelector('button[type=submit]');
+        if (button) {
+            button.disabled = true;
+            button.style.opacity = '1';
+        }
+    }, 0);
+    return true;
+}
+
 async function toggleHabit(habitId, dateStr, btn) {
     try {
         const response = await fetch('/api/habits/toggle', {
@@ -603,29 +623,38 @@ async function toggleHabit(habitId, dateStr, btn) {
                 date: dateStr
             })
         });
-        
-        const data = await response.json();
-        if (data.status === 'success') {
-            if (data.action === 'added') {
-                btn.classList.remove('bg-dark-700', 'border-dark-500', 'text-gray-600');
-                btn.classList.add('bg-accent', 'border-accent', 'text-white');
-            } else {
-                btn.classList.remove('bg-accent', 'border-accent', 'text-white');
-                btn.classList.add('bg-dark-700', 'border-dark-500', 'text-gray-600');
-            }
-            // Update progress bar and text in the same card
-            const card = btn.closest('.group');
-            const progressText = card.querySelector('.text-accent');
-            const progressBar = card.querySelector('.bg-accent.h-full');
-            
-            let [current, total] = progressText.innerText.split('/').map(Number);
-            current = (data.action === 'added') ? current + 1 : current - 1;
-            
-            progressText.innerText = `${current}/${total}`;
-            progressBar.style.width = `${Math.round(current / total * 100)}%`;
+
+        // Отказ сервера молча гасить нельзя: «нажал — и ничего не произошло»
+        // выглядит как сломанный трекер. Раньше так и было, когда отметка дня,
+        // уже помеченного в прошлом цикле, падала на UNIQUE (habit_id, date).
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data || data.status !== 'success') {
+            // Текст сервера важнее общего: он объясняет, что делать («день не
+            // входит в текущий цикл»), а «обнови страницу» Вера и так знает.
+            alert((data && data.detail) ? data.detail : 'Отметка не сохранилась. Обнови страницу и попробуй ещё раз.');
+            return;
         }
+
+        if (data.action === 'added') {
+            btn.classList.remove('bg-dark-700', 'border-dark-500', 'text-gray-600');
+            btn.classList.add('bg-accent', 'border-accent', 'text-white');
+        } else {
+            btn.classList.remove('bg-accent', 'border-accent', 'text-white');
+            btn.classList.add('bg-dark-700', 'border-dark-500', 'text-gray-600');
+        }
+        // Update progress bar and text in the same card
+        const card = btn.closest('.group');
+        const progressText = card.querySelector('.text-accent');
+        const progressBar = card.querySelector('.bg-accent.h-full');
+
+        let [current, total] = progressText.innerText.split('/').map(Number);
+        current = (data.action === 'added') ? current + 1 : current - 1;
+
+        progressText.innerText = `${current}/${total}`;
+        progressBar.style.width = `${Math.round(current / total * 100)}%`;
     } catch (error) {
         console.error('Error toggling habit:', error);
+        alert('Отметка не сохранилась. Проверь связь и попробуй ещё раз.');
     }
 }
 

@@ -9,6 +9,7 @@ from app.web.routes import (
     career,
     categories,
     dashboard,
+    events,
     finance,
     managers,
     portfolio,
@@ -22,6 +23,7 @@ from app.web.routes import (
 router = APIRouter(tags=["web"])
 
 router.include_router(dashboard.router)
+router.include_router(events.router)
 router.include_router(tasks.router)
 router.include_router(backlog.router)
 router.include_router(categories.router)

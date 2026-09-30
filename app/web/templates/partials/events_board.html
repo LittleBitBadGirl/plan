@@ -1,0 +1,27 @@
+{# Доска мероприятий целиком: месяц, выбранный день, «ближайшие» и «прошедшие».
+   Один корневой блок — его же подменяет htmx при переключении месяца, выборе
+   дня и смене статуса. В ответе на изменение приезжает ещё раз с
+   hx-swap-oob, чтобы обновился и дашборд (или наоборот — блок недели). #}
+<div id="events-board" class="ev-board"{% if ev_oob %} hx-swap-oob="true"{% endif %}>
+    {% include "partials/events_month.html" %}
+
+    {% include "partials/events_day.html" %}
+
+    <section class="ev-panel ev-panel--upcoming">
+        <div class="ev-panel__head">
+            <h2 class="ev-panel__title">Ближайшие</h2>
+            <span class="ev-panel__meta">{{ upcoming_count }}</span>
+        </div>
+        {% if upcoming %}
+        <div class="ev-cards">
+            {% for item in upcoming %}
+                {% include "partials/event_card.html" %}
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="ev-empty">Пока пусто. Вставь ссылку сверху — карточка соберётся сама.</p>
+        {% endif %}
+    </section>
+
+    {% include "partials/events_past.html" %}
+</div>

@@ -1,0 +1,19 @@
+{# Строка мероприятия в блоке на дашборде: день, название, до какого числа
+   идёт (для выставки), решение. #}
+<div class="ev-week-row ev-week-row--{{ item.status }}{% if item.is_now %} is-now{% endif %}">
+    <span class="ev-week-row__day">{{ item.day_label }}</span>
+    <span class="ev-week-row__body">
+        <span class="ev-week-row__title">
+            {% if item.url %}
+            <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>
+            {% else %}{{ item.title }}{% endif %}
+        </span>
+        <span class="ev-week-row__meta">
+            {% if item.start_time %}<span>{{ item.start_time }}</span>{% endif %}
+            {% if item.is_range %}<span class="ev-week-row__range">до {{ item.ends_label }}</span>{% endif %}
+            {% if item.period_hint %}<span class="ev-week-row__hint">{{ item.period_hint }}</span>{% endif %}
+            {% if item.location %}<span class="ev-week-row__place">{{ item.location }}</span>{% endif %}
+        </span>
+    </span>
+    {% include "partials/event_status.html" %}
+</div>

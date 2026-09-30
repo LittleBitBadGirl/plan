@@ -76,8 +76,28 @@ Auth: `Authorization: Bearer $API_TOKEN` для import.
 |---------|----------|
 | `/api/categories` | CRUD категорий |
 | `/api/recurring` | CRUD периодических, toggle, complete, for-date |
-| `/api/habits` | Привычки: create, toggle, archive, next-cycle |
+| `/api/habits` | Привычки: create, toggle, archive, next-cycle. Отметка принимается только внутри окна текущего цикла, иначе 409 |
 | `/api/period/toggle` | Трекер периода |
+
+---
+
+## Мероприятия (страница `/events`)
+
+Мероприятие — отдельная сущность, не задача и не встреча из календаря: у него может быть одна дата или диапазон (выставка идёт несколько дней).
+
+| Метод | URL | Описание |
+|-------|-----|----------|
+| GET | `/events` | Страница: календарь месяца, панель дня, ближайшие и прошедшие |
+| GET | `/events/board?month=YYYY-MM&day=YYYY-MM-DD` | Доска (месяц + выбранный день), ответ для htmx |
+| GET | `/events/new-form` | Пустая форма (ручное добавление) |
+| GET | `/events/{id}/form` | Форма правки с заполненными полями |
+| POST | `/api/events/preview` | Прочитать ссылку: название, описание, картинка, место, даты (OpenGraph + schema.org) |
+| POST | `/api/events/create` | Создать (поля + своя картинка) |
+| POST | `/api/events/{id}/update` | Обновить |
+| POST | `/api/events/{id}/status` | Статус: `going` («иду») / `not_going` («не иду») / `none` — снять отметку |
+| POST | `/api/events/{id}/delete` | Удалить |
+
+Статус меняется и с дашборда: в ответе приходят две OOB-вставки — доска (`partials/events_board.html`) и блок недели (`partials/events_week_block.html`), поэтому витрина и блок обновляются вместе.
 
 ---
 

@@ -10,6 +10,7 @@ from app.db.migrate import run_migrations
 from app.models import achievement as _ach  # noqa: F401
 from app.models import calendar_event as _ce  # noqa: F401
 from app.models import calendar_ignore_rule as _cir  # noqa: F401
+from app.models import event as _event  # noqa: F401
 from app.models import investment as _inv  # noqa: F401
 from app.models import manager as _mgr  # noqa: F401
 from app.models import offline as _offl  # noqa: F401
@@ -44,7 +45,7 @@ async def test_run_migrations_on_fresh_db():
                 text("SELECT version_num FROM alembic_version")
             )
             version = result.scalar_one()
-        assert version == "018_reading_format_document"
+        assert version == "020_events"
 
         sync = sqlite3.connect(db_path)
         task_cols = {row[1] for row in sync.execute("PRAGMA table_info(tasks)")}
@@ -88,6 +89,12 @@ async def test_run_migrations_on_fresh_db():
         achievement_indexes = {
             row[1] for row in sync.execute("PRAGMA index_list(achievements)")
         }
+        event_cols = {
+            row[1] for row in sync.execute("PRAGMA table_info(events)")
+        }
+        event_indexes = {
+            row[1] for row in sync.execute("PRAGMA index_list(events)")
+        }
         sync.close()
         assert "estimated_minutes" in task_cols
         assert "overdue_since" in task_cols
@@ -109,6 +116,21 @@ async def test_run_migrations_on_fresh_db():
         assert "achievements" in tables
         assert {"text", "sphere", "tag", "happened_on", "source", "is_archived"} <= achievement_cols
         assert "ix_achievements_sphere" in achievement_indexes
+        assert "events" in tables
+        assert {
+            "title",
+            "description",
+            "url",
+            "image_url",
+            "image_file",
+            "location",
+            "start_date",
+            "end_date",
+            "start_time",
+            "status",
+            "is_archived",
+        } <= event_cols
+        assert "ix_events_range" in event_indexes
 
         await engine.dispose()
 
@@ -150,7 +172,7 @@ async def test_achievements_migration_creates_table_itself():
         cols = {row[1] for row in sync.execute("PRAGMA table_info(achievements)")}
         sync.close()
 
-        assert version == "018_reading_format_document"
+        assert version == "020_events"
         assert "achievements" in tables
         assert {"text", "sphere", "is_archived", "created_at"} <= cols
 
@@ -303,5 +325,124 @@ async def test_reading_format_migration_renames_old_pdf_value():
             "PDF-статья": "статья",
             "не чтение": "разбор PDF",
         }, "повторный прогон миграции изменил данные"
+
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_habit_log_migration_replaces_legacy_unique_and_fixes_overlap():
+    """Миграция 019: в боевой базе осталось UNIQUE (habit_id, date).
+
+    Из-за него отметка дня, который уже отмечен в прошлом цикле, падала на
+    IntegrityError («день не отмечается»): сервер отдавал 500, а дашборд гасил
+    ошибку молча. Миграция пересобирает таблицу с ограничением по циклу и
+    убирает накопившийся нахлёст в данных.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = os.path.join(tmp, "habit_migrate.db")
+        url = f"sqlite+aiosqlite:///{db_path}"
+        engine = create_async_engine(url, connect_args={"check_same_thread": False})
+
+        # Старая таблица — как в боевой базе: колонка цикла есть, ограничение парное.
+        sync = sqlite3.connect(db_path)
+        sync.execute(
+            """
+            CREATE TABLE habit_logs (
+                id INTEGER NOT NULL,
+                habit_id INTEGER NOT NULL,
+                date DATE NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                cycle_number INTEGER DEFAULT 1,
+                PRIMARY KEY (id),
+                CONSTRAINT _habit_date_uc UNIQUE (habit_id, date),
+                FOREIGN KEY(habit_id) REFERENCES habits (id) ON DELETE CASCADE
+            )
+            """
+        )
+        sync.execute("CREATE INDEX ix_habit_logs_id ON habit_logs (id)")
+        sync.commit()
+        sync.close()
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        sync = sqlite3.connect(db_path)
+        # Привычка Веры: цикл 1 = 30.08–28.09, «След. 30 дней» нажали 28.09 —
+        # новый цикл стартовал в тот же день, день попал в оба цикла.
+        sync.execute(
+            "INSERT INTO habits (id, title, start_date, target_days, current_cycle, is_active, is_archived) "
+            "VALUES (8, 'не курю', '2026-09-28', 30, 2, 1, 0)"
+        )
+        sync.execute(
+            "INSERT INTO habit_logs (id, habit_id, cycle_number, date) VALUES (1, 8, 1, '2026-08-30')"
+        )
+        sync.execute(
+            "INSERT INTO habit_logs (id, habit_id, cycle_number, date) VALUES (2, 8, 1, '2026-09-28')"
+        )
+        sync.commit()
+        sync.close()
+
+        from app.config import settings
+
+        prev_url = settings.database_url
+        settings.database_url = url
+        try:
+            run_migrations()
+        finally:
+            settings.database_url = prev_url
+
+        sync = sqlite3.connect(db_path)
+        ddl = sync.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'habit_logs'"
+        ).fetchone()[0]
+        leftover = sync.execute(
+            "SELECT name FROM sqlite_master WHERE name = 'habit_logs_legacy'"
+        ).fetchall()
+        marks = sync.execute(
+            "SELECT id, habit_id, cycle_number, date FROM habit_logs ORDER BY id"
+        ).fetchall()
+        start_date = sync.execute("SELECT start_date FROM habits WHERE id = 8").fetchone()[0]
+        indexes = {row[1] for row in sync.execute("PRAGMA index_list(habit_logs)")}
+        version = sync.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+        sync.close()
+
+        assert "_habit_date_cycle_uc" in ddl, "ограничение не заменено на «по циклу»"
+        assert "_habit_date_uc" not in ddl
+        assert leftover == [], "временная таблица осталась в базе"
+        assert marks == [
+            (1, 8, 1, "2026-08-30"),
+            (2, 8, 1, "2026-09-28"),
+        ], "отметки потерялись при пересборке таблицы"
+        assert indexes >= {"ix_habit_logs_id", "ix_habit_logs_habit_cycle"}
+        assert version == "020_events"
+        assert start_date == "2026-09-29", "нахлёст не убран: цикл всё ещё начинается днём прошлого"
+
+        # Повторный прогон (контейнер перезапускается) ничего не меняет.
+        settings.database_url = url
+        try:
+            run_migrations()
+        finally:
+            settings.database_url = prev_url
+
+        sync = sqlite3.connect(db_path)
+        after_rerun = sync.execute(
+            "SELECT id, habit_id, cycle_number, date FROM habit_logs ORDER BY id"
+        ).fetchall()
+        start_after_rerun = sync.execute("SELECT start_date FROM habits WHERE id = 8").fetchone()[0]
+        sync.close()
+        assert after_rerun == marks, "повторный прогон миграции изменил отметки"
+        assert start_after_rerun == "2026-09-29", "повторный прогон сдвинул старт ещё раз"
+
+        # Главное: день, отмеченный в прошлом цикле, теперь отмечается и в новом.
+        sync = sqlite3.connect(db_path)
+        sync.execute(
+            "INSERT INTO habit_logs (habit_id, cycle_number, date) VALUES (8, 2, '2026-09-28')"
+        )
+        sync.commit()
+        same_day = sync.execute(
+            "SELECT COUNT(*) FROM habit_logs WHERE habit_id = 8 AND date = '2026-09-28'"
+        ).fetchone()[0]
+        sync.close()
+        assert same_day == 2, "день по-прежнему нельзя отметить в двух циклах"
 
         await engine.dispose()

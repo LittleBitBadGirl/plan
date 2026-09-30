@@ -1,0 +1,27 @@
+{# Блок «Мероприятия» на дашборде: заголовок ведёт в календарь, ниже — что
+   попадает в ближайшие семь дней (включая длящиеся выставки с датой
+   окончания). Корневой блок: сюда же приходит ответ на смену статуса. #}
+{% set ev_target = "#events-week-block" %}
+{% set ev_board_flag = "0" %}
+<div id="events-week-block" class="ev-week"{% if ev_oob %} hx-swap-oob="true"{% endif %}>
+    <div class="ev-week__head">
+        <a class="ev-week__title" href="/events">
+            <span class="ev-week__label">Мероприятия</span>
+            <span class="ev-week__count">{{ week_count }}</span>
+        </a>
+        <a class="ev-week__all" href="/events">календарь →</a>
+    </div>
+
+    {% if week_items %}
+    <div class="ev-week__list">
+        {% for item in week_items %}
+            {% include "partials/event_week_row.html" %}
+        {% endfor %}
+    </div>
+    {% if week_more %}
+    <a class="ev-week__more" href="/events">ещё {{ week_more }} — в календаре</a>
+    {% endif %}
+    {% else %}
+    <p class="ev-week__empty">На ближайшую неделю ничего нет. <a href="/events">Открыть календарь мероприятий</a></p>
+    {% endif %}
+</div>

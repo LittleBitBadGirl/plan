@@ -131,6 +131,13 @@ async def dashboard(request: Request):
         shopping_items = await load_active_shopping(db)
         reading_items = await load_active_reading(db)
 
+        # Мероприятия: блок «ближайшая неделя» в правой колонке и переход
+        # в календарь мероприятий. Считает сервис — тот же код, что отдаёт
+        # ответы на смену статуса.
+        from app.services.event_service import week_block as events_week_block
+
+        events_week = await events_week_block(db, today)
+
         # Менеджеры: блок обратной связи (рендер сервером, без hx-trigger load)
         from app.services.manager_feedback_service import build_widget_context
 
@@ -189,6 +196,7 @@ async def dashboard(request: Request):
         "calendar_personal_events": calendar_personal_events,
         "calendar_sync_active": calendar_sync_active(),
         "managers_widget": managers_widget,
+        **events_week,
     })
 
 

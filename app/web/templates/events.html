@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Мероприятия — Планировщик{% endblock %}
+
+{% block content %}
+{# Календарь мероприятий: месяц, день, «ближайшие» и «прошедшие» — на одной
+   странице. Всё, что меняет данные, отвечает блоком #events-board (или блоком
+   недели на дашборде) — см. app/web/routes/events.py. #}
+<div class="wide-page ev-page">
+    <div class="ev-head">
+        <div class="ev-head__text">
+            <h1 class="ev-head__title">Мероприятия</h1>
+            <p class="ev-head__lead">Куда я иду: конференции, выставки, лекции. Вставь ссылку — название, картинку и даты подтяну со страницы</p>
+        </div>
+        <div class="ev-head__stat">
+            <span class="ev-head__stat-num">{{ active_count }}</span>
+            <span class="ev-head__stat-label">впереди</span>
+        </div>
+    </div>
+
+    <form class="ev-add" onsubmit="return false">
+        <input class="ev-add__input" type="text" name="url" autocomplete="off"
+               placeholder="Вставь ссылку на мероприятие: https://...">
+        <button type="button" class="ev-add__go"
+                hx-post="/api/events/preview"
+                hx-include="closest .ev-add"
+                hx-target="#event-form-slot"
+                hx-swap="innerHTML"
+                onclick="evOpenForm()">
+            Загрузить
+        </button>
+        <button type="button" class="ev-add__manual"
+                hx-get="/events/new-form"
+                hx-target="#event-form-slot"
+                hx-swap="innerHTML"
+                onclick="evOpenForm()">
+            Заполнить руками
+        </button>
+    </form>
+
+    {# Слот формы: сюда приезжает пустая форма, форма с данными со страницы
+       или форма правки. #}
+    <div id="event-form-slot" class="ev-form-slot"></div>
+
+    {% include "partials/events_board.html" %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+/* Форма мероприятия живёт в слоте, то есть приходит через htmx — скрипты из
+   партиала не исполняются. Поэтому вся логика (открыть/закрыть, вставка скрина
+   из буфера) объявлена здесь, на странице. */
+function evOpenForm() {
+    var slot = document.getElementById('event-form-slot');
+    if (slot) slot.classList.add('is-open');
+}
+
+function evCloseForm() {
+    var slot = document.getElementById('event-form-slot');
+    if (!slot) return;
+    slot.classList.remove('is-open');
+    slot.innerHTML = '';
+    evResetPasted();
+}
+
+/* Сохранение прошло: сервер ставит заголовок HX-Trigger, по нему закрываем
+   форму. При ошибке заголовка нет — форма остаётся с текстом ошибки. */
+document.body.addEventListener('planner-event-saved', function () {
+    var slot = document.getElementById('event-form-slot');
+    if (!slot) return;
+    slot.classList.remove('is-open');
+    slot.innerHTML = '';
+    var add = document.querySelector('.ev-add__input');
+    if (add) add.value = '';
+    evResetPasted();
+});
+
+function evForm() {
+    return document.querySelector('#event-form-slot [data-ev-form]');
+}
+
+function evPasted(scope) {
+    if (!scope) return [];
+    if (!scope._evPasted) scope._evPasted = [];
+    return scope._evPasted.filter(Boolean);
+}
+
+function evResetPasted() {
+    var scope = evForm();
+    if (!scope) return;
+    scope._evPasted = [];
+    var preview = scope.querySelector('[data-ev-preview]');
+    if (preview) {
+        preview.innerHTML = '';
+        preview.style.display = 'none';
+    }
+    evSyncFiles(scope);
+}
+
+function evAddPasted(scope, files) {
+    if (!scope) return;
+    if (!scope._evPasted) scope._evPasted = [];
+    var preview = scope.querySelector('[data-ev-preview]');
+    files.forEach(function (file) {
+        var index = scope._evPasted.length;
+        scope._evPasted.push(file);
+        if (!preview) return;
+        var url = URL.createObjectURL(file);
+        var wrap = document.createElement('span');
+        wrap.className = 'ev-image__thumb-wrap';
+        var img = document.createElement('img');
+        img.className = 'ev-image__thumb';
+        img.src = url;
+        img.alt = 'скрин из буфера';
+        var remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'ev-image__thumb-remove';
+        remove.title = 'Убрать';
+        remove.textContent = '\u00d7';
+        remove.addEventListener('click', function () {
+            scope._evPasted[index] = null;
+            URL.revokeObjectURL(url);
+            wrap.remove();
+            if (preview && !preview.querySelector('.ev-image__thumb-wrap')) {
+                preview.style.display = 'none';
+            }
+            evSyncFiles(scope);
+        });
+        wrap.appendChild(img);
+        wrap.appendChild(remove);
+        preview.appendChild(wrap);
+        preview.style.display = 'flex';
+    });
+}
+
+document.addEventListener('paste', function (event) {
+    var scope = evForm();
+    if (!scope) return;
+    var items = (event.clipboardData && event.clipboardData.items) || [];
+    var files = [];
+    for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        if (item.kind !== 'file' || !item.type || item.type.indexOf('image/') !== 0) continue;
+        var blob = item.getAsFile();
+        if (!blob) continue;
+        var ext = (item.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+        files.push(new File([blob], 'clip_' + Date.now() + '_' + files.length + '.' + ext, { type: item.type }));
+    }
+    if (!files.length) return;
+    event.preventDefault();
+    evAddPasted(scope, files);
+    evSyncFiles(scope);
+});
+
+/* Файлы кладём в input.files сразу: htmx собирает FormData раньше, чем
+   срабатывает hx-on::before-request, «доклеить» файл в последний момент нельзя. */
+function evSyncFiles(scope) {
+    if (!scope || typeof DataTransfer === 'undefined') return;
+    var input = scope.querySelector('[data-ev-files]');
+    if (!input) return;
+    var transfer = new DataTransfer();
+    (scope._evPicked || []).forEach(function (file) { transfer.items.add(file); });
+    evPasted(scope).forEach(function (file) { transfer.items.add(file); });
+    input.files = transfer.files;
+}
+
+document.addEventListener('change', function (event) {
+    var input = event.target;
+    if (!input || !input.matches || !input.matches('[data-ev-files]')) return;
+    var scope = input.closest('[data-ev-form]');
+    if (scope) {
+        scope._evPicked = Array.prototype.slice.call(input.files);
+        evSyncFiles(scope);
+    }
+});
+
+document.addEventListener('click', function (event) {
+    var btn = (event.target && event.target.closest) ? event.target.closest('.ev-image__thumb-remove') : null;
+    if (!btn) return;
+    evSyncFiles(evForm());
+});
+
+document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape') return;
+    if (evForm()) evCloseForm();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,86 @@
+{# Форма мероприятия: новая (form_mode='add') или правка (form_mode='edit').
+   Приезжает в слот #event-form-slot через htmx, поэтому свой скрипт держать
+   здесь нельзя — вся логика в events.html. #}
+<form id="ev-form" data-ev-form method="post"
+      class="ev-form"
+      hx-post="{% if form_mode == 'edit' %}/api/events/{{ form_event_id }}/update{% else %}/api/events/create{% endif %}"
+      hx-target="#events-board"
+      hx-swap="outerHTML"
+      hx-encoding="multipart/form-data">
+    <input type="hidden" name="board" value="{{ ev_board_flag|default('1') }}">
+    <input type="hidden" name="month" value="{{ ev_month }}">
+    <input type="hidden" name="day" value="{{ ev_day }}">
+    <input type="hidden" name="image_url" value="{{ form.image_url }}">
+
+    <div class="ev-form__head">
+        <h2 class="ev-form__title">{% if form_mode == 'edit' %}Изменить мероприятие{% else %}Новое мероприятие{% endif %}</h2>
+        <button type="button" class="ev-form__close" onclick="evCloseForm()" aria-label="Закрыть">×</button>
+    </div>
+
+    {% if form_error %}<p class="ev-form__error">{{ form_error }}</p>{% endif %}
+    {% if form_note %}<p class="ev-form__note">{{ form_note }}</p>{% endif %}
+
+    <div class="ev-form__grid">
+        <label class="ev-field ev-field--wide">
+            <span>Название</span>
+            <input type="text" name="title" value="{{ form.title }}" required autofocus>
+        </label>
+        <label class="ev-field ev-field--wide">
+            <span>Ссылка</span>
+            <input type="text" name="url" value="{{ form.url }}" placeholder="https://...">
+        </label>
+        <label class="ev-field">
+            <span>Когда</span>
+            <input type="date" name="start_date" value="{{ form.start_date }}" required>
+        </label>
+        <label class="ev-field">
+            <span>По (для выставки)</span>
+            <input type="date" name="end_date" value="{{ form.end_date }}">
+        </label>
+        <label class="ev-field">
+            <span>Время</span>
+            <input type="text" name="start_time" value="{{ form.start_time }}" placeholder="19:00">
+        </label>
+        <label class="ev-field">
+            <span>Место</span>
+            <input type="text" name="location" value="{{ form.location }}">
+        </label>
+        <label class="ev-field ev-field--wide">
+            <span>Описание</span>
+            <textarea name="description" rows="4">{{ form.description }}</textarea>
+        </label>
+        <div class="ev-field ev-field--wide">
+            <span>Картинка</span>
+            <div class="ev-image">
+                {% if form.image %}<img class="ev-image__preview" src="{{ form.image }}" alt="">{% endif %}
+                <input type="file" name="image" accept="image/*" data-ev-files>
+                <p class="ev-image__hint">Скрин можно вставить из буфера: Cmd+V. Своя картинка важнее той, что со страницы</p>
+                <div class="ev-image__pasted" data-ev-preview style="display:none"></div>
+                {% if form_mode == 'edit' and form_has_file %}
+                <label class="ev-image__remove">
+                    <input type="checkbox" name="remove_image" value="1"> убрать картинку
+                </label>
+                {% endif %}
+            </div>
+        </div>
+        <div class="ev-field ev-field--wide">
+            <span>Решение</span>
+            <div class="ev-form__status">
+                {% for opt in status_options %}
+                <label class="ev-status ev-status--{{ opt.value }} {% if form.status == opt.value %}is-on{% endif %}">
+                    <input type="radio" name="status" value="{{ opt.value }}"
+                           {% if form.status == opt.value %}checked{% endif %}>
+                    {{ opt.label }}
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="ev-form__foot">
+        <button type="submit" class="ev-form__save">
+            {% if form_mode == 'edit' %}Сохранить{% else %}Добавить{% endif %}
+        </button>
+        <button type="button" class="ev-form__cancel" onclick="evCloseForm()">Отмена</button>
+    </div>
+</form>

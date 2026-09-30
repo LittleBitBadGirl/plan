@@ -1,0 +1,16 @@
+{# Ответ на любое изменение: один блок становится корневым (по нему меняли —
+   доска на странице или блок недели на дашборде), второй приезжает с
+   hx-swap-oob и обновляется молча. Ошибка формы дополнительно возвращается в
+   свой слот, поэтому модальная форма остаётся открытой с текстом ошибки. #}
+{% if ev_board_root %}
+    {% set ev_oob = False %}{% include "partials/events_board.html" %}
+    {% set ev_oob = True %}{% include "partials/events_week_block.html" %}
+{% else %}
+    {% set ev_oob = False %}{% include "partials/events_week_block.html" %}
+    {% set ev_oob = True %}{% include "partials/events_board.html" %}
+{% endif %}
+{% if ev_form_error %}
+<div id="event-form-slot" class="ev-form-slot is-open" hx-swap-oob="true">
+    {% include "partials/events_form.html" %}
+</div>
+{% endif %}

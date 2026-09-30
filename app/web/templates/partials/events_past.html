@@ -1,0 +1,11 @@
+{# Прошедшие мероприятия: свёрнуты, чтобы не мешали. #}
+{% if past %}
+<details class="ev-card ev-past">
+    <summary class="ev-past__summary">Прошедшие — {{ past|length }}</summary>
+    <div class="ev-rows">
+        {% for item in past %}
+            {% include "partials/event_row.html" %}
+        {% endfor %}
+    </div>
+</details>
+{% endif %}

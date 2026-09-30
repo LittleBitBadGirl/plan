@@ -25,6 +25,7 @@ from app.db.database import async_session, init_db, engine
 from app.models.base import Base
 from app.models.task import Task
 from app.models.calendar_event import CalendarEvent
+from app.models.event import Event
 from app.models.recurring import RecurringTask
 from app.models.recurring_completion import RecurringCompletion
 from app.models.shopping import ShoppingItem
@@ -56,10 +57,11 @@ async def setup_test_db():
 
 @pytest_asyncio.fixture(autouse=True)
 async def isolate_tasks_and_calendar():
-    """Чистые tasks/calendar/recurring между тестами."""
+    """Чистые tasks/calendar/events/recurring между тестами."""
     async with async_session() as session:
         await session.execute(delete(RecurringCompletion))
         await session.execute(delete(CalendarEvent))
+        await session.execute(delete(Event))
         await session.execute(delete(shopping_item_tags))
         await session.execute(delete(ShoppingItem))
         await session.execute(delete(Tag))

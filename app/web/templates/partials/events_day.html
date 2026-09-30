@@ -1,0 +1,17 @@
+{# Панель выбранного дня: что идёт в этот день. Для выставки строка говорит,
+   до какого числа она открыта. #}
+<section class="ev-card ev-day-panel">
+    <div class="ev-panel__head">
+        <h2 class="ev-panel__title">На {{ day_label }}</h2>
+        {% if day_items %}<span class="ev-panel__meta">{{ day_items|length }}</span>{% endif %}
+    </div>
+    {% if day_items %}
+    <div class="ev-rows">
+        {% for item in day_items %}
+            {% include "partials/event_row.html" %}
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="ev-empty">На этот день ничего нет</p>
+    {% endif %}
+</section>

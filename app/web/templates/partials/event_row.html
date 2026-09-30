@@ -1,0 +1,20 @@
+{# Компактная строка мероприятия — для панели дня и списка прошедших. #}
+<div class="ev-row ev-row--{{ item.status }}{% if item.is_past %} is-past{% endif %}">
+    <span class="ev-row__dot" aria-hidden="true"></span>
+    <span class="ev-row__main">
+        <span class="ev-row__title">
+            {% if item.url %}
+            <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>
+            {% else %}{{ item.title }}{% endif %}
+        </span>
+        <span class="ev-row__meta">
+            {% if item.start_time %}<span>{{ item.start_time }}</span>{% endif %}
+            {% if item.is_range %}<span class="ev-row__range">{{ item.when }}</span>{% endif %}
+            {% if not item.is_past and item.period_hint %}<span>{{ item.period_hint }}</span>{% endif %}
+            {% if item.location %}<span>{{ item.location }}</span>{% endif %}
+        </span>
+    </span>
+    {% if not item.is_past %}
+    {% include "partials/event_status.html" %}
+    {% endif %}
+</div>
