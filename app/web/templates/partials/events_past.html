@@ -4,6 +4,9 @@
     <summary class="ev-past__summary">Прошедшие — {{ past|length }}</summary>
     <div class="ev-rows">
         {% for item in past %}
+            {# Подпись «сходила …» — только в архиве: в панели дня строка говорит
+               о самом дне календаря, а не о том, что поход уже был. #}
+            {% set ev_archive = True %}
             {% include "partials/event_row.html" %}
         {% endfor %}
     </div>

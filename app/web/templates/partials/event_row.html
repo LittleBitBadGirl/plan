@@ -8,13 +8,49 @@
             {% else %}{{ item.title }}{% endif %}
         </span>
         <span class="ev-row__meta">
+            {% if ev_archive and item.visit_past_label %}
+            {# Поход уже состоялся: в архиве важнее его дата, а не даты выставки —
+               время начала мероприятия тут только путало бы. #}
+            <span class="ev-row__visit">{{ item.visit_past_label }}</span>
+            {% else %}
             {% if item.start_time %}<span>{{ item.start_time }}</span>{% endif %}
             {% if item.is_range %}<span class="ev-row__range">{{ item.when }}</span>{% endif %}
             {% if not item.is_past and item.period_hint %}<span>{{ item.period_hint }}</span>{% endif %}
+            {% endif %}
             {% if item.location %}<span>{{ item.location }}</span>{% endif %}
         </span>
     </span>
-    {% if not item.is_past %}
+    {% if item.is_past %}
+    {# Архив — не тупик: отсюда запись можно поправить, снять ошибочную бронь
+       (тогда она вернётся в «Ближайшие», если мероприятие ещё идёт) или удалить.
+       Кнопок похода тут нет: решение уже принято. Флаг доски всегда 1 — список
+       прошедших живёт только в доске, а переменная блока недели в ответе
+       приезжает со своим значением. #}
+    <span class="ev-archive-tools">
+        {% if ev_archive and item.visit_past_label %}
+        <form class="ev-tool-form" hx-post="/api/events/{{ item.id }}/status"
+              hx-target="#events-board" hx-swap="outerHTML">
+            <input type="hidden" name="board" value="1">
+            <input type="hidden" name="month" value="{{ ev_month|default('') }}">
+            <input type="hidden" name="day" value="{{ ev_day|default('') }}">
+            <button type="submit" class="ev-tool"
+                    title="Снять бронь: похода больше нет">Снять бронь</button>
+        </form>
+        {% endif %}
+        <button type="button" class="ev-tool"
+                hx-get="/events/{{ item.id }}/form"
+                hx-target="#event-form-slot" hx-swap="innerHTML"
+                onclick="evOpenForm()">Правка</button>
+        <form class="ev-tool-form" hx-post="/api/events/{{ item.id }}/delete"
+              hx-target="#events-board" hx-swap="outerHTML"
+              onsubmit="return confirm('Удалить мероприятие?')">
+            <input type="hidden" name="board" value="1">
+            <input type="hidden" name="month" value="{{ ev_month|default('') }}">
+            <input type="hidden" name="day" value="{{ ev_day|default('') }}">
+            <button type="submit" class="ev-tool ev-tool--danger" title="Удалить">×</button>
+        </form>
+    </span>
+    {% else %}
     {# В строке места мало: отметка и одна ссылка, без полного набора кнопок. #}
     {% set ev_compact = True %}
     {% include "partials/event_status.html" %}

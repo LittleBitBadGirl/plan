@@ -243,6 +243,27 @@ async def _apply_form(
     finish = evs.parse_form_date(end_date)
     if finish and finish < start:
         return "Дата окончания раньше даты начала — для выставки поставь последний день"
+    edge = finish or start
+    # Состояние брони — пара «отметка + день» (как в SQL и в event_view): у
+    # строки с днём, но без «иду», брони нет, и правка дат её не касается —
+    # иначе отказ отправлял бы снимать бронь, которой нечем снять.
+    if (
+        ev.visit_date
+        and evs.normalize_status(ev.status) == STATUS_GOING
+        and not (start <= ev.visit_date <= edge)
+    ):
+        # Бронь живёт по дню сеанса, и он обязан попадать в период (та же
+        # проверка в /visit). Правка дат мимо неё оставила бы бронь вне
+        # мероприятия: запись закрылась бы походом, которого в новых датах нет.
+        dates = (
+            evs.date_label(start)
+            if edge == start
+            else f"{evs.date_label(start)} — {evs.date_label(edge)}"
+        )
+        return (
+            f"День похода ({evs.date_label(ev.visit_date)}) не входит в новые даты "
+            f"({dates}): сними бронь в строке мероприятия и сохрани ещё раз"
+        )
 
     ev.title = clean_title[:500]
     ev.start_date = start

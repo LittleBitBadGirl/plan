@@ -397,6 +397,378 @@ async def test_finished_exhibition_leaves_week_block(client, db):
 
 
 @pytest.mark.asyncio
+async def test_visited_exhibition_is_archived_after_visit_day(client, db):
+    """Поход закрывает выставку: после дня сеанса она уходит в «Прошедшие».
+
+    Вера: «сегодня схожу — дальше оно не актуально». Выставка идёт ещё полторы
+    недели, но билет на конкретный день — значит со следующего дня запись не
+    должна висеть ни в блоке недели, ни в «Ближайших».
+    """
+    start = TODAY - timedelta(days=3)
+    finish = TODAY + timedelta(days=10)
+    await client.post(
+        "/api/events/create",
+        data=_form(
+            title="Любовь — это...",
+            start_date=start.isoformat(),
+            end_date=finish.isoformat(),
+        ),
+    )
+    event = (await _events(db))[0]
+    visit_day = TODAY + timedelta(days=2)
+    await client.post(
+        f"/api/events/{event.id}/visit",
+        data={"visit_date": visit_day.isoformat(), "visit_time": "20:00", "board": "1"},
+    )
+
+    # День похода включительно — запись ещё впереди и в неделе, и в ближайших.
+    assert [ev.title for ev in await evs.load_week_events(db, visit_day)] == ["Любовь — это..."]
+    assert [ev.title for ev in await evs.load_upcoming_events(db, visit_day)] == ["Любовь — это..."]
+    assert await evs.load_past_events(db, visit_day) == []
+    on_visit_day = evs.event_view((await _fresh_events())[0], visit_day)
+    assert on_visit_day["is_now"] is True
+    assert on_visit_day["is_past"] is False
+    assert on_visit_day["visit_past_label"] == ""
+
+    after = visit_day + timedelta(days=1)
+    assert await evs.load_week_events(db, after) == []
+    assert await evs.load_upcoming_events(db, after) == []
+    assert [ev.title for ev in await evs.load_past_events(db, after)] == ["Любовь — это..."]
+    assert (await evs.week_block(db, after))["week_count"] == 0
+
+    done = evs.event_view((await _fresh_events())[0], after)
+    assert done["is_past"] is True
+    assert done["is_now"] is False
+    assert done["visit_past_label"] == f"сходила {evs.short_date(visit_day)}, 20:00"
+    # Выставка идёт дальше: в архиве подписан период целиком, а не «идёт до».
+    assert done["when"] == f"{evs.short_date(start)} — {evs.short_date(finish)}"
+    # Решение «иду» больше не действует: иначе сетка месяца и панель дня красили
+    # бы зелёным дни, на которые Вера уже не идёт.
+    assert done["status"] == STATUS_NONE
+    assert done["has_visit"] is False
+    assert done["calendar_url"] == ""
+
+
+@pytest.mark.asyncio
+async def test_past_visit_moves_exhibition_to_archive_on_pages(client, db):
+    """На страницах: выставка с прошедшим походом — в «Прошедших», а не в списках."""
+    start = TODAY - timedelta(days=4)
+    finish = TODAY + timedelta(days=6)
+    await client.post(
+        "/api/events/create",
+        data=_form(
+            title="Любовь — это...",
+            start_date=start.isoformat(),
+            end_date=finish.isoformat(),
+        ),
+    )
+    event = (await _events(db))[0]
+    await client.post(
+        f"/api/events/{event.id}/visit",
+        data={
+            "visit_date": (TODAY - timedelta(days=1)).isoformat(),
+            "visit_time": "20:00",
+            "board": "1",
+        },
+    )
+
+    page = await client.get("/events")
+    assert page.status_code == 200
+    # Срез «Ближайших»: от панели до свёрнутых «Прошедших».
+    upcoming_slice = page.text.split("ev-panel--upcoming", 1)[1].split("ev-past", 1)[0]
+    assert "Любовь — это..." not in upcoming_slice
+    # Панель дня — это календарь: запись в ней остаётся фактом, но без отметки
+    # «иду» (похода уже нет) и без подписи архива.
+    day_slice = page.text.split("ev-day-panel", 1)[1].split("ev-panel--upcoming", 1)[0]
+    assert "Любовь — это..." in day_slice
+    assert "сходила" not in day_slice
+    assert "ev-row--going" not in day_slice
+
+    archived = page.text.split("ev-past__summary", 1)[1]
+    assert "Любовь — это..." in archived
+    assert "сходила" in archived
+    # В архиве кнопки похода нет, но выход есть: снять бронь, правка, удаление.
+    assert "ev-status" not in archived
+    assert "Снять бронь" in archived
+    assert f"/events/{event.id}/form" in archived
+    assert f"/api/events/{event.id}/delete" in archived
+
+    dashboard = await client.get("/")
+    assert dashboard.status_code == 200
+    assert "Любовь — это..." not in dashboard.text
+    assert "На ближайшую неделю ничего нет" in dashboard.text
+
+
+@pytest.mark.asyncio
+async def test_month_grid_keeps_period_but_drops_going_after_visit(client, db):
+    """Поход прошёл: в календаре период остаётся, зелёной отметки «иду» уже нет.
+
+    Месяц и «сегодня» задаются явно — фикстура держится внутри одного месяца и
+    не привязана к дню прогона (см. «Многодневную фикстуру держать внутри
+    одного месяца»).
+    """
+    start = date(2026, 10, 2)
+    finish = date(2026, 10, 9)
+    visit_day = date(2026, 10, 5)
+    await client.post(
+        "/api/events/create",
+        data=_form(
+            title="Выставка",
+            start_date=start.isoformat(),
+            end_date=finish.isoformat(),
+        ),
+    )
+    event = (await _events(db))[0]
+    saved = await client.post(
+        f"/api/events/{event.id}/visit",
+        data={"visit_date": visit_day.isoformat(), "visit_time": "20:00", "board": "1"},
+    )
+    assert saved.status_code == 200
+
+    grid = evs.build_month_grid(2026, 10, await _fresh_events(), date(2026, 10, 6), None)
+    marked = {cell["date_iso"]: cell for cell in grid["days"] if cell["has_events"]}
+    assert len(marked) == 8, "период в календаре должен остаться целиком (2–9 окт)"
+    assert all(cell["has_range"] for cell in marked.values())
+    # Поход состоялся — решение снято со всей записи: зелёными дни периода уже
+    # не красятся, в том числе сам день похода (он в прошлом).
+    assert marked["2026-10-05"]["state"] == STATUS_NONE
+    assert marked["2026-10-06"]["state"] == STATUS_NONE
+    assert marked["2026-10-09"]["state"] == STATUS_NONE
+
+    # В день похода, пока он не прошёл, отметка «иду» на месте.
+    on_visit_day = evs.build_month_grid(
+        2026, 10, await _fresh_events(), visit_day, visit_day
+    )
+    on_visit_day_cells = {
+        cell["date_iso"]: cell for cell in on_visit_day["days"] if cell["has_events"]
+    }
+    assert on_visit_day_cells["2026-10-05"]["state"] == STATUS_GOING
+
+
+@pytest.mark.asyncio
+async def test_archive_puts_recent_visit_above_earlier_finish(client, db):
+    """В архиве «свежее сверху» считается по концу для Веры, а не по началу.
+
+    Выставка, открытая два месяца назад и посещённая вчера, иначе уезжала бы
+    под записи с более поздней датой начала и в «Прошедших» не показывалась бы.
+    """
+    await client.post(
+        "/api/events/create",
+        data=_form(
+            title="Долгая выставка",
+            start_date=(TODAY - timedelta(days=60)).isoformat(),
+            end_date=(TODAY + timedelta(days=30)).isoformat(),
+        ),
+    )
+    await client.post(
+        "/api/events/create",
+        data=_form(
+            title="Закончилось три дня назад",
+            start_date=(TODAY - timedelta(days=4)).isoformat(),
+            end_date=(TODAY - timedelta(days=3)).isoformat(),
+        ),
+    )
+    long_one = {str(ev.title): ev for ev in await _fresh_events()}["Долгая выставка"]
+    await client.post(
+        f"/api/events/{long_one.id}/visit",
+        data={
+            "visit_date": (TODAY - timedelta(days=1)).isoformat(),
+            "visit_time": "20:00",
+            "board": "1",
+        },
+    )
+
+    past = [str(ev.title) for ev in await evs.load_past_events(db, TODAY)]
+    assert past == ["Долгая выставка", "Закончилось три дня назад"]
+
+
+@pytest.mark.asyncio
+async def test_edit_dates_may_not_leave_visit_outside_event(client, db):
+    """Правка дат не оставляет бронь вне мероприятия.
+
+    Иначе запись закрылась бы походом, которого в новых датах нет, а из
+    интерфейса день похода виден только через «Иду» внутри периода.
+    """
+    start = TODAY
+    finish = TODAY + timedelta(days=6)
+    await client.post(
+        "/api/events/create",
+        data=_form(start_date=start.isoformat(), end_date=finish.isoformat()),
+    )
+    event = (await _events(db))[0]
+    visit_day = TODAY + timedelta(days=2)
+    await client.post(
+        f"/api/events/{event.id}/visit",
+        data={"visit_date": visit_day.isoformat(), "visit_time": "20:00", "board": "1"},
+    )
+
+    narrowed = await client.post(
+        f"/api/events/{event.id}/update",
+        data=_form(
+            start_date=(TODAY + timedelta(days=4)).isoformat(),
+            end_date=(TODAY + timedelta(days=5)).isoformat(),
+        ),
+    )
+    assert "не входит в новые даты" in narrowed.text
+    assert "HX-Trigger" not in narrowed.headers
+    unchanged = (await _fresh_events())[0]
+    assert unchanged.start_date == start
+    assert unchanged.end_date == finish
+    assert unchanged.visit_date == visit_day
+
+    # Даты, которые день похода включают, сохраняются как обычно.
+    wider = await client.post(
+        f"/api/events/{event.id}/update",
+        data=_form(start_date=start.isoformat(), end_date=(TODAY + timedelta(days=10)).isoformat()),
+    )
+    assert "HX-Trigger" in wider.headers
+    assert (await _fresh_events())[0].end_date == TODAY + timedelta(days=10)
+
+    # Правка, которая бронь не задевает (переименование), проходит: отказ не
+    # должен мешать обычным правкам.
+    renamed = await client.post(
+        f"/api/events/{event.id}/update",
+        data=_form(
+            title="Конференция переименована",
+            start_date=start.isoformat(),
+            end_date=(TODAY + timedelta(days=10)).isoformat(),
+        ),
+    )
+    assert "HX-Trigger" in renamed.headers
+    assert (await _fresh_events())[0].title == "Конференция переименована"
+
+    # День похода на границе периода — это тоже «внутри».
+    boundary = await client.post(
+        f"/api/events/{event.id}/update",
+        data=_form(
+            title="Конференция",
+            start_date=visit_day.isoformat(),
+            end_date=visit_day.isoformat(),
+        ),
+    )
+    assert "HX-Trigger" in boundary.headers
+    after_boundary = (await _fresh_events())[0]
+    assert after_boundary.start_date == visit_day
+    assert after_boundary.end_date is None  # одна дата — это не период
+    assert after_boundary.visit_date == visit_day
+
+
+@pytest.mark.asyncio
+async def test_cancel_booking_from_archive_returns_event_to_upcoming(client, db):
+    """«Снять бронь» из архива возвращает запись в «Ближайшие», если идёт.
+
+    Это выход из состояния «сходила, но бронь ошибочная»: после снятия запись
+    живёт по своим датам, и поход можно поставить заново.
+    """
+    start = TODAY - timedelta(days=4)
+    finish = TODAY + timedelta(days=6)
+    await client.post(
+        "/api/events/create",
+        data=_form(
+            title="Выставка с ошибочной бронью",
+            start_date=start.isoformat(),
+            end_date=finish.isoformat(),
+        ),
+    )
+    event = (await _events(db))[0]
+    await client.post(
+        f"/api/events/{event.id}/visit",
+        data={
+            "visit_date": (TODAY - timedelta(days=1)).isoformat(),
+            "visit_time": "20:00",
+            "board": "1",
+        },
+    )
+    # День похода прошёл, выставка ещё идёт: запись в архиве, не в «Ближайших».
+    assert [str(ev.title) for ev in await evs.load_upcoming_events(db, TODAY)] == []
+    assert [str(ev.title) for ev in await evs.load_past_events(db, TODAY)] == [
+        "Выставка с ошибочной бронью"
+    ]
+
+    response = await client.post(
+        f"/api/events/{event.id}/status", data={"board": "1", "month": "", "day": ""}
+    )
+    assert response.status_code == 200
+    assert 'id="events-board"' in response.text
+
+    fresh = (await _fresh_events())[0]
+    assert fresh.status == STATUS_NONE
+    assert fresh.visit_date is None
+    assert fresh.visit_time is None
+
+    # Мероприятие ещё идёт — запись вернулась в «Ближайшие», без подписи архива.
+    assert [str(ev.title) for ev in await evs.load_upcoming_events(db, TODAY)] == [
+        "Выставка с ошибочной бронью"
+    ]
+    assert await evs.load_past_events(db, TODAY) == []
+    view = evs.event_view(fresh, TODAY)
+    assert view["is_past"] is False
+    assert view["visit_past_label"] == ""
+    assert view["status_label"] == "Без отметки"
+
+
+@pytest.mark.asyncio
+async def test_upcoming_and_past_split_all_events_without_gaps(client, db):
+    """«Ближайшие» и «Прошедшие» дополняют друг друга: ни пропаж, ни дублей.
+
+    Инвариант ломается тихо — запись исчезает из обоих списков (или двоится), и
+    заметить это можно только счётом по всем мероприятиям, а не глазами.
+    """
+    rows = [
+        ("Прошлое", TODAY - timedelta(days=5), ""),
+        ("Будущее", TODAY + timedelta(days=5), ""),
+        ("Идёт", TODAY - timedelta(days=2), (TODAY + timedelta(days=3)).isoformat()),
+        (
+            "Идёт с прошедшим походом",
+            TODAY - timedelta(days=3),
+            (TODAY + timedelta(days=4)).isoformat(),
+        ),
+        (
+            "Идёт с походом сегодня",
+            TODAY - timedelta(days=1),
+            (TODAY + timedelta(days=2)).isoformat(),
+        ),
+        ("Поход вчера, конец сегодня", TODAY - timedelta(days=2), TODAY.isoformat()),
+    ]
+    for title, start, finish in rows:
+        await client.post(
+            "/api/events/create",
+            data=_form(
+                title=title,
+                start_date=start.isoformat(),
+                end_date=finish,
+            ),
+        )
+
+    # Свежая сессия: в сессии теста статусы ещё прежние, и поход выглядел бы
+    # непоставленным (см. «Тестовую сессию не спрашивать о чужой записи»).
+    created = {str(ev.title): ev for ev in await _fresh_events()}
+    for title, visit_day in (
+        ("Идёт с прошедшим походом", TODAY - timedelta(days=1)),
+        ("Идёт с походом сегодня", TODAY),
+        ("Поход вчера, конец сегодня", TODAY - timedelta(days=1)),
+    ):
+        response = await client.post(
+            f"/api/events/{created[title].id}/visit",
+            data={"visit_date": visit_day.isoformat(), "visit_time": "20:00", "board": "1"},
+        )
+        assert response.status_code == 200
+        # Бронь проверяем по базе, а не по разметке: у похода с прошедшим днём
+        # карточка сразу уезжает в архив, и отблоки «иду» на экране уже нет —
+        # это и есть проверяемое поведение, а не признак, что бронь не встала.
+        saved = {str(ev.title): ev for ev in await _fresh_events()}[title]
+        assert saved.status == STATUS_GOING, f"бронь не встала у «{title}»"
+        assert saved.visit_date == visit_day, f"день похода не сохранён у «{title}»"
+
+    all_ids = {ev.id for ev in await _fresh_events()}
+    for day in (TODAY - timedelta(days=7), TODAY, TODAY + timedelta(days=7)):
+        upcoming = {ev.id for ev in await evs.load_upcoming_events(db, day)}
+        past = {ev.id for ev in await evs.load_past_events(db, day)}
+        assert upcoming & past == set(), f"мероприятие попало в оба списка на {day}"
+        assert upcoming | past == all_ids, f"мероприятие пропало из списков на {day}"
+
+
+@pytest.mark.asyncio
 async def test_week_selection_covers_ongoing_and_starting_events(client, db):
     """В окно недели попадают и начинающиеся, и длящиеся мероприятия."""
     starting = TODAY + timedelta(days=3)

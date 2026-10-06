@@ -197,10 +197,17 @@ def event_view(ev: Event, today: date) -> dict:
     """Все, что нужно шаблону: подписи, цвета, состояние диапазона."""
     last_day = ev.last_day
     is_range = ev.is_range
+    booking = normalize_status(ev.status) == STATUS_GOING and bool(ev.visit_date)
+    # Поход перебивает дату окончания: после дня сеанса мероприятие для Веры
+    # закрыто, даже если выставка идёт дальше. По tracked_last считаются
+    # «в ближайшей неделе» и «прошедшее» — иначе запись висела бы в списках до
+    # даты окончания, хотя идти уже некуда.
+    visit_done = bool(booking and ev.visit_date < today)
+    tracked_last = ev.visit_date if visit_done else last_day
     days_left = (last_day - today).days
     if not is_range:
         when = date_label(ev.start_date)
-    elif ev.start_date <= today <= last_day:
+    elif not visit_done and ev.start_date <= today <= last_day:
         when = f"идёт до {short_date(last_day)}"
     else:
         when = f"{short_date(ev.start_date)} — {short_date(last_day)}"
@@ -219,6 +226,12 @@ def event_view(ev: Event, today: date) -> dict:
 
     status = normalize_status(ev.status)
     going = status == STATUS_GOING and bool(ev.visit_date)
+    if visit_done:
+        # Поход состоялся — решение больше не «иду»: в календаре дни выставки
+        # остаются фактом, но зелёной отметки «иду» на них уже не должно быть
+        # (её читают сетка месяца и панель дня), и кнопок похода тоже.
+        status = STATUS_NONE
+        going = False
     return {
         "id": ev.id,
         "title": ev.title,
@@ -252,9 +265,13 @@ def event_view(ev: Event, today: date) -> dict:
         "period_hint": period_hint,
         "day_label": weekday_label(ev.start_date),
         "ends_label": short_date(last_day) if is_range else "",
-        "is_past": last_day < today,
-        "is_now": ev.start_date <= today <= last_day,
-        "in_week": today <= last_day and ev.start_date <= today + timedelta(days=WEEK_DAYS - 1),
+        # Поход прошёл: запись уже в прошедших, и строке архива нужна подпись о
+        # походе, а не даты выставки с кнопками «иду» (решение принято). Подпись
+        # считается по факту похода (visit_done), а не по оставшемуся «иду».
+        "visit_past_label": f"сходила {visit_label(ev)}" if visit_done else "",
+        "is_past": tracked_last < today,
+        "is_now": ev.start_date <= today <= tracked_last,
+        "in_week": today <= tracked_last and ev.start_date <= today + timedelta(days=WEEK_DAYS - 1),
     }
 
 
@@ -442,17 +459,54 @@ def _range_overlaps(start: date, end: date):
     )
 
 
+def _visit_open(day: date):
+    """Бронь ещё не состоялась: похода нет, он сегодня/в будущем или брони нет.
+
+    Вера: «сегодня схожу — дальше оно неактуально». Билет на руках делает день
+    сеанса окончанием: выставка может идти ещё неделю, но после сеанса запись
+    уходит в «Прошедшие», а не висит в «Ближайших» до даты окончания.
+
+    Состояние «иду» спрашиваем ВМЕСТЕ с днём похода — ровно как карточка
+    (event_view): у строки с днём, но без отметки, поведение обычное, по датам,
+    и оба условия (_visit_open/_visit_done) остаются дополняющими.
+    """
+    return or_(
+        Event.status.is_(None),
+        Event.status != STATUS_GOING,
+        Event.visit_date.is_(None),
+        Event.visit_date >= day,
+    )
+
+
+def _visit_done(day: date):
+    """Поход состоялся — день сеанса уже прошёл."""
+    return and_(
+        Event.status.is_not(None),
+        Event.status == STATUS_GOING,
+        Event.visit_date.is_not(None),
+        Event.visit_date < day,
+    )
+
+
 def _not_finished_before(day: date):
     """Мероприятие ещё не закончилось (для «ближайших» и счётчика)."""
-    return or_(
-        and_(Event.end_date.is_not(None), Event.end_date >= day),
-        and_(Event.end_date.is_(None), Event.start_date >= day),
+    return and_(
+        _visit_open(day),
+        or_(
+            and_(Event.end_date.is_not(None), Event.end_date >= day),
+            and_(Event.end_date.is_(None), Event.start_date >= day),
+        ),
     )
 
 
 def _finished_before(day: date):
-    """Мероприятие уже закончилось."""
+    """Мероприятие закрыто: закончилось само или поход по нему уже прошёл.
+
+    Обязано быть ДОПОЛНЕНИЕМ к _not_finished_before (на этом стоит тест):
+    иначе запись пропадёт из обоих списков или покажется в двух сразу.
+    """
     return or_(
+        _visit_done(day),
         and_(Event.end_date.is_not(None), Event.end_date < day),
         and_(Event.end_date.is_(None), Event.start_date < day),
     )
@@ -479,8 +533,23 @@ async def load_events_between(db, start: date, end: date) -> list[Event]:
 
 
 async def load_week_events(db, today: date, days: int = WEEK_DAYS) -> list[Event]:
-    """Ближайшая неделя: начинающиеся и длящиеся (выставка с датой окончания)."""
-    return await load_events_between(db, today, today + timedelta(days=days - 1))
+    """Ближайшая неделя: начинающиеся и длящиеся (выставка с датой окончания).
+
+    Мероприятие с бронью живёт здесь только до дня похода включительно: после
+    сеанса оно в «Ближайшие» не возвращается (см. _visit_open). Условие
+    пересечения даёт месяц/день, поэтому проверка похода добавлена отдельно —
+    у выборки в календаре своя задача (показать, что вообще идёт в этот день).
+    """
+    result = await db.execute(
+        select(Event)
+        .where(
+            event_is_active(),
+            _visit_open(today),
+            *_range_overlaps(today, today + timedelta(days=days - 1)),
+        )
+        .order_by(*_order())
+    )
+    return list(result.scalars().all())
 
 
 async def load_upcoming_events(db, today: date, limit: int = UPCOMING_LIMIT) -> list[Event]:
@@ -495,11 +564,20 @@ async def load_upcoming_events(db, today: date, limit: int = UPCOMING_LIMIT) -> 
 
 
 async def load_past_events(db, today: date, limit: int = PAST_LIMIT) -> list[Event]:
-    """Последние завершившиеся — свежие сверху."""
+    """Последние завершившиеся — свежие сверху.
+
+    «Свежесть» считаем по концу для Веры: день похода, иначе дата окончания,
+    иначе дата начала. По дате начала выставка, открытая два месяца назад и
+    посещённая вчера, уезжала бы под два десятка более новых записей и в
+    «Прошедших» не показывалась бы вовсе.
+    """
     result = await db.execute(
         select(Event)
         .where(event_is_active(), _finished_before(today))
-        .order_by(Event.start_date.desc(), Event.id.desc())
+        .order_by(
+            func.coalesce(Event.visit_date, Event.end_date, Event.start_date).desc(),
+            Event.id.desc(),
+        )
         .limit(limit)
     )
     return list(result.scalars().all())
