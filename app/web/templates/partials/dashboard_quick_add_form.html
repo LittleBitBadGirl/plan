@@ -1,29 +1,17 @@
-<form hx-post="/tasks/create"
-      hx-target="#tasks-list"
-      hx-swap="innerHTML"
-      hx-on::after-request="this.reset(); const ta = this.querySelector('textarea'); ta.style.height = 'auto'; ta.focus();"
-      class="flex flex-col gap-2"
-      x-data="{
-          resize() {
-              const el = $el.querySelector('textarea');
-              el.style.height = 'auto';
-              el.style.height = el.scrollHeight + 'px';
-          },
-          submitIfEnter(e) {
-              if (!e.shiftKey) {
-                  e.preventDefault();
-                  $el.requestSubmit();
-              }
-          }
-      }">
+{# Быстрый ввод. Enter (или «+») открывает выбор «Сегодня / В бэклог» —
+   задача создаётся только после выбора, «Отмена» оставляет текст в поле.
+   Двумя кнопками под строкой Вера пользоваться не хотела. #}
+<form x-data="{ chooser: false }"
+      @htmx:afterRequest="if ($event.detail.successful) { chooser = false; $el.reset(); const ta = $el.querySelector('textarea'); ta.style.height = 'auto'; ta.focus(); }"
+      class="flex flex-col gap-2">
     <div class="flex gap-2 items-end">
         <textarea name="title" required
                   rows="1"
                   enterkeyhint="go"
                   autocomplete="off"
                   autocapitalize="sentences"
-                  @input="resize()"
-                  @keydown.enter="submitIfEnter($event)"
+                  @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
+                  @keydown.enter="if ($event.shiftKey) return; $event.preventDefault(); if ($el.value.trim()) chooser = true"
                   placeholder="Что нужно сделать?"
                   class="flex-1 min-w-0 bg-dark-700 border border-dark-500 rounded-lg px-3 py-3 lg:py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-all resize-none min-h-[48px] lg:min-h-[44px] text-base lg:text-sm leading-snug"></textarea>
 
@@ -48,7 +36,8 @@
             </div>
         </div>
 
-        <button type="submit"
+        <button type="button"
+                @click="const ta = $el.form.querySelector('textarea'); ta.value.trim() ? (chooser = true) : ta.focus()"
                 class="lg:hidden shrink-0 w-12 h-12 bg-accent hover:bg-blue-600 active:scale-95 text-white font-bold rounded-xl transition-all flex items-center justify-center text-xl shadow-lg"
                 aria-label="Добавить задачу">
             +
@@ -56,9 +45,34 @@
 
         {# «Добавить» стоит в той же строке: блок добавления — одна строка, как
            сводка рядом, а не две строки с кнопкой во всю ширину. #}
-        <button type="submit"
-                class="hidden lg:inline-flex shrink-0 items-center px-5 py-2.5 bg-accent hover:bg-blue-600 text-white font-bold rounded-xl transition-all text-sm shadow-lg active:scale-95 whitespace-nowrap">
+        <button type="button"
+                @click="const ta = $el.form.querySelector('textarea'); ta.value.trim() ? (chooser = true) : ta.focus()"
+                class="cta-square hidden lg:inline-flex shrink-0 bg-accent hover:bg-blue-600 text-white font-bold rounded-xl transition-all text-sm shadow-lg active:scale-95 whitespace-nowrap">
             Добавить
         </button>
+    </div>
+
+    <div x-show="chooser" x-cloak
+         class="flex flex-wrap items-center gap-2 rounded-lg bg-dark-900 border border-dark-600 p-2">
+        <span class="text-[11px] uppercase tracking-wider text-gray-500 font-bold shrink-0">Куда задачу</span>
+        <button type="button"
+                hx-post="/tasks/create"
+                hx-include="closest form"
+                hx-vals='{"where": "today"}'
+                hx-target="#tasks-list"
+                hx-swap="innerHTML"
+                class="bg-accent hover:bg-accent-hover text-white rounded-lg font-bold text-xs transition-all"
+                style="padding:7px 12px">Сегодня</button>
+        <button type="button"
+                hx-post="/tasks/create"
+                hx-include="closest form"
+                hx-vals='{"where": "backlog"}'
+                hx-target="#tasks-list"
+                hx-swap="innerHTML"
+                class="bg-dark-700 hover:bg-dark-600 text-white rounded-lg font-bold text-xs transition-all border border-dark-500"
+                style="padding:7px 12px">В бэклог</button>
+        <button type="button" @click="chooser = false"
+                class="text-gray-500 hover:text-gray-300 text-xs font-medium"
+                style="padding:7px 8px">Отмена</button>
     </div>
 </form>

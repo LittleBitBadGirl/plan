@@ -1,0 +1,48 @@
+{# Подзадачи, взятые на день.
+
+   Вера берёт в день не большую задачу, а её куски, поэтому родителя здесь нет:
+   строкой ниже видно, из какой задачи подзадача пришла и сколько в ней уже
+   сделано. Кнопка возврата убирает подзадачу из дня обратно в бэклог. #}
+{% from 'partials/icons_macros.html' import icon_check %}
+
+{% if taken_subtasks %}
+<div class="mt-6">
+    <div class="flex items-center gap-2 mb-3 px-1">
+        <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider">Подзадачи на сегодня</h3>
+        <span class="text-[11px] text-gray-500">({{ taken_subtasks|length }})</span>
+    </div>
+    <div class="space-y-3">
+        {% for row in taken_subtasks %}
+        <div class="bg-dark-800 rounded-xl p-3 border border-dark-600" id="task-{{ row.sub.id }}">
+            <div class="flex justify-between items-start gap-3">
+                <div class="flex-1 min-w-0">
+                    <div class="font-semibold text-white text-sm break-words [overflow-wrap:anywhere]">{{ row.sub.title | linkify }}</div>
+                    <div class="text-[11px] text-gray-500 mt-1">
+                        из задачи: {{ row.parent.title if row.parent else 'задача удалена' }}
+                        {%- if row.total %} · сделано {{ row.done }} из {{ row.total }}{% endif %}
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <form hx-post="/tasks/{{ row.sub.id }}/day-complete-subtask"
+                          hx-target="#tasks-list"
+                          hx-swap="innerHTML"
+                          class="inline">
+                        <button type="submit" class="icon-action icon-action--success" title="Выполнить">
+                            {{ icon_check('w-4 h-4') }}
+                        </button>
+                    </form>
+                    <form hx-post="/tasks/{{ row.sub.id }}/backlog"
+                          hx-target="#tasks-list"
+                          hx-swap="innerHTML"
+                          class="inline">
+                        <button type="submit" class="icon-action icon-action--info" title="Вернуть в бэклог">
+                            Вернуть
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

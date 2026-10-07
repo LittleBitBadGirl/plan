@@ -188,12 +188,14 @@ async def test_dashboard_has_achievement_quick_add(client):
     assert 'onclick="openAchievementQuickAdd()"' in html
     assert html.count('onclick="openAchievementQuickAdd()"') == 2, \
         "кнопка достижения нужна в шапке: на телефоне и на десктопе"
-    # стиль один: кнопка достижения должна быть того же вида, что «Новая задача»
-    # стиль один с «Новой задачей», отступы как у «Добавить», иначе кнопки сжимались
+    # Кнопка «Новая задача» убрана 07.10.2026: Вера ей не пользовалась, задачи
+    # заводятся из строки быстрого ввода. Осталась одна кнопка того же вида —
+    # «Достижение» (desktop), плюс мобильная иконка выше по счётчику вызовов.
     assert html.count(
         'shrink-0 inline-flex items-center px-5 py-2 bg-accent hover:bg-accent-hover '
         'text-white text-sm font-bold rounded-xl'
-    ) == 2, "«Достижение» и «Новая задача» должны быть одного вида и не сжиматься"
+    ) == 1, "«Достижение» должна быть одна и не сжиматься"
+    assert "/tasks/new" not in html, "кнопка «Новая задача» не должна вернуться"
     assert 'id="ach-quick"' in html
     assert 'id="ach-quick-slot"' in html
     assert "'/achievements/widget'" in html

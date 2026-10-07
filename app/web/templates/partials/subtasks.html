@@ -1,9 +1,10 @@
 <!-- Список существующих подзадач -->
 {% set _today = today if today is defined else today_date() %}
+{% set _ctx = subtask_context if subtask_context is defined else 'day' %}
 {% if subtasks and subtasks|length > 0 %}
     <div class="space-y-1 mb-2">
         {% for sub in subtasks %}
-            {% with parent_id=parent_id, today=_today %}
+            {% with parent_id=parent_id, today=_today, subtask_context=_ctx %}
                 {% include 'partials/subtask_row.html' %}
             {% endwith %}
         {% endfor %}

@@ -1,4 +1,4 @@
-{% from 'partials/icons_macros.html' import icon_check, icon_calendar, icon_backlog, icon_edit, icon_trash, icon_subtasks, icon_clock %}
+{% from 'partials/icons_macros.html' import icon_check, icon_backlog, icon_edit, icon_trash, icon_subtasks, icon_clock %}
 
 {% set _today = today if today is defined else today_date() %}
 
@@ -56,23 +56,8 @@
                 </button>
             </form>
 
-            <div class="relative">
-                <form hx-post="/tasks/{{ task.id }}/plan"
-                      hx-target="#tasks-list"
-                      hx-swap="innerHTML"
-                      class="flex items-center gap-1">
-                    <input type="text" name="due_date" id="date-input-{{ task.id }}" placeholder="0606" maxlength="5"
-                           inputmode="numeric" autocomplete="off" title="ДД.ММ — введите 4 цифры, например 0606"
-                           class="date-mask-ddmm bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white hidden w-16">
-                    <button type="button"
-                            onclick="document.getElementById('date-input-{{ task.id }}').classList.toggle('hidden'); document.getElementById('date-input-{{ task.id }}').focus()"
-                            class="icon-action icon-action--info"
-                            title="Перенести на дату">
-                        {{ icon_calendar() }}
-                    </button>
-                </form>
-            </div>
-
+            {# Даты у задач больше нет: будущее живёт в календаре и мероприятиях,
+               в дне — только взятое из бэклога (решение Веры 07.10.2026). #}
             <form hx-post="/tasks/{{ task.id }}/backlog"
                   hx-target="#tasks-list"
                   hx-swap="innerHTML"

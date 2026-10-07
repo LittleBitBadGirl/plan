@@ -32,8 +32,39 @@ def rollover_days(due_date: date, today: date, is_work_category: bool = False) -
     return (today - due_date).days
 
 
+def apply_backlog_return(
+    task: Task,
+    planned_for: Optional[date],
+    today: date,
+    is_work_category: bool = False,
+) -> None:
+    """Вечерний возврат задачи из дня в бэклог (замена прежнему ролловеру).
+
+    В новой механике перенос — это «взял на день и не доделал». Считаем по
+    календарным дням с момента, когда задачу брали (для рабочих категорий —
+    только по рабочим), поднимаем счётчик и снимаем с дня. Якорь `overdue_since`
+    ставится один раз, поэтому «тянется с 10-го» не сбрасывается при каждом
+    возврате.
+    """
+    anchor = planned_for or today
+    if task.overdue_since is None:
+        task.overdue_since = anchor
+
+    days = rollover_days(anchor, today, is_work_category)
+    if days < 1:
+        days = 1
+    task.postpones = (task.postpones or 0) + days
+    task.planned_for = None
+
+    if (task.postpones or 0) > 7:
+        task.chronic_task = True
+
+
 def apply_rollover(task: Task, today: date, is_work_category: bool = False) -> None:
-    """Увеличить postpones на число просроченных дней и перенести due_date на today.
+    """Прежний перенос по due_date (легаси, в механике дня больше не участвует).
+
+    Оставлен ради арифметики счётчика: на нём держатся тесты
+    `test_overdue_counter.py`, которые проверяют расчёт дней просрочки.
 
     Заодно ставится якорь просрочки (`overdue_since`) — от него считается бейдж
     «сколько задача тянется». Якорь ставится один раз и не сдвигается, поэтому

@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.offline import OfflineAction, OfflineConflict
 from app.models.task import Task, task_is_active
 from app.models.category import Category
+from app.services.task_delete_service import delete_tasks_hard
 
 # Поля задачи, которые разрешено менять из офлайн-очереди.
 EDITABLE_FIELDS = (
@@ -308,10 +309,14 @@ async def _apply_one(
 
         clean_title, due_time = _split_time(title)
         category = str(payload.get("category_id") or "").strip()
+        # «Сегодня» из формы с телефона: день теперь в planned_for, из одной
+        # due_date задача попала бы в бэклог.
+        in_day = str(payload.get("where") or "") == "today"
         new_task = Task(
             title=clean_title,
             description=str(payload.get("description") or "").strip() or None,
             due_date=_parse_date(payload.get("due_date")) or date.today(),
+            planned_for=date.today() if in_day else None,
             due_time=due_time,
             category_id=int(category) if category.isdigit() else None,
             deadline=_parse_date(payload.get("deadline")),
@@ -489,6 +494,9 @@ async def _apply_one(
         apply_manual_plan(task, task.due_date, new_due)
         task.due_date = new_due
         task.status = "новая"
+        # «Взять на сегодня» с телефона: без этого задача осталась бы в бэклоге.
+        if str(payload.get("where") or "") == "today":
+            task.planned_for = date.today()
         await _remember(db, client_uuid, kind, task.id, payload, "applied")
         return {
             "client_uuid": client_uuid,
@@ -514,7 +522,8 @@ async def _apply_one(
         if task.parent_task_id is None:
             return _rejected(client_uuid, "это не подзадача", task.id)
         parent_id = task.parent_task_id
-        await db.delete(task)
+        # Через сервис: он уносит подзадачи и подчищает ссылки.
+        await delete_tasks_hard(db, task)
         await db.flush()
         # Родителя не трогаем: веб-роут DELETE /tasks/{id}/subtask его тоже не
         # синхронизирует, а расходиться с вебом поведение не должно.

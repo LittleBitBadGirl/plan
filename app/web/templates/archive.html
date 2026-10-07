@@ -143,11 +143,8 @@
                             <span class="bg-orange-900/60 text-orange-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-orange-700/50 shrink-0">L</span>
                             {% endif %}
                             {% if task.category %}
-                            <span class="text-[10px] text-gray-500 truncate max-w-[6rem]">{{ task.category.name }}</span>
+                            <span class="text-[11px] text-gray-500 break-words [overflow-wrap:anywhere]">{{ task.category.name }}</span>
                             {% endif %}
-                            <span class="text-[10px] text-gray-600 tabular-nums shrink-0">
-                                {{ task.completed_at.strftime('%d.%m.%y') if task.completed_at else task.created_at.strftime('%d.%m.%y') }}
-                            </span>
                         </div>
                         <form hx-post="/archive/{{ task.id }}/restore"
                               hx-target="#archive-task-{{ task.id }}"

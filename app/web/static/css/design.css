@@ -794,11 +794,23 @@ h3,
 /* Блок ввода задачи и карточка сводки — одной высоты 42px: рядом они должны
    смотреться аккуратно, а не вразнобой. На телефоне высота не фиксируется:
    там кнопки 44px под палец. */
+/* Карточка предупреждения о нагрузке. Раньше здесь стояли height:42px и
+   display:flex: из-за display:flex правило .hidden из tailwind.css (грузится
+   раньше) не срабатывало, и пустой блок рисовался оранжевой рамкой, а длина
+   текста обрезалась по 42px. */
+.dash-quick-42__card.hidden {
+  display: none;
+}
+.dash-quick-42__card {
+  display: block;
+}
+
 @media (min-width: 1024px) {
+  /* Строка быстрого ввода. Фиксированные 42px убраны: 28px содержимого при
+     паддинге 12px оставляли 7px отступа вместо 12 (поле выглядело прижатым),
+     а с выпадашкой «Сегодня / В бэклог» высота и вовсе обрезала вторую строку. */
   .dash-quick-42 {
-    height: 42px;
-    display: flex;
-    align-items: center;
+    display: block;
   }
   .dash-quick-42 form {
     width: 100%;
@@ -827,11 +839,10 @@ h3,
     padding: 0 20px;
     font-size: 13px;
   }
+  /* Высоту и паддинги карточки не форсируем: длинное предупреждение должно
+     переноситься целиком, а не обрезаться. */
   .dash-quick-42__card {
-    height: 42px;
-    padding: 0 12px;
-    display: flex;
-    align-items: center;
+    display: block;
   }
   .dash-quick-42__card p {
     font-size: 13px;
@@ -2312,4 +2323,95 @@ h3,
     /* «Открыть / Правка / ×» — тоже под палец: 28px промахиваются по соседней
        кнопке, а рядом удаление. */
     .ev-tool { min-height: 2.4rem; padding: 0.45rem 0.7rem; }
+}
+
+
+/* ===== Две половины бэклога: Работа и Личное ======================
+   Tailwind здесь локальная сборка: утилит вроде lg:gap-10 или lg:pl-10 в ней
+   нет, поэтому раскладку и разделитель задаём своими правилами. Отступы
+   симметричные, разделитель по центру — иначе половины выглядят слипшимися. */
+.backlog-halves {
+  display: grid;
+  gap: 2rem;
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .backlog-halves {
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+  .backlog-halves > section {
+    padding: 0 2.5rem;
+  }
+  .backlog-halves > section:first-child {
+    padding-left: 0;
+  }
+  .backlog-halves > section:last-child {
+    border-left: 1px solid #3a4150;
+  }
+}
+
+
+/* ===== Прогресс дня внутри сводки и шапка дашборда ================
+   Прогресс раньше был длинной полосой во всю ширину шапки. Теперь он живёт в
+   свободном месте блока сводки: на десктопе короткая полоса справа от чисел,
+   на телефоне — отдельной строкой под числами. */
+.day-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 100%;
+  order: 3;
+  margin-top: 0.75rem;
+}
+.day-progress__track {
+  flex: 1 1 auto;
+  min-width: 4rem;
+  height: 6px;
+  border-radius: 9999px;
+  background: #141821;
+  border: 1px solid #3a4150;
+  overflow: hidden;
+  display: block;
+}
+@media (min-width: 1024px) {
+  .day-progress {
+    flex: 0 1 15rem;
+    order: 0;
+    margin-top: 0;
+  }
+  .day-progress__track {
+    flex: 0 1 7rem;
+  }
+}
+
+/* Шапка дашборда: «Читать» и «Подзадачи». На телефоне — друг под другом,
+   на десктопе — в одну строку. */
+.dash-top-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+@media (min-width: 1024px) {
+  .dash-top-strip {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+}
+
+
+/* ===== Кнопки-действия одного размера ==============================
+   «Добавить» в строке ввода и «Бэклог» в сводке стоят друг под другом:
+   Вера просила, чтобы они были одной ширины и высоты, а не вразнобой. */
+.cta-square {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 9rem;
+  box-sizing: border-box;
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  white-space: nowrap;
 }

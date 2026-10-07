@@ -452,9 +452,15 @@ async def get_categories_list():
 
 
 def _today_task_base_filter(today: date) -> list:
-    """Корневые задачи на дату (без recurring), единый контракт для дашборда."""
+    """Корневые задачи, взятые на день (без recurring).
+
+    С 07.10.2026 день собирается руками: в списке дня ровно то, что Вера взяла
+    из бэклога (`tasks.planned_for == today`). Раньше здесь стояло
+    `due_date == today`, и ночной ролловер сваливал в день весь хвост
+    незакрытых задач — отсюда «50 задач каждый день».
+    """
     return [
-        Task.due_date == today,
+        Task.planned_for == today,
         Task.parent_task_id == None,
         or_(Task.source != "recurring", Task.source == None),
         Task.item_kind == "task",
@@ -812,11 +818,17 @@ async def append_today_stats_oob(content: str, db: AsyncSession, request=None) -
     и список на экране (без рабочих задач).
     """
     bundle = await get_dashboard_day_stats(db, hide_work=weekend_hide_work(request))
+    # Числа прогресса — из того же bundle: один проход и один и тот же прогресс
+    # и в подмене полосы, и в блоке сводки.
+    pool = await build_day_pool_context(
+        db, request=request, progress=(bundle.completed, bundle.total)
+    )
     return (
         content
         + today_stats_oob_html(bundle.completed, bundle.total)
         + today_subtask_stats_oob_html(bundle.subtask_progress)
         + ai_warning_oob_from(bundle.ai_warning)
+        + render_day_pool_block(pool, oob=True)
     )
 
 
@@ -1241,15 +1253,20 @@ async def get_history_data(db, period: str):
 async def get_tasks_today(db: AsyncSession, request: Request):
     """Вспомогательная функция для получения списка задач на сегодня и их отрисовки"""
     today = date.today()
+    weekend = is_weekend(today)
 
     filters = [
-        Task.due_date == today,
+        Task.planned_for == today,
         task_is_active(),
         Task.status.in_(["новая", "в_работе"]),
         Task.parent_task_id == None,
         Task.source.is_distinct_from("recurring"),
         Task.item_kind == "task",
     ]
+    if weekend:
+        # В выходной ритуала нет: показываем весь личный хвост из бэклога,
+        # брать задачи руками не нужно (решение Веры 07.10.2026).
+        filters[0] = or_(Task.planned_for == today, Task.planned_for.is_(None))
     if weekend_hide_work(request):
         filters.append(not_work_task_filter())
 
@@ -1271,14 +1288,136 @@ async def get_tasks_today(db: AsyncSession, request: Request):
     standalone_tasks = [t for t in tasks if not subtasks_map.get(t.id)]
 
     template = templates.get_template("partials/tasks_list_split.html")
+    taken_subs = await get_day_taken_subtasks(db, today)
     content = template.render({
         "request": request,
         "tasks_with_subtasks": tasks_with_subtasks,
         "standalone_tasks": standalone_tasks,
         "subtasks_map": subtasks_map,
+        "taken_subtasks": taken_subs,
     })
 
     return await append_today_stats_oob(content, db, request)
+
+
+async def get_day_taken_subtasks(db: AsyncSession, today: Optional[date] = None) -> list[dict]:
+    """Подзадачи, взятые на день, вместе с родителем — для подписи «из задачи».
+
+    Родитель в день не попадает: Вера берёт куски, а большая задача ждёт в
+    бэклоге и закрывается сама, когда закроются все её подзадачи.
+    """
+    today = today or date.today()
+    result = await db.execute(
+        select(Task)
+        .options(selectinload(Task.category))
+        .where(
+            Task.planned_for == today,
+            Task.parent_task_id.isnot(None),
+            Task.item_kind == "task",
+            Task.status != "выполнена",
+        )
+        .order_by(Task.id.asc())
+    )
+    subs = list(result.scalars().all())
+    if not subs:
+        return []
+
+    parent_ids = {s.parent_task_id for s in subs}
+    parents_result = await db.execute(select(Task).where(Task.id.in_(parent_ids)))
+    parents = {p.id: p for p in parents_result.scalars().all()}
+
+    subs_map = await load_subtasks_map(db, list(parent_ids))
+    rows = []
+    for sub in subs:
+        parent = parents.get(sub.parent_task_id)
+        siblings = subs_map.get(sub.parent_task_id, [])
+        done = len([s for s in siblings if s.status == "выполнена"])
+        rows.append({
+            "sub": sub,
+            "parent": parent,
+            "done": done,
+            "total": len(siblings),
+        })
+    return rows
+
+
+async def build_day_pool_context(
+    db: AsyncSession,
+    request=None,
+    today: Optional[date] = None,
+    progress: Optional[tuple[int, int]] = None,
+) -> dict:
+    """Числа и состояние для блока «день»: бэклог, взято, регулярные, ритуал.
+
+    Выходной день живёт без ритуала: блок говорит «весь личный бэклог на экране»
+    и не считает взятое.
+    """
+    from app.services.day_pool_service import (
+        MIN_DAY_TASKS,
+        count_backlog,
+        count_taken,
+        counter_label,
+    )
+
+    today = today or date.today()
+    weekend = is_weekend(today)
+    # На самой странице бэклога сводка идёт без числа бэклога и без кнопки
+    # «Бэклог»: число дублирует вкладку «Задачи N», а ссылка ведёт на ту же
+    # страницу, то есть ничего не делает.
+    path = request.url.path if request is not None else ""
+    compact = path.startswith("/backlog")
+
+    # Прогресс дня. Числа приходят параметром от того, у кого уже есть bundle
+    # (дашборд и OOB-ответ): считать его здесь второй раз нельзя — тест
+    # test_append_today_stats_oob_uses_single_bundle держит ровно один проход.
+    # Если ничего не передали (страница бэклога — там прогресс дня не показан,
+    # стоит прогресс ритуала), считаем дешёвым запросом по взятым задачам.
+    if progress is None:
+        day_scope = [Task.planned_for == today, Task.item_kind == "task"]
+        progress_total = (
+            await db.execute(select(func.count(Task.id)).where(*day_scope))
+        ).scalar() or 0
+        progress_done = (
+            await db.execute(
+                select(func.count(Task.id)).where(*day_scope, Task.status == "выполнена")
+            )
+        ).scalar() or 0
+        progress = (progress_done, progress_total)
+    progress_done, progress_total = progress
+
+    taken = await count_taken(db, today)
+    backlog_count = await count_backlog(db)
+    recurring_result = await db.execute(
+        select(func.count(Task.id)).where(
+            Task.source == "recurring",
+            Task.due_date == today,
+            task_is_active(),
+            Task.status.in_(["новая", "в_работе"]),
+        )
+    )
+    recurring_count = recurring_result.scalar() or 0
+
+    return {
+        "weekend": weekend,
+        "compact": compact,
+        "taken": taken,
+        "backlog_count": backlog_count,
+        "recurring_count": recurring_count,
+        "counter": counter_label(taken),
+        "progress_done": progress_done,
+        "progress_total": progress_total,
+        "min_day_tasks": MIN_DAY_TASKS,
+        "left_to_pick": max(MIN_DAY_TASKS - taken, 0),
+        "show_ritual": (not weekend) and taken < MIN_DAY_TASKS,
+    }
+
+
+def render_day_pool_block(ctx: dict, oob: bool = False) -> str:
+    """Отрисовать блок сводки дня (страница и OOB-ответ — один и тот же шаблон)."""
+    return templates.get_template("partials/day_pool_block.html").render({
+        "pool": ctx,
+        "oob": oob,
+    })
 
 __all__ = [
     "templates",

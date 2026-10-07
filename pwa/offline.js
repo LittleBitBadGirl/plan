@@ -320,6 +320,9 @@
                 title,
                 category_id: values.category_id || '',
                 due_date: values.due_date ? toIso(values.due_date) : todayIso(),
+                // Куда задачу: день собирается руками, поэтому без явного выбора
+                // задача ждёт в бэклоге и её видно, а не пропадает из виду.
+                where: values.where || 'backlog',
             };
             if (values.deadline) payload.deadline = toIso(values.deadline);
             if (values.size) payload.size = values.size;
@@ -393,7 +396,11 @@
             // Перенос — отдельный вид действия: сервер должен применить ту же
             // логику счётчика переносов, что и кнопка в вебе.
             if (route.kind === 'plan') {
-                return { kind: 'plan', taskId, payload: { due_date: raw, from }, title: humanDate(raw), url };
+                const payload = { due_date: raw, from };
+                // /backlog/{id}/plan-today — это «взять в день», и день живёт в
+                // planned_for: без пометки задача осталась бы в бэклоге.
+                if (route.dateToToday) payload.where = 'today';
+                return { kind: 'plan', taskId, payload, title: humanDate(raw), url };
             }
             return {
                 kind: 'update_fields',

@@ -1,0 +1,23 @@
+{# Две половины экрана бэклога: Работа и Личное.
+
+   Обе половины рендерятся вместе, в одном ответе: действия «взять на день»,
+   «закрыть», «удалить» и «взять подзадачу» подменяют #backlog-list целиком.
+   Вера: личные дела тянутся месяцами и должны быть перед глазами, а рабочие —
+   не смешиваться с ними. #}
+<div class="backlog-halves">
+    <section>
+        <div class="flex items-center gap-2 mb-2.5 px-1">
+            <h2 class="text-base font-bold text-white">Работа</h2>
+            <span class="text-[12px] font-bold text-gray-400 bg-dark-800 border border-dark-600 rounded-full px-2 py-0.5 tabular-nums">{{ work_tasks|length }}</span>
+        </div>
+        {{ backlog_half(work_tasks, subtasks_map, _today) }}
+    </section>
+
+    <section>
+        <div class="flex items-center gap-2 mb-2.5 px-1">
+            <h2 class="text-base font-bold text-white">Личное</h2>
+            <span class="text-[12px] font-bold text-gray-400 bg-dark-800 border border-dark-600 rounded-full px-2 py-0.5 tabular-nums">{{ personal_tasks|length }}</span>
+        </div>
+        {{ backlog_half(personal_tasks, subtasks_map, _today) }}
+    </section>
+</div>

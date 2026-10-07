@@ -1,0 +1,98 @@
+{# Сводка дня: сколько взято на день (на дашборде ещё и сколько в бэклоге,
+   сколько регулярных).
+
+   Блок один и тот же на дашборде и в бэклоге, id фиксированный: живые
+   обновления подменяют его целиком через hx-swap-oob (см.
+   deps.render_day_pool_block). Поэтому все числа считает сервер, а не JS.
+
+   pool.compact — вид для самой страницы бэклога: без числа бэклога (оно
+   дублировало вкладку «Задачи N») и без кнопки «Бэклог» (ссылка на ту же
+   страницу). Остаётся только прогресс дня. #}
+<div id="day-pool-block"{% if oob %} hx-swap-oob="true"{% endif %}
+     class="bg-dark-800 rounded-xl border border-dark-600 shadow-lg mb-4 {% if pool.compact %}px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2{% else %}p-4{% endif %}">
+{% if pool.compact %}
+    {# Узкая строка вместо пустого щита с одной цифрой: подпись, прогресс
+       точками и подсказка справа — так блок заполнен по всей ширине. #}
+    <span class="text-[11px] uppercase tracking-wider text-gray-500 font-bold shrink-0">Ритуал дня</span>
+    <span class="text-sm font-bold text-white tabular-nums shrink-0">взято {{ pool.taken }}{% if pool.taken < pool.min_day_tasks %} из {{ pool.min_day_tasks }}{% endif %}</span>
+    {# Полоса прогресса тянется на всю оставшуюся ширину: блок заполнен, а не
+       «два куска по краям и пустота посередине». #}
+    <span style="flex:1 1 8rem;min-width:6rem;height:6px;border-radius:9999px;background:#141821;border:1px solid #3a4150;overflow:hidden;display:block"
+          role="progressbar" aria-valuenow="{{ pool.taken }}" aria-valuemin="0" aria-valuemax="{{ pool.min_day_tasks }}">
+        <span style="display:block;height:100%;width:{{ [100, (pool.taken * 100 // pool.min_day_tasks)]|min }}%;background:#c2570a"></span>
+    </span>
+    <span class="ml-auto text-xs {{ 'text-yellow-300' if pool.show_ritual and not pool.weekend else 'text-gray-500' }}">
+        {%- if pool.weekend -%}Выходной: ритуала нет, работа спрятана
+        {%- elif pool.taken == 0 -%}Возьми из бэклога то, что успеешь сделать сегодня
+        {%- elif pool.show_ritual -%}Возьми ещё {{ pool.left_to_pick }}
+        {%- else -%}Ритуал закрыт — можно брать ещё
+        {%- endif -%}
+    </span>
+{% else %}
+    <div class="flex items-center justify-between gap-3" style="flex-wrap:wrap">
+        <div class="flex items-center gap-4 min-w-0">
+            {% if not pool.compact %}
+            <div class="shrink-0">
+                <div class="text-2xl font-bold text-white tabular-nums leading-none">{{ pool.backlog_count }}</div>
+                <div class="text-[11px] uppercase tracking-wider text-gray-500 font-bold mt-1">в бэклоге</div>
+            </div>
+            <span class="shrink-0" style="width:1px;height:32px;background:#2a2f3a"></span>
+            {% endif %}
+            <div class="shrink-0">
+                <div class="text-2xl font-bold tabular-nums leading-none {{ 'text-accent' if pool.show_ritual else 'text-white' }}">{{ pool.taken }}</div>
+                <div class="text-[11px] uppercase tracking-wider text-gray-500 font-bold mt-1">
+                    {%- if pool.taken < pool.min_day_tasks %}на день из {{ pool.min_day_tasks }}{% else %}на день{% endif -%}
+                </div>
+            </div>
+            {% if not pool.compact %}
+            <span class="shrink-0" style="width:1px;height:32px;background:#2a2f3a"></span>
+            <div class="shrink-0">
+                <div class="text-2xl font-bold text-stone-300 tabular-nums leading-none">{{ pool.recurring_count }}</div>
+                <div class="text-[11px] uppercase tracking-wider text-gray-500 font-bold mt-1">регулярных</div>
+            </div>
+            {% endif %}
+        </div>
+        {% if not pool.compact %}
+        {# Прогресс дня: короткая полоса в свободном месте сводки. Раньше это
+           была длинная полоса во всю ширину в шапке дашборда. #}
+        <span class="day-progress">
+            <span class="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Прогресс</span>
+            <span class="day-progress__track">
+                <span id="today-progress-bar" class="bg-amber-600 h-full block transition-all duration-500"
+                      style="width: {{ ([pool.progress_done / pool.progress_total * 100, 100] | min | round | int) if pool.progress_total else 0 }}%"></span>
+            </span>
+            <span id="today-stats-counter" class="font-bold text-sm text-amber-600 tabular-nums">{{ pool.progress_done }}/{{ pool.progress_total }}</span>
+        </span>
+
+        <a href="/backlog"
+           class="cta-square shrink-0 bg-accent hover:bg-accent-hover text-white rounded-xl font-bold text-sm transition-all">Бэклог</a>
+        {% endif %}
+    </div>
+
+    {% if pool.show_ritual %}
+    <div class="mt-3 rounded-lg bg-yellow-900/30 border border-yellow-700 p-3">
+        <div class="flex items-center justify-between gap-3">
+            <p class="text-yellow-300 text-sm min-w-0">
+                На день взято {{ pool.taken }} из {{ pool.min_day_tasks }}.
+                {% if pool.taken == 0 %}Возьми из бэклога то, что успеешь сделать сегодня.{% else %}Возьми ещё {{ pool.left_to_pick }}.{% endif %}
+            </p>
+            <div class="hidden sm:flex items-center gap-1 shrink-0">
+                {% for i in range(pool.min_day_tasks) %}
+                <span class="rounded-full {{ 'bg-accent' if i < pool.taken else 'bg-dark-900 border border-dark-600' }}"
+                      style="width:10px;height:10px;display:inline-block"></span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if pool.weekend %}
+    <div class="mt-3 rounded-lg bg-dark-900 border border-dark-600 p-3">
+        <p class="text-gray-400 text-sm">
+            Выходной. Ритуала нет: на экране весь личный бэклог,
+            рабочие задачи спрятаны.
+        </p>
+    </div>
+    {% endif %}
+{% endif %}
+</div>

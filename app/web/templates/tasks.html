@@ -75,7 +75,6 @@
                     <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Категория</th>
                     <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Статус</th>
                     <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Приоритет</th>
-                    <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Дата</th>
                     <th class="px-6 py-4 text-left text-sm font-medium text-gray-400">Действия</th>
                 </tr>
             </thead>
@@ -123,9 +122,6 @@
                             {{ task.priority }}
                         </span>
                     </td>
-                    <td class="px-6 py-4 text-gray-400">
-                        {% if task.due_date %}{{ task.due_date.strftime('%d.%m.%Y') }}{% else %}—{% endif %}
-                    </td>
                     <td class="px-6 py-4">
                         <div class="flex items-center space-x-2">
                             {% if task.status != 'выполнена' %}
@@ -144,13 +140,16 @@
                                title="Редактировать">
                                 ✏️
                             </a>
+                            {# На этой странице корзина не удаляет, а уводит в архив:
+                               так было и раньше, но подпись врала словом «Удалить».
+                               Настоящее удаление живёт в меню задачи в бэклоге. #}
                             <form hx-delete="/tasks/{{ task.id }}"
                                   hx-target="closest tr"
                                   hx-swap="outerHTML"
                                   class="inline">
-                                <button type="submit" title="Удалить"
+                                <button type="submit" title="В архив"
                                         class="px-3 py-1 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 transition-colors text-sm"
-                                        onclick="return confirm('Удалить задачу?')">
+                                        onclick="return confirm('Убрать задачу в архив? Совсем удалить можно из меню в бэклоге.')">
                                     🗑️
                                 </button>
                             </form>

@@ -1,55 +1,29 @@
-from datetime import date
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+"""Ночная зачистка дня: незакрытое возвращается в бэклог.
+
+До 07.10.2026 сервис работал наоборот — переносил ВСЕ незакрытые задачи на
+сегодняшнюю дату (`due_date = today`). За месяцы в «сегодня» накапливались
+десятки задач (в один день 54, из них 28 старше месяца), и утро начиналось
+с простыни вместо плана.
+
+Решение Веры: день собирается руками (минимум 5 задач из бэклога), а вечером
+всё несделанное уходит обратно в бэклог. Здесь это и происходит: задача теряет
+`planned_for`, счётчик переносов растёт — по нему видно, что брали и не сделали.
+
+Имя функции и ключи ответа оставлены прежними: их дёргает APScheduler в main.py
+и тесты производительности дашборда.
+"""
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.task import Task, task_is_active
-from app.models.category import Category
+
 from app.db.database import async_session
-from app.services.postpones_service import apply_rollover, WORK_CATEGORY_NAMES
+from app.services.day_pool_service import return_unfinished_to_backlog
 
 
 async def _rollover_impl(db: AsyncSession):
-    """Перенести просроченные задачи на сегодня.
-
-    Исключаем source='recurring' — они эфемерны, генератор создаст свежую копию сам.
-    Для рабочих категорий счётчик переносов считает только рабочие дни (пн–пт).
-    """
-    today = date.today()
-
-    result = await db.execute(
-        select(Task)
-        .options(selectinload(Task.category))
-        .where(
-            Task.status.in_(["новая", "в_работе"]),
-            Task.due_date < today,
-            task_is_active(),
-            Task.source.is_distinct_from("recurring"),
-        )
-    )
-    overdue_tasks = result.scalars().all()
-
-    moved_count = 0
-    chronic_count = 0
-    chronic_before = {t.id: t.chronic_task for t in overdue_tasks}
-
-    for task in overdue_tasks:
-        cat_name = task.category.name if task.category else ""
-        is_work = cat_name in WORK_CATEGORY_NAMES
-        apply_rollover(task, today, is_work_category=is_work)
-        moved_count += 1
-        if task.chronic_task and not chronic_before.get(task.id):
-            chronic_count += 1
-
-    await db.flush()
-
-    return {
-        "moved": moved_count,
-        "new_chronic": chronic_count,
-    }
+    return await return_unfinished_to_backlog(db)
 
 
 async def rollover_overdue_tasks(db: AsyncSession = None):
-    """Перенести просроченные задачи на сегодня (для APScheduler)"""
+    """Вернуть незакрытые задачи дня в бэклог (для APScheduler, 00:10)."""
     if db is None:
         async with async_session() as db:
             result = await _rollover_impl(db)

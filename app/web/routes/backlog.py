@@ -25,27 +25,58 @@ from app.web.deps import (
     get_today_stats,
     get_history_data,
     get_tasks_today,
+    build_day_pool_context,
+    render_day_pool_block,
+    work_task_filter,
+    not_work_task_filter,
     _strip_emoji,
     _render_shopping_list,
     _shopping_stats_oob,
     _shopping_list_response,
 )
 
+from app.services.day_pool_service import take_to_day
+from app.services.task_delete_service import delete_tasks_hard
 from app.services.ai_service import ai_service
 
 router = APIRouter()
 
 
-async def _load_backlog(db: AsyncSession) -> tuple[list[Task], dict[int, list[Task]]]:
-    """Задачи бэклога и их подзадачи."""
+def _backlog_where(side: Optional[str] = None) -> list:
+    """Условия бэклога: активное, не взято на день, корневое, не регулярное.
+
+    side="work" — только рабочие задачи, side="personal" — только личные.
+    Признак «рабочая» — из deps.work_task_filter: у Веры клиенты висят
+    подкатегориями под «Работа», по имени подкатегории их не отловить.
+    """
+    where = [
+        task_is_active(),
+        Task.planned_for.is_(None),
+        Task.parent_task_id == None,
+        Task.source.is_distinct_from("recurring"),
+        Task.item_kind == "task",
+    ]
+    if side == "work":
+        where.append(work_task_filter())
+    elif side == "personal":
+        where.append(not_work_task_filter())
+    return where
+
+
+async def _load_backlog(
+    db: AsyncSession, side: Optional[str] = None
+) -> tuple[list[Task], dict[int, list[Task]]]:
+    """Задачи бэклога и их подзадачи.
+
+    Бэклог — это всё активное, что не взято на день (``planned_for IS NULL``).
+    Прежнее условие «без даты» больше не подходит: даты у задач убраны из
+    интерфейса, и задача со старым сроком иначе выпадала бы из бэклога совсем.
+    Регулярные вхождения остаются в своём дне и в бэклог не попадают.
+    """
     result = await db.execute(
         select(Task)
         .options(selectinload(Task.category).selectinload(Category.parent))
-        .where(
-            task_is_active(),
-            Task.due_date == None,
-            Task.parent_task_id == None,
-        )
+        .where(*_backlog_where(side))
         .order_by(Task.created_at.desc())
     )
     tasks = list(result.scalars().all())
@@ -63,11 +94,15 @@ async def _load_backlog(db: AsyncSession) -> tuple[list[Task], dict[int, list[Ta
 
 
 async def _render_backlog_list(request: Request, db: AsyncSession) -> str:
-    tasks, subtasks_map = await _load_backlog(db)
+    # Обе половины — в одном ответе: HTMX-действия бьют по #backlog-list
+    # целиком, иначе после «взять на день» раскладка развалится.
+    work_tasks, work_subtasks = await _load_backlog(db, "work")
+    personal_tasks, personal_subtasks = await _load_backlog(db, "personal")
     return templates.get_template("partials/backlog_list.html").render({
         "request": request,
-        "tasks": tasks,
-        "subtasks_map": subtasks_map,
+        "work_tasks": work_tasks,
+        "personal_tasks": personal_tasks,
+        "subtasks_map": {**work_subtasks, **personal_subtasks},
     })
 
 
@@ -138,13 +173,20 @@ async def backlog_page(request: Request, view: str = "tasks"):
     view = view if view in BACKLOG_VIEWS else "tasks"
 
     async with async_session() as db:
-        tasks, subtasks_map = await _load_backlog(db)
+        work_tasks, work_subtasks = await _load_backlog(db, "work")
+        personal_tasks, personal_subtasks = await _load_backlog(db, "personal")
+        subtasks_map = {**work_subtasks, **personal_subtasks}
+        tasks = work_tasks + personal_tasks
         categories_ctx = await _load_task_categories(db) if view == "categories" else {}
+        day_pool = await build_day_pool_context(db, request)
 
     context = {
         "request": request,
         "tasks": tasks,
+        "work_tasks": work_tasks,
+        "personal_tasks": personal_tasks,
         "subtasks_map": subtasks_map,
+        "day_pool": day_pool,
         "categories": await get_categories_list(),
         "view": view,
     }
@@ -247,7 +289,7 @@ async def make_task_recurring(
         )
         if existing.scalar_one_or_none():
             # Если уже есть такой шаблон, просто удаляем задачу из бэклога
-            await db.delete(task)
+            await delete_tasks_hard(db, task)
             await db.commit()
             return HTMLResponse(f'<div id="task-{task_id}" class="hidden"></div>')
 
@@ -264,8 +306,9 @@ async def make_task_recurring(
         )
         db.add(recurring)
 
-        # 4. Удаляем старую задачу из бэклога
-        await db.delete(task)
+        # 4. Удаляем старую задачу из бэклога (вместе с подзадачами: иначе
+        # они остались бы без родителя и висели в списке сиротами)
+        await delete_tasks_hard(db, task)
         await db.commit()
 
         # 4. Возвращаем пустой блок (HTMX удалит элемент из списка)
@@ -273,16 +316,112 @@ async def make_task_recurring(
 
 
 @router.post("/backlog/{task_id}/plan-today", response_class=HTMLResponse)
-async def plan_task_today(task_id: int):
-    """Мгновенно перенести задачу из бэклога на сегодня"""
-    today = date.today()
+async def plan_task_today(request: Request, task_id: int):
+    """HTMX: взять задачу из бэклога на сегодня (кнопка-молния).
+
+    Ставит «взято на день» и не сбрасывает счётчик переносов — иначе терялась
+    бы статистика «брал и не доделал», о которой Вера отдельно просила.
+    Отдаёт список бэклога целиком плюс OOB-сводку дня: числа на экране должны
+    меняться сразу после каждого взятого дела.
+    """
     async with async_session() as db:
         result = await db.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
-        if task:
-            task.due_date = today
-            task.postpones = 0
-            task.status = "новая"
-            await db.commit()
-            return HTMLResponse(f'<div id="task-{task_id}" class="hidden"></div>')
-    return HTMLResponse(f'<div id="task-{task_id}" class="text-red-400">Ошибка</div>')
+        if not task:
+            return HTMLResponse(f'<div id="task-{task_id}" class="text-red-400">Ошибка</div>')
+
+        await take_to_day(db, task)
+        await db.commit()
+
+        html = await _render_backlog_list(request, db)
+        pool = await build_day_pool_context(db, request)
+        return HTMLResponse(content=html + render_day_pool_block(pool, oob=True))
+
+
+@router.post("/backlog/{task_id}/complete", response_class=HTMLResponse)
+async def complete_from_backlog(request: Request, task_id: int):
+    """HTMX: закрыть задачу из бэклога (меню «Отметить выполненной»).
+
+    Галочка отправляет сделанное в архив, поэтому список перерисовывается
+    целиком: строка должна исчезнуть, а не превратиться в надпись.
+    """
+    async with async_session() as db:
+        result = await db.execute(select(Task).where(Task.id == task_id))
+        task = result.scalar_one_or_none()
+        if not task:
+            raise HTTPException(status_code=404, detail="Задача не найдена")
+
+        now = datetime.utcnow()
+        task.status = "выполнена"
+        task.completed_at = now
+        task.overdue_since = None
+        if task.parent_task_id is None:
+            task.is_archived = True
+            task.item_kind = "task"
+            children = await db.execute(
+                select(Task).where(
+                    Task.parent_task_id == task.id,
+                    Task.status != "выполнена",
+                )
+            )
+            for child in children.scalars().all():
+                child.status = "выполнена"
+                child.completed_at = now
+                child.is_archived = False
+                child.overdue_since = None
+        await db.commit()
+
+        html = await _render_backlog_list(request, db)
+        pool = await build_day_pool_context(db, request)
+        return HTMLResponse(content=html + render_day_pool_block(pool, oob=True))
+
+
+@router.post("/backlog/{task_id}/delete-task", response_class=HTMLResponse)
+async def delete_from_backlog(request: Request, task_id: int):
+    """HTMX: удалить задачу насовсем (меню «Удалить»).
+
+    Это не архив: архив — место для сделанного (галочка), а корзина убирает
+    задачу из базы вместе с её подзадачами. Ошибиться нельзя, поэтому в меню
+    стоит подтверждение.
+    """
+    async with async_session() as db:
+        result = await db.execute(select(Task).where(Task.id == task_id))
+        task = result.scalar_one_or_none()
+        if not task:
+            raise HTTPException(status_code=404, detail="Задача не найдена")
+
+        # Удаление вместе с подзадачами и со ссылками из career_impacts /
+        # screenshots: sqlite здесь без PRAGMA foreign_keys и сам их не уберёт.
+        await delete_tasks_hard(db, task)
+        await db.commit()
+
+        html = await _render_backlog_list(request, db)
+        pool = await build_day_pool_context(db, request)
+        return HTMLResponse(content=html + render_day_pool_block(pool, oob=True))
+
+
+@router.post("/backlog/{task_id}/take-subtask", response_class=HTMLResponse)
+async def take_subtask_to_day(request: Request, task_id: int):
+    """HTMX: взять на день одну подзадачу большой задачи.
+
+    Ответ — только сама строка (в состоянии «в дне»), чтобы раскрытый список
+    подзадач не схлопывался между кликами: Вера берёт куски по одному.
+    """
+    async with async_session() as db:
+        result = await db.execute(select(Task).where(Task.id == task_id))
+        sub = result.scalar_one_or_none()
+        if not sub or not sub.parent_task_id:
+            raise HTTPException(status_code=404, detail="Подзадача не найдена")
+
+        await take_to_day(db, sub)
+        await db.commit()
+
+        row = templates.get_template("partials/subtask_row.html").render({
+            "request": request,
+            "sub": sub,
+            "parent_id": sub.parent_task_id,
+            "today": date.today(),
+            "subtask_context": "backlog",
+        })
+        pool = await build_day_pool_context(db, request)
+        return HTMLResponse(content=row + render_day_pool_block(pool, oob=True))

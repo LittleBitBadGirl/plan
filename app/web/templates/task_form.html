@@ -124,34 +124,31 @@
                 </div>
             </div>
 
-            <!-- Due Date -->
+            <!-- Куда задачу: в день или в бэклог. Даты выполнения в форме больше
+                 нет: день набирается ритуалом из бэклога, а не полем ввода.
+                 Поле due_date в базе не тронуто — на нём регулярные задачи. -->
             <div>
-                <label for="due_date" class="block text-sm font-medium text-gray-300 mb-2">
-                    Дата выполнения
+                <label class="block text-sm font-medium text-gray-300 mb-2">
+                    Куда задачу
                 </label>
-                <div class="flex flex-wrap gap-2 mb-2">
-                    <button type="button" data-date-chip="today"
-                            class="date-chip px-3 py-1.5 text-xs font-bold rounded-lg border border-dark-500 bg-dark-700 text-gray-300 hover:border-accent hover:text-accent transition-colors min-h-[36px]">
-                        Сегодня
-                    </button>
-                    <button type="button" data-date-chip="tomorrow"
-                            class="date-chip px-3 py-1.5 text-xs font-bold rounded-lg border border-dark-500 bg-dark-700 text-gray-300 hover:border-accent hover:text-accent transition-colors min-h-[36px]">
-                        Завтра
-                    </button>
-                    <button type="button" data-date-chip="clear"
-                            class="date-chip px-3 py-1.5 text-xs font-bold rounded-lg border border-dark-500 bg-dark-700 text-gray-400 hover:border-gray-400 transition-colors min-h-[36px]">
-                        Без даты
-                    </button>
+                {% set _on_today = task and task.planned_for == today %}
+                <div class="grid grid-cols-2 gap-2">
+                    <label class="cursor-pointer">
+                        <input type="radio" name="where" value="today" class="peer sr-only"
+                               {% if _on_today %}checked{% endif %}>
+                        <span class="block text-center px-4 py-3 rounded-lg border border-dark-500 bg-dark-700 text-gray-300 font-medium text-sm transition-colors peer-checked:border-accent peer-checked:bg-accent/15 peer-checked:text-white">
+                            Сегодня
+                        </span>
+                    </label>
+                    <label class="cursor-pointer">
+                        <input type="radio" name="where" value="backlog" class="peer sr-only"
+                               {% if not _on_today %}checked{% endif %}>
+                        <span class="block text-center px-4 py-3 rounded-lg border border-dark-500 bg-dark-700 text-gray-300 font-medium text-sm transition-colors peer-checked:border-accent peer-checked:bg-accent/15 peer-checked:text-white">
+                            В бэклог
+                        </span>
+                    </label>
                 </div>
-                <input type="text" id="due_date" name="due_date"
-                       inputmode="numeric"
-                       autocomplete="off"
-                       maxlength="5"
-                       placeholder="ДД.ММ"
-                       value="{% if task and task.due_date %}{{ task.due_date.strftime('%d.%m') }}{% elif not task %}{{ today.strftime('%d.%m') }}{% endif %}"
-                       class="date-mask-ddmm w-full px-4 py-3 bg-dark-700 border border-dark-500 rounded-lg text-white text-base
-                              placeholder-gray-500 focus:outline-none focus:border-accent min-h-[48px] font-mono tracking-wide">
-                <p class="text-[11px] text-gray-500 mt-1.5">Введите 4 цифры, например 1206 → 12.06</p>
+                <p class="text-[11px] text-gray-500 mt-1.5">«Сегодня» — задача сразу в дне. «В бэклог» — ждёт, пока её возьмут руками.</p>
             </div>
 
             <!-- Footer -->
@@ -168,42 +165,4 @@
         </form>
     </div>
 </div>
-{% endblock %}
-
-{% block extra_scripts %}
-<script>
-(function () {
-    const input = document.getElementById('due_date');
-    if (!input) return;
-
-    function pad(n) {
-        return String(n).padStart(2, '0');
-    }
-
-    function formatDate(d) {
-        return pad(d.getDate()) + '.' + pad(d.getMonth() + 1);
-    }
-
-    function setDueDate(d) {
-        input.value = formatDate(d);
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-
-    document.querySelectorAll('[data-date-chip]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            const kind = btn.getAttribute('data-date-chip');
-            if (kind === 'clear') {
-                input.value = '';
-                return;
-            }
-            const base = new Date();
-            if (kind === 'tomorrow') {
-                base.setDate(base.getDate() + 1);
-            }
-            setDueDate(base);
-        });
-    });
-
-})();
-</script>
 {% endblock %}

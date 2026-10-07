@@ -105,7 +105,7 @@ async def test_today_roots_includes_sub_completed_today(db):
 async def test_complete_task_returns_oob_not_full_list(client, db):
     """Complete root task — OOB hide + stats, без re-render всего списка."""
     today = date.today()
-    task = Task(title="Complete me", due_date=today, status="новая", source="web")
+    task = Task(title="Complete me", planned_for=today, status="новая", source="web")
     db.add(task)
     await db.commit()
     await db.refresh(task)
@@ -145,7 +145,7 @@ async def test_delete_task_returns_oob_not_full_list(client, db):
 async def test_dashboard_day_stats_loads_recurring_once(db):
     """Bundle stats — один запрос recurring templates за проход."""
     today = date.today()
-    parent = Task(title="Bundle parent", due_date=today, status="новая", source="web")
+    parent = Task(title="Bundle parent", planned_for=today, status="новая", source="web")
     db.add(parent)
     await db.flush()
     for i in range(3):
@@ -168,7 +168,7 @@ async def test_dashboard_day_stats_loads_recurring_once(db):
 async def test_append_today_stats_oob_uses_single_bundle(db):
     """HTMX OOB — один bundle вместо каскада stats-вызовов."""
     today = date.today()
-    db.add(Task(title="Leaf", due_date=today, status="новая", source="web"))
+    db.add(Task(title="Leaf", planned_for=today, status="новая", source="web"))
     await db.commit()
 
     with patch("app.web.deps.get_dashboard_day_stats", wraps=get_dashboard_day_stats) as mock_bundle:

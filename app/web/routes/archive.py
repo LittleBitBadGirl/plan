@@ -70,6 +70,9 @@ async def archive_page(
             select(func.count(Task.id)).where(
                 Task.is_archived == True,
                 Task.item_kind == "task",
+                # В архиве только целые задачи: закрытая подзадача остаётся
+                # зачёркнутой внутри своей задачи, отдельной строкой не висит.
+                Task.parent_task_id.is_(None),
             )
         )
         total = total_result.scalar() or 0
@@ -77,7 +80,11 @@ async def archive_page(
         result = await db.execute(
             select(Task)
             .options(selectinload(Task.category))
-            .where(Task.is_archived == True, Task.item_kind == "task")
+            .where(
+                Task.is_archived == True,
+                Task.item_kind == "task",
+                Task.parent_task_id.is_(None),
+            )
             .order_by(Task.completed_at.desc(), Task.created_at.desc())
             .offset(offset)
             .limit(limit)

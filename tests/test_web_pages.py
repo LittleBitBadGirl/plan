@@ -74,7 +74,7 @@ class TestPages:
         db.add(
             Task(
                 title="https://tracker.dalee.ru/secure/Dashboard.jspa почистить",
-                due_date=date.today(),
+                planned_for=date.today(),
                 status="новая",
                 source="web",
             )
@@ -100,7 +100,7 @@ class TestPages:
         from app.models.task import Task
 
         today = date.today()
-        db.add(Task(title="Одна", due_date=today, status="новая", source="web"))
+        db.add(Task(title="Одна", planned_for=today, status="новая", source="web"))
         await db.commit()
 
         response = await client.get("/dashboard/today-stats")
@@ -153,14 +153,14 @@ class TestPages:
         today = date.today()
         old = Task(
             title="Старая просроченная",
-            due_date=today,
+            planned_for=today,
             status="новая",
             postpones=3,
             created_at=datetime.now(timezone.utc) - timedelta(days=10),
         )
         new = Task(
             title="Свежая сегодня",
-            due_date=today,
+            planned_for=today,
             status="новая",
             postpones=0,
             created_at=datetime.now(timezone.utc),
@@ -475,8 +475,16 @@ class TestBacklogHTMX:
         assert response.status_code == 200
         assert "📅" in response.text or response.status_code == 200
 
-    async def test_plan_task_compact_date(self, client):
-        """Запланировать задачу — формат DDMM без точки (0606 → 06.06)"""
+    async def test_plan_task_compact_date(self, client, db):
+        """Формат DDMM без точки (0606 → 06.06) по-прежнему разбирается.
+
+        Механизм будущих дат убран из интерфейса (решение Веры 07.10.2026):
+        день собирается не по дате, поэтому проверяем саму дату в базе, а не
+        её показ в списке дня.
+        """
+        from sqlalchemy import select
+        from app.models.task import Task
+
         create_resp = await client.post("/api/tasks", json={"title": "Компактная дата"})
         task_id = create_resp.json()["id"]
 
@@ -485,7 +493,9 @@ class TestBacklogHTMX:
 
         response = await client.post(f"/tasks/{task_id}/plan", data={"due_date": compact})
         assert response.status_code == 200
-        assert "📅" in response.text
+
+        task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one()
+        assert task.due_date == tomorrow
 
     async def test_plan_task_invalid_date(self, client):
         """Запланировать с неправильной датой"""

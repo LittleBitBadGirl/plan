@@ -45,7 +45,7 @@ async def test_run_migrations_on_fresh_db():
                 text("SELECT version_num FROM alembic_version")
             )
             version = result.scalar_one()
-        assert version == "021_event_visit"
+        assert version == "022_task_planned_for"
 
         sync = sqlite3.connect(db_path)
         task_cols = {row[1] for row in sync.execute("PRAGMA table_info(tasks)")}
@@ -60,6 +60,10 @@ async def test_run_migrations_on_fresh_db():
             row[1]
             for row in sync.execute("PRAGMA index_list(tasks)")
         }
+        # Миграция 022: «взято на день» — по ней собирается день, поэтому
+        # колонка и индекс обязаны существовать после прогона миграций.
+        assert "planned_for" in task_cols
+        assert "ix_tasks_planned_for" in task_indexes
         habit_indexes = {
             row[1]
             for row in sync.execute("PRAGMA index_list(habit_logs)")
@@ -174,7 +178,7 @@ async def test_achievements_migration_creates_table_itself():
         cols = {row[1] for row in sync.execute("PRAGMA table_info(achievements)")}
         sync.close()
 
-        assert version == "021_event_visit"
+        assert version == "022_task_planned_for"
         assert "achievements" in tables
         assert {"text", "sphere", "is_archived", "created_at"} <= cols
 
@@ -416,7 +420,7 @@ async def test_habit_log_migration_replaces_legacy_unique_and_fixes_overlap():
             (2, 8, 1, "2026-09-28"),
         ], "отметки потерялись при пересборке таблицы"
         assert indexes >= {"ix_habit_logs_id", "ix_habit_logs_habit_cycle"}
-        assert version == "021_event_visit"
+        assert version == "022_task_planned_for"
         assert start_date == "2026-09-29", "нахлёст не убран: цикл всё ещё начинается днём прошлого"
 
         # Повторный прогон (контейнер перезапускается) ничего не меняет.
@@ -503,7 +507,7 @@ async def test_event_visit_migration_clears_decisions_without_a_day():
         cols = {row[1] for row in sync.execute("PRAGMA table_info(events)")}
         sync.close()
 
-        assert version == "021_event_visit"
+        assert version == "022_task_planned_for"
         assert {"visit_date", "visit_time"} <= cols
         assert statuses["Не иду"] == "none"
         assert statuses["Иду без дня"] == "none"

@@ -11,7 +11,7 @@ from app.web.deps import get_today_progress, get_today_actionable_stats, get_sub
 @pytest.mark.asyncio
 async def test_progress_leaf_task(db):
     today = date.today()
-    t = Task(title="Позвонить", due_date=today, status="новая", source="web")
+    t = Task(title="Позвонить", planned_for=today, status="новая", source="web")
     db.add(t)
     await db.commit()
 
@@ -24,7 +24,7 @@ async def test_progress_leaf_task(db):
 async def test_progress_parent_with_subs_excluded_from_progress_bar(db):
     """Родитель с подзадачами не входит в полоску ПРОГРЕСС — только в ПОДЗАДАЧИ."""
     today = date.today()
-    parent = Task(title="Лендинг", due_date=today, status="новая", source="web")
+    parent = Task(title="Лендинг", planned_for=today, status="новая", source="web")
     db.add(parent)
     await db.flush()
 
@@ -45,7 +45,7 @@ async def test_progress_parent_with_subs_excluded_from_progress_bar(db):
 async def test_actionable_subs_without_dl_count(db):
     """Баннер: подзадачи без DL тоже входят в нагрузку."""
     today = date.today()
-    parent = Task(title="Лендинг", due_date=today, status="новая", source="web")
+    parent = Task(title="Лендинг", planned_for=today, status="новая", source="web")
     db.add(parent)
     await db.flush()
 
@@ -62,7 +62,7 @@ async def test_actionable_subs_without_dl_count(db):
 async def test_actionable_sub_without_dl_completed_today(db):
     """Закрытие подзадачи без DL сегодня увеличивает и total, и completed."""
     today = date.today()
-    parent = Task(title="Проект", due_date=today, status="новая", source="web")
+    parent = Task(title="Проект", planned_for=today, status="новая", source="web")
     db.add(parent)
     await db.flush()
 
@@ -85,7 +85,7 @@ async def test_actionable_sub_without_dl_completed_today(db):
 async def test_actionable_subs_with_deadline_today(db):
     """Баннер: подзадачи с deadline <= сегодня считаются поштучно."""
     today = date.today()
-    parent = Task(title="Лендинг", due_date=today, status="новая", source="web")
+    parent = Task(title="Лендинг", planned_for=today, status="новая", source="web")
     db.add(parent)
     await db.flush()
 
@@ -116,7 +116,7 @@ async def test_deadline_no_longer_hides_subtasks(db):
     """
     today = date.today()
     future = today + timedelta(days=7)
-    parent = Task(title="Проект", due_date=today, status="новая", source="web")
+    parent = Task(title="Проект", planned_for=today, status="новая", source="web")
     db.add(parent)
     await db.flush()
 
@@ -134,7 +134,7 @@ async def test_actionable_future_deadline_sub_completed_today(db):
     """Подзадача с DL в будущем, закрытая сегодня, идёт в выполненные."""
     today = date.today()
     future = today + timedelta(days=7)
-    parent = Task(title="Проект", due_date=today, status="новая", source="web")
+    parent = Task(title="Проект", planned_for=today, status="новая", source="web")
     db.add(parent)
     await db.flush()
 
@@ -159,7 +159,7 @@ async def test_actionable_overdue_sub_completed_today(db):
     """Закрытие просроченной подзадачи сегодня увеличивает completed в баннере."""
     today = date.today()
     yesterday = today - timedelta(days=1)
-    parent = Task(title="Проект", due_date=today, status="новая", source="web")
+    parent = Task(title="Проект", planned_for=today, status="новая", source="web")
     db.add(parent)
     await db.flush()
 
@@ -201,7 +201,7 @@ async def test_actionable_overdue_sub_counted(db):
     """Просроченные подзадачи (deadline <= сегодня) входят в нагрузку."""
     today = date.today()
     yesterday = today - timedelta(days=1)
-    parent = Task(title="Проект", due_date=today, status="новая", source="web")
+    parent = Task(title="Проект", planned_for=today, status="новая", source="web")
     db.add(parent)
     await db.flush()
 
@@ -217,7 +217,7 @@ async def test_actionable_overdue_sub_counted(db):
 async def test_actionable_sub_completed_yesterday_not_in_today(db):
     """Подзадача, закрытая вчера, не входит в сегодняшнюю нагрузку."""
     today = date.today()
-    parent = Task(title="Лендинг", due_date=today, status="новая", source="web")
+    parent = Task(title="Лендинг", planned_for=today, status="новая", source="web")
     db.add(parent)
     await db.flush()
 
@@ -242,8 +242,8 @@ async def test_actionable_sub_completed_yesterday_not_in_today(db):
 async def test_actionable_mixed_leaf_and_subs(db):
     """Standalone + подзадачи с deadline."""
     today = date.today()
-    open_leaf = Task(title="Письмо", due_date=today, status="новая", source="web")
-    parent = Task(title="Проект", due_date=today, status="новая", source="web")
+    open_leaf = Task(title="Письмо", planned_for=today, status="новая", source="web")
+    parent = Task(title="Проект", planned_for=today, status="новая", source="web")
     db.add_all([open_leaf, parent])
     await db.flush()
 
@@ -268,13 +268,13 @@ async def test_progress_archived_leaf_completed_today(db):
     today = date.today()
     done = Task(
         title="Сделано",
-        due_date=today,
+        planned_for=today,
         status="выполнена",
         completed_at=datetime.utcnow(),
         is_archived=True,
         source="web",
     )
-    open_task = Task(title="Осталось", due_date=today, status="новая", source="web")
+    open_task = Task(title="Осталось", planned_for=today, status="новая", source="web")
     db.add(done)
     db.add(open_task)
     await db.commit()
@@ -288,7 +288,7 @@ async def test_progress_archived_leaf_completed_today(db):
 async def test_progress_includes_recurring_templates(db):
     """Регулярные шаблоны на сегодня входят в total."""
     today = date.today()
-    db.add(Task(title="Обычная", due_date=today, status="новая", source="web"))
+    db.add(Task(title="Обычная", planned_for=today, status="новая", source="web"))
     db.add(
         RecurringTask(
             title="Йога",
@@ -333,7 +333,7 @@ async def test_progress_recurring_completed_today(db):
 @pytest.mark.asyncio
 async def test_archived_subtask_visible_after_repair(db):
     today = date.today()
-    parent = Task(title="Проект", due_date=today, status="новая", source="web")
+    parent = Task(title="Проект", planned_for=today, status="новая", source="web")
     db.add(parent)
     await db.flush()
 

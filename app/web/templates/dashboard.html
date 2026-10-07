@@ -65,6 +65,9 @@
     .period-phase-pill--ovulation  { background: rgba(16,185,129,0.15); color: #34d399; }
     .period-phase-pill--luteal     { background: rgba(139,92,246,0.15);  color: #a78bfa; }
     .period-phase-pill--pms        { background: rgba(245,158,11,0.15); color: #fbbf24; }
+
+    /* Блоки с x-cloak не должны мигать до инициализации Alpine. */
+    [x-cloak] { display: none !important; }
 </style>
 {% endblock %}
 
@@ -96,24 +99,31 @@
                               d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.6 9.7l5.8-.8z"></path>
                     </svg>
                 </button>
-                <a href="/tasks/new"
-                   aria-label="Новая задача"
-                   class="w-11 h-11 min-w-[44px] bg-accent hover:bg-accent-hover text-white rounded-xl transition-all flex items-center justify-center text-2xl font-bold leading-none shadow-lg active:scale-95">
-                    +
-                </a>
             </div>
         </div>
 
-        <div class="w-full lg:flex-1 lg:order-none flex flex-row gap-3 items-start">
+        <div class="w-full lg:flex-1 lg:order-none dash-top-strip">
             <div class="flex-1">
-                <div class="flex justify-between items-center mb-1 px-1">
-                    <span class="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Прогресс</span>
-                    <span id="today-stats-counter" class="font-bold text-sm text-amber-600">{{ completed }}/{{ total }}</span>
-                </div>
-                <div class="w-full bg-dark-800 rounded-full h-1.5 border border-dark-600 overflow-hidden">
-                    {% set progress = ([completed / total * 100, 100] | min) if total > 0 else 0 %}
-                    <div id="today-progress-bar" class="bg-amber-600 h-full transition-all duration-500" style="width: {{ progress }}%"></div>
-                </div>
+                {# Читать — на месте прогресса: это самое видное место в шапке, а
+                   прогресс дня уехал в блок сводки, где пустовало. #}
+                {% set r_now = (reading_items | selectattr('status', 'equalto', 'reading') | list | first) if reading_items else None %}
+                {% set r_title = (r_now.title.split('http')[0].strip() or r_now.title) if r_now else '' %}
+                {% set r_pct = ([(r_now.pages_read or 0) / r_now.pages_total * 100, 100] | min | round | int) if (r_now and r_now.pages_total) else 0 %}
+                <a href="/reading" class="reading-shortcut"
+                   title="{% if r_now %}{{ r_title }} — открыть список чтения{% else %}Список чтения{% endif %}">
+                    <span class="reading-shortcut__label">Читать</span>
+                    <span class="reading-shortcut__count">{{ reading_items | length }}</span>
+                    {% if r_now %}
+                    <span class="reading-shortcut__now">{{ r_title }}</span>
+                    {% if r_now.pages_total %}
+                    <span class="reading-shortcut__bar"><i style="width: {{ r_pct }}%"></i></span>
+                    <span class="reading-shortcut__pct">{{ r_pct }}%</span>
+                    {% endif %}
+                    {% else %}
+                    <span class="reading-shortcut__now">список пуст</span>
+                    {% endif %}
+                    <span class="reading-shortcut__arrow">&rarr;</span>
+                </a>
             </div>
 
             {% if subtask_progress.parent_total > 0 %}
@@ -141,10 +151,6 @@
                     class="shrink-0 inline-flex items-center px-5 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 whitespace-nowrap">
                 Достижение
             </button>
-            <a href="/tasks/new"
-               class="shrink-0 inline-flex items-center px-5 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 whitespace-nowrap">
-                Новая задача
-            </a>
         </div>
     </div>
 
@@ -202,9 +208,15 @@
             {# Быстрый ввод — первым в колонке: это главное действие на дашборде,
                под «Регулярными» и списком он уезжал ниже и был не под рукой. #}
             {# Класс .dash-quick-42 держит высоту блока ввода 42px — как у сводки. #}
-            <div id="dashboard-quick-add-desktop" class="hidden lg:block dash-quick-42 bg-dark-800 rounded-xl border border-dark-600 p-3 shadow-lg">
+            <div id="dashboard-quick-add-desktop" class="hidden lg:block dash-quick-42 bg-dark-800 rounded-xl border border-dark-600 p-4 shadow-lg">
                 {% include "partials/dashboard_quick_add_form.html" %}
             </div>
+
+            {# Сводка дня и утренний ритуал: сколько в бэклоге, сколько взято.
+               Стоит сразу под строкой ввода — с этого начинается день. #}
+            {% with pool = day_pool %}
+                {% include "partials/day_pool_block.html" %}
+            {% endwith %}
 
 
             <!-- Регулярные: это задачи по расписанию, поэтому место — в основной колонке, выше разового на сегодня. -->
@@ -335,28 +347,6 @@
                 {# Сводка по нагрузке («Сегодня 85 задач: …») — рядом с календарём:
                    слева она спорила за место с формой ввода, а тут она к месту,
                    и на телефоне остаётся прямо над календарём (dash-m-3). #}
-                {# Читать: список живёт на отдельной странице (/reading). Здесь —
-                   одна строка: название пункта, счётчик и прогресс. Ссылку из
-                   заголовка вырезаем: иначе адрес PDF растягивал кнопку на три
-                   строки. #}
-                {% set r_now = (reading_items | selectattr('status', 'equalto', 'reading') | list | first) if reading_items else None %}
-                {% set r_title = (r_now.title.split('http')[0].strip() or r_now.title) if r_now else '' %}
-                {% set r_pct = ([(r_now.pages_read or 0) / r_now.pages_total * 100, 100] | min | round | int) if (r_now and r_now.pages_total) else 0 %}
-                <a href="/reading" class="reading-shortcut mb-4"
-                   title="{% if r_now %}{{ r_title }} — открыть список чтения{% else %}Список чтения{% endif %}">
-                    <span class="reading-shortcut__label">Читать</span>
-                    <span class="reading-shortcut__count">{{ reading_items | length }}</span>
-                    {% if r_now %}
-                    <span class="reading-shortcut__now">{{ r_title }}</span>
-                    {% if r_now.pages_total %}
-                    <span class="reading-shortcut__bar"><i style="width: {{ r_pct }}%"></i></span>
-                    <span class="reading-shortcut__pct">{{ r_pct }}%</span>
-                    {% endif %}
-                    {% else %}
-                    <span class="reading-shortcut__now">список пуст</span>
-                    {% endif %}
-                    <span class="reading-shortcut__arrow">&rarr;</span>
-                </a>
 
                 <div id="ai-warning-block" class="{% if not ai_warning %}hidden{% endif %} dash-quick-42__card mb-4 p-4 rounded-lg bg-yellow-900/30 border border-yellow-700 animate-pulse">
                     <p class="text-yellow-300">{% if ai_warning %}{{ ai_warning }}{% endif %}</p>

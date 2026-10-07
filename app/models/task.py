@@ -30,6 +30,11 @@ class Task(Base):
     priority = Column(String(20), default="средний")  # низкий/средний/высокий
     due_date = Column(Date, nullable=True, index=True)
     deadline = Column(Date, nullable=True, index=True)  # DL — крайний срок (отдельно от фокуса дня)
+    # День, на который задачу ВЗЯЛИ из бэклога (миграция 022). День собирается
+    # руками: до пяти задач минимум, дальше сколько нужно; вечером незакрытое
+    # возвращается в бэклог. В отличие от due_date это не срок, а решение —
+    # поэтому взятая задача не затирает себе дату срока и умеет вернуться.
+    planned_for = Column(Date, nullable=True, index=True)
     due_time = Column(Time, nullable=True) # Время встречи
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)

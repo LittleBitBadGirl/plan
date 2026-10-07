@@ -18,7 +18,7 @@ async def _seed_overdue_subtask_parent(db, *, sub_count: int = 10, overdue_open:
     """Родитель на сегодня с просроченными подзадачами (для баннера > 8)."""
     today = date.today()
     yesterday = today - timedelta(days=1)
-    parent = Task(title="Крупный проект", due_date=today, status="новая", source="web")
+    parent = Task(title="Крупный проект", planned_for=today, status="новая", source="web")
     db.add(parent)
     await db.flush()
 
@@ -59,7 +59,7 @@ class TestTodayLoadBannerStats:
     async def test_actionable_stats_increments_on_complete_flow(self, db):
         today = date.today()
         yesterday = today - timedelta(days=1)
-        parent = Task(title="Проект", due_date=today, status="новая", source="web")
+        parent = Task(title="Проект", planned_for=today, status="новая", source="web")
         db.add(parent)
         await db.flush()
 

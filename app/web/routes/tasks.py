@@ -17,6 +17,9 @@ from app.models.report import AIReport
 from app.models.finance import Transaction
 from app.config import settings
 
+from app.services.day_pool_service import take_to_day, return_to_backlog
+from app.services.task_delete_service import delete_tasks_hard
+
 from app.web.deps import (
     templates,
     compute_period_data,
@@ -114,7 +117,7 @@ async def delete_subtask(request: Request, task_id: int):
         
         if task:
             parent_id = task.parent_task_id
-            await db.delete(task)
+            await delete_tasks_hard(db, task)
             await db.commit()
 
             subtasks_result = await db.execute(
@@ -146,6 +149,7 @@ async def task_web_create(
     is_milestone: bool = Form(False),
     impact_notes: str = Form(""),
     size: str = Form(""),
+    where: str = Form("backlog"),
 ):
     """Web: создать задачу из формы (form-data)"""
     async with async_session() as db:
@@ -175,6 +179,10 @@ async def task_web_create(
             is_milestone=is_milestone,
             impact_notes=impact_notes,
             size=size if size in ("L", "XL") else None,
+            # Выбор «Сегодня» в форме кладёт задачу сразу в день (planned_for),
+            # «В бэклог» — оставляет ждать. Даты выполнения в форме нет, поэтому
+            # это единственный способ завести задачу в день руками.
+            planned_for=date.today() if where == "today" else None,
             source="web",
         )
         db.add(task)
@@ -202,6 +210,7 @@ async def task_web_edit(
     is_milestone: bool = Form(None),
     impact_notes: str = Form(None),
     size: str = Form(None),
+    where: str = Form(None),
 ):
     """Web: редактировать задачу из формы (form-data)"""
     async with async_session() as db:
@@ -227,6 +236,9 @@ async def task_web_edit(
             task.impact_notes = impact_notes
         if size is not None:
             task.size = size if size in ("L", "XL") else None
+        if where is not None:
+            # Перевод между днём и бэклогом из формы редактирования.
+            task.planned_for = date.today() if where == "today" else None
 
         if status is not None:
             task.status = status
@@ -343,9 +355,15 @@ async def task_create_htmx(
     request: Request,
     title: str = Form(...),
     category_id: str = Form(None),
+    where: str = Form("today"),
 ):
-    """HTMX: быстрое создание задачи на сегодня"""
+    """HTMX: быстрое создание задачи — в день или в бэклог.
+
+    Куда именно, решает выпадашка после Enter: «Сегодня» — задача сразу в дне,
+    «В бэклог» — ждёт в бэклоге, пока её возьмут руками.
+    """
     today = date.today()
+    to_backlog = where == "backlog"
     
     # Парсинг времени из заголовка (например, "12:00 Задача")
     due_time = None
@@ -370,7 +388,8 @@ async def task_create_htmx(
         task = Task(
             title=title,
             category_id=final_category_id,
-            due_date=today,
+            due_date=None,
+            planned_for=None if to_backlog else today,
             due_time=due_time,
             source="web",
             status="новая",
@@ -441,17 +460,38 @@ async def complete_subtask_htmx(request: Request, task_id: int):
 
 @router.post("/tasks/{task_id}/backlog", response_class=HTMLResponse)
 async def task_to_backlog(request: Request, task_id: int):
-    """Вернуть задачу в бэклог (убрать дату планирования)"""
+    """HTMX: вернуть задачу из дня в бэклог (крестик в карточке дня).
+
+    Переносы не обнуляем: счётчик означает «сколько раз брал и не доделал» —
+    именно по нему видно хронические задачи.
+    """
     async with async_session() as db:
         result = await db.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
         if task:
-            task.due_date = None
-            task.postpones = 0
-            task.status = "новая"
+            await return_to_backlog(db, task)
             await db.commit()
             return HTMLResponse(content=await get_tasks_today(db, request))
     raise HTTPException(status_code=404, detail="Задача не найдена")
+
+
+@router.post("/tasks/{task_id}/day-complete-subtask", response_class=HTMLResponse)
+async def day_complete_subtask_htmx(request: Request, task_id: int):
+    """HTMX: закрыть взятую на день подзадачу прямо в списке дня.
+
+    Отдельный вход от ``/complete-subtask``: там ответ — одна строка внутри
+    карточки родителя, а здесь строка живёт в списке дня, поэтому надо
+    перерисовать день целиком.
+    """
+    async with async_session() as db:
+        result = await db.execute(select(Task).where(Task.id == task_id))
+        subtask = result.scalar_one_or_none()
+        if not subtask or not subtask.parent_task_id:
+            raise HTTPException(status_code=404, detail="Subtask not found")
+
+        await _complete_subtask_impl(db, subtask)
+        await db.commit()
+        return HTMLResponse(content=await get_tasks_today(db, request))
 
 
 @router.post("/tasks/{task_id}/complete", response_class=HTMLResponse)
@@ -472,7 +512,9 @@ async def complete_task(request: Request, task_id: int):
                 })
                 return HTMLResponse(content=await append_today_stats_oob(row, db, request))
 
-            is_backlog = task.due_date is None
+            # В новой механике «в бэклоге» — это не взятое на день; по дате
+            # больше нельзя судить, потому что дат у задач нет.
+            is_backlog = task.planned_for is None
             task.status = "выполнена"
             task.completed_at = datetime.utcnow()
             task.overdue_since = None  # закрытая задача больше не «тянется»

@@ -36,9 +36,9 @@ async def _make_tasks(db, due_date=None):
     today = due_date or date.today()
     db.add_all(
         [
-            Task(title="Рабочая", category_id=client_sub.id, due_date=today, status="новая", source="web", item_kind="task"),
-            Task(title="Личная", category_id=personal.id, due_date=today, status="новая", source="web", item_kind="task"),
-            Task(title="Без категории", category_id=None, due_date=today, status="новая", source="web", item_kind="task"),
+            Task(title="Рабочая", category_id=client_sub.id, planned_for=today, status="новая", source="web", item_kind="task"),
+            Task(title="Личная", category_id=personal.id, planned_for=today, status="новая", source="web", item_kind="task"),
+            Task(title="Без категории", category_id=None, planned_for=today, status="новая", source="web", item_kind="task"),
         ]
     )
     await db.commit()

@@ -1,6 +1,11 @@
-{% from 'partials/icons_macros.html' import icon_check, icon_trash, icon_calendar %}
+{% from 'partials/icons_macros.html' import icon_check, icon_trash, icon_bolt %}
 
 {% set _today = today if today is defined else today_date() %}
+{# Одна и та же строка живёт и в карточке большой задачи на дашборде, и в
+   раскрытом списке бэклога. Кнопка «взять на день» нужна только в бэклоге —
+   иначе на дашборде она целилась бы в несуществующий список. #}
+{% set _ctx = subtask_context if subtask_context is defined else 'day' %}
+{% set _taken = sub.planned_for == _today %}
 <div id="subtask-row-{{ sub.id }}" class="flex items-start gap-2 text-sm{{ ' opacity-50 line-through text-gray-600' if sub.status == 'выполнена' else '' }} rounded px-1 py-0.5">
     {% if sub.status != 'выполнена' %}
     <form hx-post="/tasks/{{ sub.id }}/complete-subtask"
@@ -15,6 +20,56 @@
     <span class="icon-action icon-action--success !p-1 opacity-40 cursor-default">{{ icon_check('w-4 h-4') }}</span>
     {% endif %}
     <span class="flex-1 min-w-0 break-words [overflow-wrap:anywhere] text-gray-300 leading-snug">{{ sub.title | linkify }}</span>
+
+    {% if _taken %}
+    <span class="shrink-0 text-[11px] font-bold text-accent" title="Уже взята на сегодня">в дне</span>
+    {% elif _ctx == 'backlog' and sub.status != 'выполнена' %}
+    <button hx-post="/backlog/{{ sub.id }}/take-subtask"
+            hx-target="#subtask-row-{{ sub.id }}"
+            hx-swap="outerHTML"
+            class="icon-action icon-action--today !p-1 shrink-0"
+            title="Взять на сегодня">
+        {{ icon_bolt('w-4 h-4') }}
+    </button>
+    {% endif %}
+
+    {% if _ctx == 'backlog' %}
+    {# Те же возможности, что у обычной задачи: править, закрыть, удалить. #}
+    <div class="relative shrink-0" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
+        <button type="button" @click="open = !open"
+                class="icon-action !p-1" style="color:#9ca3af"
+                title="Ещё действия" aria-label="Ещё действия">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <circle cx="5" cy="12" r="1.7"></circle>
+                <circle cx="12" cy="12" r="1.7"></circle>
+                <circle cx="19" cy="12" r="1.7"></circle>
+            </svg>
+        </button>
+        <div x-show="open" x-cloak
+             class="absolute right-0 z-30 mt-1 rounded-xl border border-dark-600 bg-dark-800 shadow-2xl py-1"
+             style="min-width:12rem">
+            <a href="/tasks/{{ sub.id }}/edit"
+               class="block px-3 py-2 text-sm text-gray-200 hover:bg-dark-700 transition-colors">Редактировать</a>
+            {% if sub.status != 'выполнена' %}
+            <button type="button"
+                    hx-post="/tasks/{{ sub.id }}/complete-subtask"
+                    hx-target="#subtask-row-{{ sub.id }}"
+                    hx-swap="outerHTML"
+                    class="block w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-dark-700 transition-colors">
+                Отметить выполненной
+            </button>
+            {% endif %}
+            <button type="button"
+                    hx-delete="/tasks/{{ sub.id }}/subtask"
+                    hx-target="#subtasks-{{ parent_id }}"
+                    hx-swap="innerHTML"
+                    hx-confirm="Удалить подзадачу насовсем?"
+                    class="block w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-dark-700 transition-colors">
+                Удалить
+            </button>
+        </div>
+    </div>
+    {% else %}
     <button hx-delete="/tasks/{{ sub.id }}/subtask"
             hx-target="#subtasks-{{ parent_id }}"
             hx-swap="innerHTML"
@@ -22,4 +77,5 @@
             title="Удалить">
         {{ icon_trash() }}
     </button>
+    {% endif %}
 </div>

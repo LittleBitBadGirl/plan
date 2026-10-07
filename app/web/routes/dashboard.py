@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date, datetime, time, timedelta
@@ -25,6 +25,8 @@ from app.web.deps import (
     get_dashboard_day_stats,
     get_history_data,
     get_tasks_today,
+    get_day_taken_subtasks,
+    build_day_pool_context,
     append_today_stats_oob,
     load_subtasks_map,
     repair_archived_subtasks,
@@ -80,9 +82,14 @@ async def dashboard(request: Request):
         period_entries = await load_period_entries_for_dashboard(db, today)
         period_data = compute_period_data(period_entries, today)
 
-        # Обычные задачи (только корневые)
+        # Обычные задачи (только корневые). День собирается руками: в списке
+        # ровно то, что Вера взяла из бэклога. На выходных ритуала нет —
+        # показываем весь личный хвост из бэклога.
+        day_scope = Task.planned_for == today
+        if is_weekend(today):
+            day_scope = or_(Task.planned_for == today, Task.planned_for.is_(None))
         base_task_filters = [
-            Task.due_date == today,
+            day_scope,
             task_is_active(),
             Task.status.in_(["новая", "в_работе"]),
             Task.parent_task_id == None,
@@ -127,6 +134,15 @@ async def dashboard(request: Request):
         completed, total = bundle.completed, bundle.total
         subtask_progress = bundle.subtask_progress
         ai_warning = bundle.ai_warning
+
+        # Сводка дня и взятые подзадачи — блок считается сервером, чтобы числа
+        # не разъезжались с тем, что на экране.
+        # Числа прогресса — из уже посчитанного bundle: полоса в сводке показывает
+        # ровно тот же прогресс, что уходит в OOB-подмену.
+        day_pool = await build_day_pool_context(
+            db, request, today, progress=(completed, total)
+        )
+        taken_subtasks = await get_day_taken_subtasks(db, today)
 
         shopping_items = await load_active_shopping(db)
         reading_items = await load_active_reading(db)
@@ -177,6 +193,8 @@ async def dashboard(request: Request):
         "tasks_with_subtasks": tasks_with_subtasks,
         "standalone_tasks": standalone_tasks,
         "subtasks_map": subtasks_map,
+        "day_pool": day_pool,
+        "taken_subtasks": taken_subtasks,
         "recurring_tasks": recurring_today,
         "categories": categories,
         "completed": completed,
