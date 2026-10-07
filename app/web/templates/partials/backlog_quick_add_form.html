@@ -1,8 +1,10 @@
 <form hx-post="/backlog/create"
       hx-target="#backlog-list"
       hx-swap="innerHTML"
-      hx-on::after-request="this.reset(); const ta = this.querySelector('textarea'); ta.style.height = 'auto'; ta.focus();"
-      class="flex flex-col gap-2"
+      {# Поле чистится только при успешном ответе: иначе при ошибке сервера
+         введённый текст пропадал бы вместе с ошибкой. #}
+      hx-on::after-request="if (event.detail.successful) { this.reset(); const ta = this.querySelector('textarea'); ta.style.height = 'auto'; ta.focus(); }"
+      class="backlog-quick flex flex-col gap-2"
       x-data="{
           resize() {
               const el = $el.querySelector('textarea');
@@ -25,7 +27,7 @@
                   @input="resize()"
                   @keydown.enter="submitIfEnter($event)"
                   placeholder="Скинуть в бэклог..."
-                  class="flex-1 bg-dark-700 border border-dark-500 rounded-lg px-3 py-3 lg:py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-all resize-none min-h-[48px] lg:min-h-[44px] text-base lg:text-sm leading-snug"></textarea>
+                  class="flex-1 bg-dark-700 border border-dark-500 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-all resize-none text-base lg:text-sm"></textarea>
 
         <div class="relative shrink-0 hidden sm:block">
             <select name="category_id"

@@ -1,11 +1,28 @@
-{# Быстрый ввод. Enter (или «+») открывает выбор «Сегодня / В бэклог» —
+{# Быстрый ввод. Enter (или «Добавить») открывает выбор «Сегодня / В бэклог» —
    задача создаётся только после выбора, «Отмена» оставляет текст в поле.
-   Двумя кнопками под строкой Вера пользоваться не хотела. #}
-<form x-data="{ chooser: false }"
-      @htmx:afterRequest="if ($event.detail.successful) { chooser = false; $el.reset(); const ta = $el.querySelector('textarea'); ta.style.height = 'auto'; ta.focus(); }"
-      class="flex flex-col gap-2">
+
+   Почему очистка идёт через своё событие `quick-add-done`, а не через
+   `@htmx:afterRequest`: браузер приводит имена атрибутов к нижнему регистру,
+   Alpine подписывался на `htmx:afterrequest`, а htmx шлёт `htmx:afterRequest` —
+   регистр не совпадал, обработчик молчал. Отсюда были оба дефекта: текст не
+   стирался и выпадашка не закрывалась. Своё событие пишется целиком строчными,
+   поэтому его Alpine ловит. Решение Веры 07.10.2026. #}
+<form x-data="{ chooser: false, notice: '', noticeTimer: null }"
+      @quick-add-done="chooser = false;
+                        notice = $event.detail.where === 'today' ? 'Задача в дне' : 'В бэклоге — возьмёшь, когда захочешь';
+                        $refs.title.value = '';
+                        $refs.title.style.height = 'auto';
+                        clearTimeout($data.noticeTimer);
+                        $data.noticeTimer = setTimeout(() => notice = '', 4000);
+                        $refs.title.focus();"
+      @quick-add-failed="chooser = false;
+                         notice = 'Не получилось сохранить — попробуй ещё раз';
+                         clearTimeout($data.noticeTimer);
+                         $data.noticeTimer = setTimeout(() => notice = '', 6000);"
+      class="dash-quick flex flex-col gap-2">
     <div class="flex gap-2 items-end">
         <textarea name="title" required
+                  x-ref="title"
                   rows="1"
                   enterkeyhint="go"
                   autocomplete="off"
@@ -13,7 +30,7 @@
                   @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
                   @keydown.enter="if ($event.shiftKey) return; $event.preventDefault(); if ($el.value.trim()) chooser = true"
                   placeholder="Что нужно сделать?"
-                  class="flex-1 min-w-0 bg-dark-700 border border-dark-500 rounded-lg px-3 py-3 lg:py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-all resize-none min-h-[48px] lg:min-h-[44px] text-base lg:text-sm leading-snug"></textarea>
+                  class="flex-1 min-w-0 bg-dark-700 border border-dark-500 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-all resize-none text-base lg:text-sm"></textarea>
 
         <div class="relative shrink-0 hidden sm:block">
             <select name="category_id"
@@ -37,7 +54,7 @@
         </div>
 
         <button type="button"
-                @click="const ta = $el.form.querySelector('textarea'); ta.value.trim() ? (chooser = true) : ta.focus()"
+                @click="const ta = $refs.title; ta.value.trim() ? (chooser = true) : ta.focus()"
                 class="lg:hidden shrink-0 w-12 h-12 bg-accent hover:bg-blue-600 active:scale-95 text-white font-bold rounded-xl transition-all flex items-center justify-center text-xl shadow-lg"
                 aria-label="Добавить задачу">
             +
@@ -46,14 +63,14 @@
         {# «Добавить» стоит в той же строке: блок добавления — одна строка, как
            сводка рядом, а не две строки с кнопкой во всю ширину. #}
         <button type="button"
-                @click="const ta = $el.form.querySelector('textarea'); ta.value.trim() ? (chooser = true) : ta.focus()"
-                class="cta-square hidden lg:inline-flex shrink-0 bg-accent hover:bg-blue-600 text-white font-bold rounded-xl transition-all text-sm shadow-lg active:scale-95 whitespace-nowrap">
+                @click="const ta = $refs.title; ta.value.trim() ? (chooser = true) : ta.focus()"
+                class="cta-square dash-quick__add hidden lg:inline-flex shrink-0 bg-accent hover:bg-blue-600 text-white font-bold rounded-xl transition-all text-sm shadow-lg active:scale-95 whitespace-nowrap">
             Добавить
         </button>
     </div>
 
     <div x-show="chooser" x-cloak
-         class="flex flex-wrap items-center gap-2 rounded-lg bg-dark-900 border border-dark-600 p-2">
+         class="dash-quick__chooser flex flex-wrap items-center gap-2 rounded-lg bg-dark-900 border border-dark-600">
         <span class="text-[11px] uppercase tracking-wider text-gray-500 font-bold shrink-0">Куда задачу</span>
         <button type="button"
                 hx-post="/tasks/create"
@@ -61,6 +78,9 @@
                 hx-vals='{"where": "today"}'
                 hx-target="#tasks-list"
                 hx-swap="innerHTML"
+                hx-disabled-elt="this"
+                hx-on::after-request="if (event.detail.successful) this.form.dispatchEvent(new CustomEvent('quick-add-done', { bubbles: true, detail: { where: 'today' } }))"
+                hx-on::response-error="this.form.dispatchEvent(new CustomEvent('quick-add-failed', { bubbles: true }))"
                 class="bg-accent hover:bg-accent-hover text-white rounded-lg font-bold text-xs transition-all"
                 style="padding:7px 12px">Сегодня</button>
         <button type="button"
@@ -69,10 +89,17 @@
                 hx-vals='{"where": "backlog"}'
                 hx-target="#tasks-list"
                 hx-swap="innerHTML"
+                hx-disabled-elt="this"
+                hx-on::after-request="if (event.detail.successful) this.form.dispatchEvent(new CustomEvent('quick-add-done', { bubbles: true, detail: { where: 'backlog' } }))"
+                hx-on::response-error="this.form.dispatchEvent(new CustomEvent('quick-add-failed', { bubbles: true }))"
                 class="bg-dark-700 hover:bg-dark-600 text-white rounded-lg font-bold text-xs transition-all border border-dark-500"
                 style="padding:7px 12px">В бэклог</button>
-        <button type="button" @click="chooser = false"
+        <button type="button" @click="chooser = false; $refs.title.focus()"
                 class="text-gray-500 hover:text-gray-300 text-xs font-medium"
                 style="padding:7px 8px">Отмена</button>
     </div>
+
+    {# Слово о том, куда уехала задача: при выборе «В бэклог» список дня не
+       меняется, и без этой строки казалось, что кнопка не работает вообще. #}
+    <p x-show="notice" x-text="notice" x-cloak class="dash-quick__notice text-[11px] text-gray-400"></p>
 </form>

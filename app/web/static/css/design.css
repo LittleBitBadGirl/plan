@@ -819,13 +819,10 @@ h3,
   .dash-quick-42 > div {
     width: 100%;
   }
-  .dash-quick-42 textarea {
-    height: 28px;
-    min-height: 28px;
-    padding-top: 4px;
-    padding-bottom: 4px;
-    line-height: 18px;
-  }
+  /* Высоту поля здесь больше НЕ фиксируем: раньше тут стояло height: 28px,
+     и поле схлопывалось. Размеры задаёт единственное правило .dash-quick
+     textarea в конце файла — чтобы не было двух источников правды и порядок
+     блоков в файле перестал влиять на результат. */
   .dash-quick-42 .dash-quick-42__icon {
     width: 28px;
     height: 28px;
@@ -2414,4 +2411,33 @@ h3,
   min-height: 2.75rem;
   padding: 0 1rem;
   white-space: nowrap;
+}
+
+/* Быстрый ввод на дашборде: размеры держим здесь, а не утилитами Tailwind.
+   Tailwind в проекте собран локально, новые утилиты (lg:min-h-[44px], lg:py-2.5)
+   в сборку не попадают, поэтому поле ввода схлопывалось до 28px и блок выглядел
+   слипшимся. Решение Веры 07.10.2026. */
+.dash-quick textarea,
+.backlog-quick textarea {
+    min-height: 48px;
+    padding: 12px 12px;
+    line-height: 1.35;
+}
+.dash-quick__add {
+    min-height: 44px;
+    padding: 0 18px;
+}
+.dash-quick__chooser {
+    padding: 8px 10px;
+    row-gap: 8px;
+}
+.dash-quick__notice {
+    padding-left: 2px;
+}
+@media (min-width: 1024px) {
+    .dash-quick textarea,
+    .backlog-quick textarea {
+        min-height: 44px;
+        padding: 10px 12px;
+    }
 }

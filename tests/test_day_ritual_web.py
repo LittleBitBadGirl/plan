@@ -220,3 +220,37 @@ async def test_quick_add_where_today_and_backlog(client):
     in_backlog = await _get("Быстрая в бэклог")
     assert in_day.planned_for == date.today()
     assert in_backlog.planned_for is None
+
+@pytest.mark.asyncio
+async def test_quick_add_wiring_survives(client):
+    """Быстрый ввод: очистка поля висит на рабочем событии, а не на ловушке.
+
+    Ловушка: директива Alpine на htmx-событие (@htmx:afterRequest) не работает —
+    браузер приводит имя атрибута к нижнему регистру, Alpine слушает
+    `htmx:afterrequest`, а htmx шлёт `htmx:afterRequest`. Из-за этого текст в поле
+    не стирался и выпадашка не закрывалась (жалоба Веры 07.10.2026). Этот тест
+    сторожит, чтобы ловушка не вернулась, а обратная связь не пропала.
+    """
+    html = (await client.get("/")).text
+
+    assert "@htmx:" not in html, "Alpine не ловит htmx-события: регистр имени не совпадает"
+    assert "x-on:htmx:" not in html
+    assert "quick-add-done" in html, "потеряна очистка поля после добавления"
+    assert "hx-on::after-request" in html
+    assert "event.detail.successful" in html, "поле может очищаться при ошибке сервера"
+    assert "quick-add-failed" in html, "при ошибке сервера пользователь не увидит сообщения"
+    assert "hx-disabled-elt" in html, "двойной клик создаст две задачи"
+
+
+def test_quick_add_field_has_single_sizing_rule():
+    """Поле ввода не должно снова схлопнуться до 28px.
+
+    Размеры задаёт ровно одно правило `.dash-quick textarea`; возврат старого
+    `.dash-quick-42 textarea { height: 28px }` снова сделал бы поле прижатым.
+    """
+    from pathlib import Path
+
+    css = (Path(__file__).parent.parent / "app/web/static/css/design.css").read_text(encoding="utf-8")
+    assert ".dash-quick textarea" in css
+    assert "min-height: 44px" in css
+    assert "height: 28px;\n        min-height: 28px;" not in css, "вернулось старое правило с 28px"
