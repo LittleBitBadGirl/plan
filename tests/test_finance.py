@@ -56,7 +56,12 @@ async def test_finance_page_empty_chart_state(client, db):
 
 @pytest.mark.asyncio
 async def test_finance_expense_chart_with_data(client, db):
-    """Круговая диаграмма: canvas, Chart.js и данные категории"""
+    """Круговая диаграмма: canvas, локальная библиотека и данные категории.
+
+    Расход в проекте пишется ОТРИЦАТЕЛЬНОЙ суммой (сводка расходов фильтрует
+    amount < 0, так же приходят выписки банка). Раньше тест клал +2500 и ждал
+    диаграмму расходов — то есть проверял то, чего быть не может, и падал.
+    """
     cat = Category(name="Продукты", type="finance")
     db.add(cat)
     await db.commit()
@@ -64,7 +69,7 @@ async def test_finance_expense_chart_with_data(client, db):
 
     tx_date = date(2026, 3, 15)
     db.add(Transaction(
-        amount=2500.0,
+        amount=-2500.0,
         description="Магазин",
         date=tx_date,
         category_id=cat.id,
@@ -75,11 +80,13 @@ async def test_finance_expense_chart_with_data(client, db):
     response = await client.get("/finance?month=3&year=2026")
     assert response.status_code == 200
     assert 'id="finance-expense-chart"' in response.text
-    assert "chart.js" in response.text.lower()
+    # библиотека графиков лежит в проекте, а не тянется с CDN
+    assert "chart.umd.min.js" in response.text
     assert "Продукты" in response.text
     assert "finance-chart-legend" in response.text
     assert "finance-chart-empty" not in response.text
-    assert "2500" in response.text
+    # сумма доехала именно в данные диаграммы, а не просто мелькнула на странице
+    assert "data-chart-amounts='[2500.0]'" in response.text
 
 @pytest.mark.asyncio
 async def test_financial_goals_init(db):

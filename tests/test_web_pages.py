@@ -580,7 +580,10 @@ class TestHabitHistory:
         assert "Утренний уход" in response.text
         assert "Цикл 2" in response.text
         assert "Цикл 1" in response.text
-        assert "3 отметок всего" in response.text
+        # Счётчик отметок: «3 отметок · 2 цикла» (формулировку поменяли 15.06.2026
+        # в коммите про UX трекеров, а тест остался на старом «всего»).
+        assert "3 отметок" in response.text
+        assert "2 цикла" in response.text
         assert "Текущий" in response.text
 
     async def test_habit_history_not_found(self, client):
