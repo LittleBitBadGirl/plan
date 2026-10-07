@@ -147,207 +147,21 @@
         </div>
     </div>
 
-    <!-- Карьерный капитал — сворачиваемый блок -->
-    <details class="bg-dark-800 rounded-2xl border border-accent/20 mb-8 shadow-xl group" {% if career_impacts %}open{% endif %}>
-        <summary class="cursor-pointer list-none p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 select-none">
-            <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-3">
-                    <h2 class="text-xl lg:text-2xl font-bold text-white">
-                        Карьерный капитал 2.0
-                    </h2>
-                    <span class="career-chevron text-gray-500 text-sm" aria-hidden="true">▼</span>
-                </div>
-                <p class="text-gray-500 text-xs mt-1 uppercase tracking-wider">Автоматический сбор достижений через AI</p>
-            </div>
-            <div class="flex flex-wrap items-center gap-3" onclick="event.stopPropagation()">
-                <div class="flex flex-col items-end justify-center">
-                    <span class="text-[10px] text-gray-500 uppercase font-bold tracking-tighter">Impact Score</span>
-                    <span class="text-xl font-black text-accent">{{ impact_score }}%</span>
-                </div>
-                <a href="/api/career/export"
-                   class="px-4 py-2 bg-dark-700 hover:bg-dark-600 text-gray-300 text-xs font-bold rounded-xl border border-dark-600 transition-all">
-                    Скачать .md
-                </a>
-                <button hx-get="/api/ai/generate-milestones"
-                        hx-target="#impact-results"
-                        onclick="this.closest('details').open = true"
-                        class="px-4 py-2 bg-accent hover:bg-blue-600 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95 inline-flex items-center gap-2">
-                    Анализировать
-                    <svg class="animate-spin h-3.5 w-3.5 htmx-indicator" viewBox="0 0 24 24" style="display:none">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                    </svg>
-                </button>
-            </div>
-        </summary>
-
-        <div class="px-6 pb-6 border-t border-dark-700/80">
-            <div id="impact-results" class="pt-6">
-                {% if career_impacts %}
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[420px] overflow-y-auto pr-1">
-                    {% for impact in career_impacts %}
-                    <div class="bg-dark-900/50 rounded-xl p-4 border border-dark-700 hover:border-accent/30 transition-all">
-                        <div class="flex items-center gap-2 mb-2">
-                            <span class="text-[10px] bg-accent/20 text-accent px-2 py-0.5 rounded font-bold uppercase">{{ impact.category_name | noemoji }}</span>
-                            <span class="text-[10px] text-gray-600">{{ impact.period_month }}</span>
-                        </div>
-                        <h3 class="text-gray-100 font-bold text-sm mb-2 leading-snug">{{ impact.impact_description }}</h3>
-                        <p class="text-[10px] text-gray-500 italic">На базе задачи: «{{ impact.original_title }}»</p>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="text-center py-10 border-2 border-dashed border-dark-700 rounded-2xl">
-                    <p class="text-gray-500 text-sm">Здесь появятся ваши профессиональные победы.</p>
-                    <p class="text-[10px] text-gray-600 mt-1 uppercase">Нажмите «Анализировать», чтобы AI нашёл их в списке задач</p>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-    </details>
-
-    <!-- Цикл — для врача -->
-    {% if period_stats.has_data and period_stats.cycles_history %}
-    {% set lengths = period_stats.cycles_history | selectattr('length', 'ne', none) | map(attribute='length') | list %}
-    <div class="bg-dark-800 rounded-2xl border border-dark-600 p-4 sm:p-6 mb-8 shadow-lg">
-        <div class="mb-5 sm:mb-6">
-            <h2 class="text-lg sm:text-xl font-bold text-white">Цикл — для врача</h2>
-            <p class="text-gray-500 text-xs mt-1">Накопленные данные · {{ period_stats.cycles_history|length }} цикл(ов)</p>
-        </div>
-
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-5 sm:mb-6">
-            <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5 sm:px-4 sm:py-3">
-                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Ср. цикл</p>
-                <p class="text-xl sm:text-2xl font-black text-white tabular-nums">{{ period_stats.avg_cycle }}<span class="text-xs sm:text-sm font-normal text-gray-500"> дн.</span></p>
-            </div>
-            <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5 sm:px-4 sm:py-3">
-                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Ср. менструация</p>
-                <p class="text-xl sm:text-2xl font-black text-white tabular-nums">{{ period_stats.avg_period }}<span class="text-xs sm:text-sm font-normal text-gray-500"> дн.</span></p>
-            </div>
-            {% if period_stats.cycle_stddev is not none %}
-            <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5 sm:px-4 sm:py-3">
-                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">σ цикла</p>
-                <p class="text-xl sm:text-2xl font-black tabular-nums {{ 'text-green-400' if period_stats.cycle_stddev <= 1.5 else 'text-amber-400' if period_stats.cycle_stddev <= 3.5 else 'text-red-400' }}">±{{ period_stats.cycle_stddev }}<span class="text-xs sm:text-sm font-normal text-gray-500"> дн.</span></p>
-            </div>
-            <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5 sm:px-4 sm:py-3 col-span-2 sm:col-span-1">
-                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Разброс</p>
-                <p class="text-xl sm:text-2xl font-black text-white tabular-nums">{{ period_stats.cycle_min }}–{{ period_stats.cycle_max }}<span class="text-xs sm:text-sm font-normal text-gray-500"> дн.</span></p>
-                <p class="text-[9px] text-gray-600 mt-0.5">{{ period_stats.regularity }}</p>
-            </div>
-            {% else %}
-            {% if lengths %}
-            <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5 sm:px-4 sm:py-3 col-span-2 sm:col-span-1">
-                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Разброс цикла</p>
-                <p class="text-xl sm:text-2xl font-black text-white tabular-nums">{{ lengths|min }}–{{ lengths|max }}<span class="text-xs sm:text-sm font-normal text-gray-500"> дн.</span></p>
-            </div>
-            {% endif %}
-            {% endif %}
-        </div>
-
-        <!-- Мобиль: карточки циклов -->
-        <div class="md:hidden space-y-3 mb-5 sm:mb-6">
-            {% for c in period_stats.cycles_history %}
-            <div class="rounded-xl border {{ 'border-accent/30 bg-accent/5' if c.is_current else 'border-dark-600 bg-dark-900/40' }} p-3.5">
-                <div class="flex items-start justify-between gap-2 mb-2.5">
-                    <div class="min-w-0">
-                        <p class="text-sm font-bold text-gray-200">Цикл {{ c.num }}</p>
-                        <p class="text-xs text-gray-500 mt-0.5">с {{ c.start }}</p>
-                    </div>
-                    {% if c.is_current %}
-                    <span class="shrink-0 text-[9px] bg-accent/20 text-accent px-2 py-0.5 rounded-full font-bold uppercase">сейчас</span>
-                    {% endif %}
-                </div>
-                <div class="grid grid-cols-5 gap-1 text-center">
-                    <div class="rounded-lg bg-dark-800/80 px-1 py-1.5">
-                        <p class="text-[8px] text-gray-500 uppercase leading-tight">Длина</p>
-                        <p class="text-xs font-bold text-gray-200 tabular-nums mt-0.5">{{ c.length|string + ' дн.' if c.length else '—' }}</p>
-                    </div>
-                    <div class="rounded-lg bg-dark-800/80 px-1 py-1.5">
-                        <p class="text-[8px] text-gray-500 uppercase leading-tight">Крит.</p>
-                        <p class="text-xs font-bold text-gray-200 tabular-nums mt-0.5">{{ c.period_days }}</p>
-                    </div>
-                    <div class="rounded-lg bg-dark-800/80 px-1 py-1.5">
-                        <p class="text-[8px] text-gray-500 uppercase leading-tight">Мазня до</p>
-                        <p class="text-xs font-bold tabular-nums mt-0.5 {{ 'text-amber-400' if c.spotting_before else 'text-gray-600' }}">{{ c.spotting_before if c.spotting_before else '—' }}</p>
-                    </div>
-                    <div class="rounded-lg bg-dark-800/80 px-1 py-1.5">
-                        <p class="text-[8px] text-gray-500 uppercase leading-tight">Мазня после</p>
-                        <p class="text-xs font-bold tabular-nums mt-0.5 {{ 'text-amber-400' if c.spotting_after else 'text-gray-600' }}">{{ c.spotting_after if c.spotting_after else '—' }}</p>
-                    </div>
-                    <div class="rounded-lg bg-dark-800/80 px-1 py-1.5">
-                        <p class="text-[8px] text-gray-500 uppercase leading-tight">Боль</p>
-                        <p class="text-xs font-bold tabular-nums mt-0.5 {{ 'text-red-400' if c.pain_days else 'text-gray-600' }}">{{ c.pain_days if c.pain_days else '—' }}</p>
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-
-        <!-- Десктоп: таблица -->
-        <div class="hidden md:block overflow-x-auto rounded-xl border border-dark-600 mb-5 sm:mb-6">
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="bg-dark-700/50 text-[10px] text-gray-500 uppercase tracking-widest">
-                        <th class="px-4 py-3 text-left">Цикл</th>
-                        <th class="px-4 py-3 text-left">Начало</th>
-                        <th class="px-4 py-3 text-center">Длина цикла</th>
-                        <th class="px-4 py-3 text-center w-10">±</th>
-                        <th class="px-4 py-3 text-center">Дней крит.</th>
-                        <th class="px-4 py-3 text-center">Мазня до</th>
-                        <th class="px-4 py-3 text-center">Мазня после</th>
-                        <th class="px-4 py-3 text-center">Дней с болью</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-dark-700">
-                    {% for c in period_stats.cycles_history %}
-                    <tr class="{{ 'bg-accent/5' if c.is_current else 'hover:bg-dark-700/30' }} transition-colors">
-                        <td class="px-4 py-2.5 font-bold text-gray-300">
-                            Цикл {{ c.num }}
-                            {% if c.is_current %}<span class="ml-2 text-[9px] bg-accent/20 text-accent px-1.5 py-0.5 rounded font-bold uppercase">сейчас</span>{% endif %}
-                        </td>
-                        <td class="px-4 py-2.5 text-gray-400">{{ c.start }}</td>
-                        <td class="px-4 py-2.5 text-center text-gray-300">{{ c.length|string + ' дн.' if c.length else '—' }}</td>
-                        <td class="px-4 py-2.5 text-center tabular-nums {{ 'text-green-400' if c.deviation is not none and c.deviation|abs <= 1.5 else 'text-amber-400' if c.deviation is not none and c.deviation|abs <= 3.5 else 'text-red-400' if c.deviation is not none and c.deviation > 3.5 else 'text-gray-600' }}">
-                            {{ ('+' + c.deviation|string) if c.deviation is not none and c.deviation > 0 else c.deviation|string if c.deviation is not none else '—' }}
-                        </td>
-                        <td class="px-4 py-2.5 text-center text-gray-300">{{ c.period_days }}</td>
-                        <td class="px-4 py-2.5 text-center {{ 'text-amber-400 font-bold' if c.spotting_before else 'text-gray-600' }}">
-                            {{ c.spotting_before if c.spotting_before else '—' }}
-                        </td>
-                        <td class="px-4 py-2.5 text-center {{ 'text-amber-400 font-bold' if c.spotting_after else 'text-gray-600' }}">
-                            {{ c.spotting_after if c.spotting_after else '—' }}
-                        </td>
-                        <td class="px-4 py-2.5 text-center {{ 'text-red-400 font-bold' if c.pain_days else 'text-gray-600' }}">
-                            {{ c.pain_days if c.pain_days else '—' }}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-
-        {% if period_stats.pending_spotting_days %}
-        <div class="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 mb-5 sm:mb-6">
-            <p class="text-sm font-bold text-amber-400">Сейчас — предменструальная мазня</p>
-            <p class="text-xs text-gray-400 mt-1">{{ period_stats.pending_spotting_days }} дн. с {{ period_stats.pending_spotting_start }}. Месячные ещё не начались — это не новый цикл.</p>
-        </div>
-        {% endif %}
-
-        <div class="bg-dark-900/60 rounded-xl border border-dark-600 p-3 sm:p-4 overflow-hidden">
-            <p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-2 sm:mb-3">Текст для врача — скопировать</p>
-            <pre class="text-[11px] sm:text-xs text-gray-300 leading-relaxed whitespace-pre-wrap break-words font-mono select-all overflow-x-auto">Отслежено {{ lengths|length }} полных цикл(ов) (с {{ period_stats.cycles_history[0].start }}).
-Средняя длина цикла: {{ period_stats.avg_cycle }} дней{% if lengths|length > 1 %} (разброс {{ period_stats.cycle_min }}–{{ period_stats.cycle_max }}, σ = {{ period_stats.cycle_stddev }}){% endif %}.
-Средняя продолжительность менструации: {{ period_stats.avg_period }} дня.
-{% set spotting_before_total = period_stats.cycles_history | sum(attribute='spotting_before') %}
-{% set spotting_after_total = period_stats.cycles_history | sum(attribute='spotting_after') %}
-{% if spotting_before_total or spotting_after_total %}Мазня: {{ spotting_before_total }} дн. до месячных, {{ spotting_after_total }} дн. после.{% else %}Мазни не отмечено.{% endif %}
-{% if period_stats.pending_spotting_days %}Сейчас предменструальная мазня: {{ period_stats.pending_spotting_days }} дн. (с {{ period_stats.pending_spotting_start }}), месячные ещё не начались.
-{% endif %}
-{% set pain_cycles = period_stats.cycles_history | selectattr('pain_days', 'gt', 0) | list %}{% if pain_cycles %}Боли отмечены в {{ pain_cycles|length }} из {{ period_stats.cycles_history|length }} цикл(ов).{% else %}Болей не отмечено.{% endif %}
-Регулярность цикла: {{ period_stats.regularity }}{% if period_stats.cycle_stddev is not none %} (σ = {{ period_stats.cycle_stddev }} дн.){% endif %}.</pre>
-        </div>
+    <!-- Карьерный капитал и цикл вынесены отдельными страницами: на аналитике
+         от них остались только входы, чтобы у каждого числа был один хозяин. -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <a href="/career" class="block bg-dark-800 rounded-2xl border border-dark-600 hover:border-accent/40 p-5 shadow-lg transition-all">
+            <h2 class="text-lg font-bold text-white">Карьерный капитал</h2>
+            <p class="text-gray-500 text-xs mt-1">Закрытые задачи, которые работают на карьеру: список достижений и выгрузка в .md.</p>
+            <span class="inline-block mt-3 text-xs font-bold text-accent">Открыть &rarr;</span>
+        </a>
+        <a href="/cycle" class="block bg-dark-800 rounded-2xl border border-dark-600 hover:border-accent/40 p-5 shadow-lg transition-all">
+            <h2 class="text-lg font-bold text-white">Цикл — для врача</h2>
+            <p class="text-gray-500 text-xs mt-1">Длина и отклонения циклов, мазня, боли и готовый текст для врача.</p>
+            <span class="inline-block mt-3 text-xs font-bold text-accent">Открыть &rarr;</span>
+        </a>
     </div>
-    {% endif %}
+
 
     <!-- Аналитика переносов -->
     {% if postpones_stats %}
@@ -371,8 +185,4 @@
     {% endif %}
 </div>
 
-<style>
-    details > summary::-webkit-details-marker { display: none; }
-    details[open] > summary .career-chevron { transform: rotate(180deg); display: inline-block; }
-</style>
 {% endblock %}

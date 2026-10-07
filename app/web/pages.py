@@ -7,6 +7,7 @@ from app.web.routes import (
     backlog,
     calendar,
     career,
+    cycle,
     categories,
     dashboard,
     events,
@@ -34,6 +35,7 @@ router.include_router(recurring.router)
 router.include_router(shopping.router)
 router.include_router(reading.router)
 router.include_router(career.router)
+router.include_router(cycle.router)
 router.include_router(managers.router)
 router.include_router(finance.router)
 router.include_router(portfolio.router)

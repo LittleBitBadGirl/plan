@@ -25,7 +25,9 @@ Auth: если задан `API_TOKEN` — cookie после `/login` или за
 | `/calendar` | Календарь |
 | `/categories` | Категории |
 | `/archive` | Архив |
-| `/stats` | KPI, динамика (HTMX нед/мес/год), инсайты, карьерный капитал, AI-анализ |
+| `/stats` | KPI, поток задач (HTMX нед/мес/год), инсайты, AI-анализ; карьерный капитал и цикл — ссылками |
+| `/career` | Карьерный капитал: список достижений, кнопка «Анализировать», выгрузка .md |
+| `/cycle` | Цикл для врача: сводка, таблица циклов, текст для копирования |
 | `/tasks?status=в_работе` | Фильтр по статусу (в т.ч. ссылка «зависшие» со `/stats`) |
 | `/recurring` | Периодические |
 | `/shopping` | Список покупок |
@@ -116,6 +118,7 @@ Auth: `Authorization: Bearer $API_TOKEN` для import.
 | GET | `/api/ai/load-analysis` | Загрузить анализ |
 | GET | `/api/ai/stats` | AI-статистика |
 | GET | `/api/career/export` | Экспорт карьеры (.md) |
+| GET | `/api/ai/generate-milestones` | Генератор достижений для `/career` (этапы preview и analyze) |
 | POST | `/api/screenshot` | Скриншот календаря |
 
 ---

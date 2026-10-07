@@ -19,7 +19,6 @@ from app.config import settings
 
 from app.web.deps import (
     templates,
-    compute_period_data,
     get_categories_list,
     get_today_stats,
     get_flow_data,
@@ -97,30 +96,9 @@ async def stats_page(request: Request, period: str = "month"):
         report_result = await db.execute(select(AIReport).order_by(AIReport.report_date.desc()))
         last_report = report_result.scalars().first()
 
-        # Карьерный капитал (Impacts)
-        from app.models.impact import CareerImpact
-        impact_res = await db.execute(
-            select(CareerImpact).order_by(CareerImpact.period_month.desc(), CareerImpact.created_at.desc())
-        )
-        impacts = impact_res.scalars().all()
-        
-        # Расчет Impact Score (соотношение побед к рутине)
-        # Берем данные за последние 30 дней для актуальности
-        last_30_days = date.today() - timedelta(days=30)
-        impact_count = len([i for i in impacts if i.created_at.date() >= last_30_days])
-        
-        comp_30_res = await db.execute(
-            select(func.count(Task.id)).where(Task.status == "выполнена", Task.completed_at >= last_30_days)
-        )
-        total_30_completed = comp_30_res.scalar() or 0
-        
-        impact_score = round((impact_count / total_30_completed * 100)) if total_30_completed > 0 else 0
-
-        # Period stats
-        from app.models.period_entry import PeriodEntry as PE
-        period_res = await db.execute(select(PE).order_by(PE.date))
-        period_entries_for_stats = period_res.scalars().all()
-        period_stats = compute_period_data(list(period_entries_for_stats), date.today())
+        # Карьерный капитал и цикл вынесены своими страницами (/career, /cycle):
+        # на аналитике от них остались ссылки, чтобы страница не превращалась
+        # в свалку и чтобы у каждого числа был один хозяин.
 
         # Аналитика переносов по категориям
         postpones_query = await db.execute(
@@ -143,9 +121,6 @@ async def stats_page(request: Request, period: str = "month"):
         "insights": insights,
         "flow": flow,
         "last_report": last_report,
-        "career_impacts": impacts,
-        "impact_score": impact_score,
-        "period_stats": period_stats,
         "postpones_stats": postpones_stats,
     })
 

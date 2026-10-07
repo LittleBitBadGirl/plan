@@ -33,7 +33,11 @@ router = APIRouter()
 
 from app.services.ai_service import ai_service
 
-# Категории, которые считаются карьерно-значимыми
+# Категории, которые считаются карьерно-значимыми.
+# Имена сверены с таблицей categories (07.10.2026): в прежнем списке стояли
+# «команда» (в базе «Команда»), «Выступления / Конференции» (в базе «Конференции»),
+# не было вовсе «Майоли», «АТОЛ», «PR (пиар)», «Личный бренд» — клиентские проекты
+# и публичная активность не попадали в подбор достижений.
 CAREER_CATEGORIES = [
     "Пет-проекты",
     "СБТ",
@@ -43,13 +47,14 @@ CAREER_CATEGORIES = [
     "Работа",
     "АИЖ",
     "СМ Б24",
-    "команда",
-    "AI / ИИ",
-    "Блог",
-    "Выступления / Конференции",
+    "Майоли",
+    "АТОЛ",
+    "Команда",
+    "Конференции",
+    "PR (пиар)",
+    "Личный бренд",
     "Карьера",
     "Курсы",
-    "Бренд/учеба",
 ]
 
 
@@ -316,6 +321,50 @@ async def generate_milestones(request: Request, month: str = None, stage: str = 
             </button>
         </div>
     """)
+
+
+@router.get("/career", response_class=HTMLResponse)
+async def career_page(request: Request):
+    """Карьерный капитал отдельной страницей: блок вынесен с /stats.
+
+    Шапка показывает, сколько записей о вкладе лежит в списке и за какие месяцы —
+    без выдуманных процентов. Новые записи добавляет «Анализировать».
+    """
+    from app.models.impact import CareerImpact
+
+    async with async_session() as db:
+        impact_res = await db.execute(
+            select(CareerImpact).order_by(
+                CareerImpact.period_month.desc(), CareerImpact.created_at.desc()
+            )
+        )
+        impacts = impact_res.scalars().all()
+
+    # Прежний «Impact Score» считал, сколько строк AI создал за 30 дней (0%: последний
+    # прогон был в июне) — число ничего не значило. Здесь только то, что видно в списке.
+    months = sorted({i.period_month for i in impacts if i.period_month})
+    if len(months) > 1:
+        span = _month_label(months[0]) + "-" + _month_label(months[-1])
+    elif months:
+        span = _month_label(months[0])
+    else:
+        span = "нет записей"
+
+    return templates.TemplateResponse(request, "career.html", {
+        "request": request,
+        "career_impacts": impacts,
+        "impact_total": len(impacts),
+        "impact_span": span,
+    })
+
+
+def _month_label(period_month: str) -> str:
+    """«2026-06» → «июнь 2026»."""
+    try:
+        year, month = period_month.split("-")
+        return f"{RU_MONTHS[int(month)].lower()} {year}"
+    except (ValueError, KeyError, AttributeError):
+        return period_month
 
 
 @router.get("/api/career/export", response_class=HTMLResponse)
