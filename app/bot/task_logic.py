@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from typing import Literal
 
 from sqlalchemy import or_, select
@@ -177,7 +177,10 @@ async def create_task_from_text(
 async def mark_task_complete(db: AsyncSession, task: Task) -> None:
     """Закрыть задачу как на вебе — архив корня, подзадачи зачёркнуты."""
     task.status = "выполнена"
-    task.completed_at = datetime.now()
+    # Время — в UTC, как во всех остальных путях записи (веб, API, офлайн-очередь).
+    # Раньше бот писал локальное время без пояса, а читается оно как UTC: закрытие
+    # в 22:30 МСК уезжало в следующий день.
+    task.completed_at = datetime.now(timezone.utc)
     if task.parent_task_id is None:
         task.is_archived = True
         task.item_kind = "task"
@@ -189,7 +192,7 @@ async def mark_task_complete(db: AsyncSession, task: Task) -> None:
         )
         for child in children_result.scalars().all():
             child.status = "выполнена"
-            child.completed_at = datetime.now()
+            child.completed_at = datetime.now(timezone.utc)
             child.is_archived = False
     await db.commit()
 

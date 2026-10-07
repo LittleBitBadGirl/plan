@@ -1,8 +1,16 @@
 <div id="stats-chart-container" class="bg-dark-800 rounded-xl border border-dark-600 p-6 shadow-lg relative">
     <div class="flex items-center justify-between mb-6">
-        <h2 class="text-lg font-bold text-white">
-            Динамика ({{ 'неделя' if period == 'week' else 'месяц' if period == 'month' else 'год' }})
-        </h2>
+        <div>
+            <h2 class="text-lg font-bold text-white">
+                Динамика ({{ 'неделя' if period == 'week' else 'месяц' if period == 'month' else 'год' }})
+            </h2>
+            {# Период и сумма — чтобы столбики можно было проверить, а не угадывать,
+               за какие дни они и сколько всего; неполный сегодняшний день не входит. #}
+            <p class="text-[10px] text-gray-500 mt-0.5">
+                {{ hist_period }} · закрыто {{ hist_total }}
+                <span class="text-gray-600">· {{ 'полные месяцы' if period == 'year' else 'полные дни, без сегодняшнего' }}</span>
+            </p>
+        </div>
         
         <!-- Toggle Switch -->
         <div class="flex bg-dark-700 p-1 rounded-lg">
@@ -59,7 +67,7 @@
             </svg>
             <div class="absolute bottom-0 left-0 w-full flex justify-between px-4 text-[10px] text-gray-600 font-bold uppercase pb-1">
                 {% for date_str, count in weekly_history %}
-                    <span>{{ date_str[-2:] }}</span>
+                    <span>{{ date_str[5:7] }}{% if date_str[5:7] == '01' %}.{{ date_str[2:4] }}{% endif %}</span>
                 {% endfor %}
             </div>
         {% else %}
@@ -90,11 +98,14 @@
                          title="{{ date_str }}: {{ count }}"></div>
                 {% endif %}
                 {% if period == 'week' %}
-                    <div class="text-[9px] uppercase mt-1 relative tabular-nums
-                                {{ 'text-violet-400/70 font-medium' if weekend else 'text-gray-500' }}">{{ date_str[-2:] }}</div>
-                {% elif loop.index % 5 == 0 or loop.first or loop.last %}
-                    <div class="text-[8px] uppercase mt-1 relative tabular-nums
-                                {{ 'text-violet-400/70 font-medium' if weekend else 'text-gray-500' }}">{{ date_str[-2:] }}</div>
+                    <div class="text-[10px] mt-1 relative tabular-nums
+                                {{ 'text-violet-400/70 font-medium' if weekend else 'text-gray-500' }}">{% if loop.first or loop.last %}{{ date_str[8:10] }}.{{ date_str[5:7] }}{% else %}{{ date_str[8:10] }}{% endif %}</div>
+                {% elif loop.first or loop.last %}
+                    <div class="text-[10px] mt-1 relative tabular-nums font-bold
+                                {{ 'text-violet-400/70' if weekend else 'text-gray-400' }}">{{ date_str[8:10] }}.{{ date_str[5:7] }}</div>
+                {% elif loop.index % 5 == 0 %}
+                    <div class="text-[10px] mt-1 relative tabular-nums
+                                {{ 'text-violet-400/70 font-medium' if weekend else 'text-gray-500' }}">{{ date_str[8:10] }}</div>
                 {% else %}
                     <div class="h-4"></div>
                 {% endif %}

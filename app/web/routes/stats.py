@@ -24,7 +24,9 @@ from app.web.deps import (
     get_today_stats,
     get_history_data,
     get_productivity_insights,
-    get_subtask_insights,
+    get_avg_completed_per_day,
+    count_workdays_between,
+    completed_local_moments,
     get_tasks_today,
     _strip_emoji,
     _render_shopping_list,
@@ -90,7 +92,6 @@ async def stats_page(request: Request, period: str = "month"):
 
         history_data = await get_history_data(db, period)
         insights = await get_productivity_insights(db)
-        subtask_insights = await get_subtask_insights(db)
         
         report_result = await db.execute(select(AIReport).order_by(AIReport.report_date.desc()))
         last_report = report_result.scalars().first()
@@ -139,9 +140,10 @@ async def stats_page(request: Request, period: str = "month"):
         "total_active": total_active,
         "category_distribution": category_distribution,
         "insights": insights,
-        "subtask_insights": subtask_insights,
         "weekly_history": history_data["history"],
         "max_hist": history_data["max_val"],
+        "hist_total": history_data["total"],
+        "hist_period": history_data["period"],
         "period": period,
         "last_report": last_report,
         "career_impacts": impacts,
@@ -160,6 +162,8 @@ async def get_stats_chart(request: Request, period: str = "month"):
         "request": request,
         "weekly_history": history_data["history"],
         "max_hist": history_data["max_val"],
+        "hist_total": history_data["total"],
+        "hist_period": history_data["period"],
         "period": period,
     })
 
@@ -394,7 +398,10 @@ async def _direct_analyze(db, today):
             size_str = f" [{t.size}]" if t.size else ""
             chronic_str = " CHRONIC" if t.chronic_task else ""
             cat = t.category.name if t.category else "?"
-            due = t.due_date or t.created_at.date() if t.created_at else today
+            # Возраст задачи — от создания. Раньше считался от due_date, а срок
+            # переносимой задачи всегда «сегодня», поэтому у всех хронических
+            # стояло «сегодня» (разбор 07.10.2026).
+            due = t.created_at.date() if t.created_at else today
             days_open = (today - due).days if due else 0
             days_str = f"{days_open}д" if days_open > 0 else "сегодня"
             flags = []
@@ -435,64 +442,64 @@ async def _direct_analyze(db, today):
         pain_lines.append("\n### Крупные задачи без откладываний\n")
         pain_lines.append("Пока нет помеченных L/XL задач")
 
-    pattern_lines = ["### Завершения по дням (30 дней)\n"]
-    dow_res = await db.execute(
-        select(func.strftime("%w", Task.completed_at).label("dow"), func.count(Task.id).label("cnt"))
-        .where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=30))
-        .group_by("dow").order_by("dow")
-    )
-    dow_map = {"0": "Вс", "1": "Пн", "2": "Вт", "3": "Ср", "4": "Чт", "5": "Пт", "6": "Сб"}
-    workday_total = 0
-    for row in dow_res.all():
-        d = dow_map.get(row.dow, row.dow)
-        cnt = row.cnt
-        bar = "█" * cnt
-        note = " (выходной)" if d in ("Сб", "Вс") else ""
-        if d not in ("Сб", "Вс"): workday_total += cnt
-        pattern_lines.append(f"- {d}: {cnt:>2} {bar}{note}")
-    pattern_lines.append(f"  Рабочие дни: {workday_total}, ~{round(workday_total/22)}/день")
+    # Одно определение с карточками страницы: закрытые КОРНЕВЫЕ задачи без
+    # регулярных, по ЛОКАЛЬНЫМ суткам и только полные дни. Раньше здесь были все
+    # закрытия подряд (подзадачи, регулярные, покупки) и UTC-часы: «утро/вечер»
+    # стояли со сдвигом в 3 часа, а «~N/день» не сходилось с карточкой «Ср. темп».
+    win_start, win_end = today - timedelta(days=30), today - timedelta(days=1)
+    moments = await completed_local_moments(db, win_start, win_end)
 
-    pattern_lines.append("\n### Время завершения\n")
-    time_res = await db.execute(
-        select(func.count(Task.id).label("cnt"), func.strftime("%H", Task.completed_at).label("hour"))
-        .where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=30))
-        .group_by("hour").order_by("hour")
-    )
+    pattern_lines = [
+        f"### Завершения по дням ({win_start.strftime('%d.%m')}–{win_end.strftime('%d.%m')})\n"
+    ]
+    dow_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    dow_counts = {name: 0 for name in dow_names}
+    for m in moments:
+        dow_counts[dow_names[m.weekday()]] += 1
+    workday_total = sum(dow_counts[name] for name in dow_names[:5])
+    for name in dow_names:
+        cnt = dow_counts[name]
+        note = " (выходной)" if name in ("Сб", "Вс") else ""
+        pattern_lines.append(f"- {name}: {cnt:>2} {'█' * cnt}{note}")
+    _wd = count_workdays_between(win_start, win_end) or 1
+    pattern_lines.append(f"  Будни: {workday_total} за {_wd} раб. дней, ~{round(workday_total / _wd)}/день")
+
+    pattern_lines.append("\n### Время завершения (местное)\n")
     blocks = {"Утро (до 10)": 0, "День (10-14)": 0, "После обеда (14-18)": 0, "Вечер (18+)": 0}
-    for row in time_res.all():
-        h = int(row.hour) if row.hour else 0
-        if h < 10: blocks["Утро (до 10)"] += row.cnt
-        elif h < 14: blocks["День (10-14)"] += row.cnt
-        elif h < 18: blocks["После обеда (14-18)"] += row.cnt
-        else: blocks["Вечер (18+)"] += row.cnt
+    for m in moments:
+        h = m.hour
+        if h < 10: blocks["Утро (до 10)"] += 1
+        elif h < 14: blocks["День (10-14)"] += 1
+        elif h < 18: blocks["После обеда (14-18)"] += 1
+        else: blocks["Вечер (18+)"] += 1
     for label, cnt in blocks.items():
         pattern_lines.append(f"- {label}: {cnt}")
 
     pattern_lines.append("\n### Темп по неделям\n")
-    week_res = await db.execute(
-        select(func.strftime("%Y-W%W", Task.completed_at).label("week"), func.count(Task.id).label("cnt"))
-        .where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=35))
-        .group_by("week").order_by("week")
-    )
-    for row in week_res.all():
-        bar = "█" * (row.cnt // 2)
-        pattern_lines.append(f"- {row.week}: {row.cnt:>2} {bar}")
+    weeks: dict[str, int] = {}
+    for m in moments:
+        iso = m.isocalendar()
+        key = f"{iso[0]}-W{iso[1]:02d}"
+        weeks[key] = weeks.get(key, 0) + 1
+    for key in sorted(weeks):
+        pattern_lines.append(f"- {key}: {weeks[key]:>2} {'█' * (weeks[key] // 2)}")
 
-    pred_lines = ["### Прогноз бэклога\n"]
-    avg_res = await db.execute(
-        select(func.count(Task.id)).where(Task.status == "выполнена", Task.completed_at >= today - timedelta(days=14))
-    )
-    avg_daily = round((avg_res.scalar() or 0) / 14, 1)
+    pred_lines = ["### Темп и бэклог\n"]
+    # Темп — тем же определением, что карточки страницы: закрытые корневые задачи
+    # без регулярных, по последним полным дням. Дату закрытия бэклога не считаю:
+    # в старой формуле не было притока новых задач, и дата вводила в заблуждение
+    # (обещала 22.10 при растущем хвосте) — разбор 07.10.2026.
+    avg_daily, avg_workdays, avg_start, avg_end = await get_avg_completed_per_day(db, 14)
     backlog_res = await db.execute(
-        select(func.count(Task.id)).where(Task.status.in_(["новая", "в работе"]), task_is_active())
+        select(func.count(Task.id)).where(task_is_active(), Task.status != "выполнена")
     )
     backlog = backlog_res.scalar() or 0
-    pred_lines.append(f"- Темп: **{avg_daily}** задач/день")
-    pred_lines.append(f"- Активных: **{backlog}**")
-    if avg_daily > 0:
-        days = round(backlog / avg_daily)
-        eta = today + timedelta(days=days)
-        pred_lines.append(f"- Закрытие: **{days} дней** → {eta.strftime('%d.%m.%Y')}")
+    pred_lines.append(
+        f"- Темп: **{round(avg_daily, 1)}** закрытых корневых задач за рабочий день "
+        f"({avg_start.strftime('%d.%m')}–{avg_end.strftime('%d.%m')}, рабочих дней: {avg_workdays})"
+    )
+    pred_lines.append(f"- Открыто сейчас: **{backlog}**")
+    pred_lines.append("- Дату закрытия бэклога не показываю: без притока новых задач она обманывает.")
 
     nd_res = await db.execute(
         select(Task).options(selectinload(Task.category)).where(
@@ -505,7 +512,7 @@ async def _direct_analyze(db, today):
     if nd_tasks:
         for t in nd_tasks:
             cat = t.category.name if t.category else "?"
-            due = t.due_date or (t.created_at.date() if t.created_at else today)
+            due = t.created_at.date() if t.created_at else today
             days_open = (today - due).days if due else 0
             pred_lines.append(f"- {t.postpones}x | {days_open}д | {t.title[:60]} | {cat}")
     else:
@@ -514,7 +521,7 @@ async def _direct_analyze(db, today):
     all_lines = (
         ["## Блок 1: Болячки\n"] + pain_lines
         + ["\n## Блок 2: Паттерны\n"] + pattern_lines
-        + ["\n## Блок 4: Предсказания\n"] + pred_lines
+        + ["\n## Блок 3: Темп и бэклог\n"] + pred_lines
     )
     html_content = "<br>".join(all_lines).replace("\n", "<br>")
     return HTMLResponse(f"""

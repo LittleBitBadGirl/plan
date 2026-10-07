@@ -104,9 +104,13 @@ def count_workdays_between(start: date, end: date) -> int:
 
 
 def _sqlite_completed_not_on_weekend():
-    """SQLite strftime %w: 0=вс, 6=сб."""
-    w = func.strftime("%w", Task.completed_at)
-    return w.notin_(["0", "6"])
+    """Будни по ЛОКАЛЬНОМУ дню закрытия (SQLite strftime %w: 0=вс, 6=сб).
+
+    Считалось по UTC-дате таймстампа, поэтому закрытие в 00:30 МСК попадало в
+    предыдущий (часто выходной) день и выпадало из карточки темпа — разбор 07.10.2026.
+    """
+    local_day = func.datetime(Task.completed_at, "localtime")
+    return func.strftime("%w", local_day).notin_(["0", "6"])
 
 
 def _period_phase(day: int, avg_cycle: int, avg_period: int) -> str:
@@ -544,6 +548,60 @@ def _utc_day_bounds(day: date) -> tuple[datetime, datetime]:
     return start_utc, end_utc
 
 
+def _local_moment(moment: datetime) -> datetime:
+    """Момент из базы → локальное время процесса.
+
+    В базе время без пояса (naive) и означает UTC — так его пишут все пути, кроме
+    бота; SQLite-функции вроде `datetime(x, 'localtime')` трактуют naive так же.
+    """
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone()
+
+
+def _local_date(moment: datetime) -> date:
+    """Момент из базы → локальная календарная дата.
+
+    График раньше резал сутки по UTC (`func.date(completed_at)`), поэтому закрытие
+    в 00:30 МСК попадало в предыдущий столбик, а карточки считали по локальным
+    суткам. В базе Веры так лежат 36 закрытий — числа не сходились.
+    """
+    return _local_moment(moment).date()
+
+
+async def completed_local_moments(db: AsyncSession, start: date, end: date) -> list[datetime]:
+    """Закрытия в локальном времени: для часов и недель, тем же определением.
+
+    Часы и «темп по неделям» в блоке «Анализ Гермеса» считались SQL-функциями по
+    UTC и включали подзадачи, регулярные и покупки — «утро/вечер» были сдвинуты на
+    3 часа, а числа не сходились с карточками (разбор 07.10.2026).
+    """
+    rows = await db.execute(
+        select(Task.completed_at).where(*_completed_tasks_base_filter(start, end))
+    )
+    return [_local_moment(m) for (m,) in rows.all() if m is not None]
+
+
+async def completed_counts_by_local_day(
+    db: AsyncSession, start: date, end: date
+) -> dict[date, int]:
+    """Закрыто по локальным дням — тем же определением, что и карточки.
+
+    Единственный источник для графика, рекорда дня и любых «закрыто по дням»:
+    корневые задачи, без регулярных, `item_kind='task'`, локальные сутки.
+    """
+    rows = await db.execute(
+        select(Task.completed_at).where(*_completed_tasks_base_filter(start, end))
+    )
+    counts: dict[date, int] = {}
+    for (moment,) in rows.all():
+        if moment is None:
+            continue
+        day = _local_date(moment)
+        counts[day] = counts.get(day, 0) + 1
+    return counts
+
+
 async def _load_today_roots_bundle(
     db: AsyncSession, today: date, hide_work: bool = False
 ) -> tuple[list[Task], list[Task]]:
@@ -848,28 +906,17 @@ def _completed_tasks_base_filter(start: date, end: date):
 
 
 def rolling_week_windows(today: date) -> tuple[tuple[date, date], tuple[date, date]]:
-    """Текущее и предыдущее окно по 8 календарных дней (как график «неделя»)."""
-    current_start = today - timedelta(days=7)
+    """Текущее и предыдущее окно по 7 ПОЛНЫХ дней; сегодня не входит.
+
+    Было `today-7 … today` — 8 календарных дней, и в них попадала неполная
+    сегодняшняя дата: в среду окно содержало две среды, а прошлое окно — одну,
+    поэтому «Δ неделя» сравнивала неравные отрезки (решение Веры 07.10.2026).
+    """
+    current_end = today - timedelta(days=1)
+    current_start = current_end - timedelta(days=6)
     prev_end = current_start - timedelta(days=1)
-    prev_start = prev_end - timedelta(days=7)
-    return (current_start, today), (prev_start, prev_end)
-
-
-async def count_stale_in_progress_tasks(
-    db: AsyncSession, *, stale_days: int = 7
-) -> int:
-    """Корневые задачи в статусе «в_работе» дольше stale_days (по created_at)."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=stale_days)
-    result = await db.execute(
-        select(func.count(Task.id)).where(
-            Task.status == "в_работе",
-            task_is_active(),
-            Task.parent_task_id == None,
-            Task.item_kind == "task",
-            Task.created_at <= cutoff,
-        )
-    )
-    return result.scalar() or 0
+    prev_start = prev_end - timedelta(days=6)
+    return (current_start, current_end), (prev_start, prev_end)
 
 
 async def count_completed_tasks(
@@ -888,26 +935,40 @@ async def count_completed_tasks(
 
 async def get_avg_completed_per_day(
     db: AsyncSession, lookback_days: int = 14
-) -> float:
-    """Среднее закрытых корневых задач за рабочий день (пн–пт) за период."""
+) -> tuple[float, int, date, date]:
+    """Среднее закрытых за рабочий день по последним ПОЛНЫМ дням.
+
+    Возвращает (среднее, рабочих дней, начало, конец): без числа рабочих дней
+    подпись врёт — в 14 календарных днях их 10, а на странице было написано
+    «за 14 раб. дней» (разбор 07.10.2026). Сегодняшний неполный день не входит.
+    """
     today = date.today()
-    start = today - timedelta(days=lookback_days - 1)
+    end = today - timedelta(days=1)
+    start = end - timedelta(days=lookback_days - 1)
 
     completed_in_period = await count_completed_tasks(
-        db, start, today, workdays_only=True
+        db, start, end, workdays_only=True
     )
-    workdays = count_workdays_between(start, today)
+    workdays = count_workdays_between(start, end)
     if workdays == 0:
-        return 0.0
-    return completed_in_period / workdays
+        return 0.0, 0, start, end
+    return completed_in_period / workdays, workdays, start, end
 
 
 async def get_productivity_insights(db: AsyncSession) -> dict:
-    """Сводка для блока динамики (рабочие дни, без recurring)."""
-    today = date.today()
-    start_30 = today - timedelta(days=29)
+    """Карточки аналитики: одно определение «закрыто», равные окна полных дней.
 
-    avg = await get_avg_completed_per_day(db, 14)
+    Убрано (решение Веры 07.10.2026): «Темп нед.» — метрика сравнивала неделю с
+    базой, в которую входила та же неделя (всегда около 100%), и повторяла
+    отвергнутую «сколько обычно закрываю»; «Зависли» — статуса «в работе» в базе
+    нет вообще, карточка была всегда нулевой. «Рекорд» теперь берётся из того же
+    набора, что и карточка недели, а не из графика с другим определением.
+    """
+    today = date.today()
+    end_30 = today - timedelta(days=1)
+    start_30 = end_30 - timedelta(days=29)
+
+    avg, avg_workdays, avg_start, avg_end = await get_avg_completed_per_day(db, 14)
     (cur_start, cur_end), (prev_start, prev_end) = rolling_week_windows(today)
     completed_7d = await count_completed_tasks(
         db, cur_start, cur_end, workdays_only=True
@@ -916,19 +977,10 @@ async def get_productivity_insights(db: AsyncSession) -> dict:
         db, prev_start, prev_end, workdays_only=True
     )
     week_delta = completed_7d - completed_prev_7d
-    completed_30d = await count_completed_tasks(db, start_30, today, workdays_only=True)
-    stale_in_progress = await count_stale_in_progress_tasks(db)
+    completed_30d = await count_completed_tasks(db, start_30, end_30, workdays_only=True)
 
-    history = (await get_history_data(db, "week"))["history"]
-    workday_counts = [row[1] for row in history if len(row) > 2 and not row[2]]
-    best_day_7d = max(workday_counts) if workday_counts else 0
-
-    workdays_7 = count_workdays_between(cur_start, cur_end)
-    expected_7d = int(round(avg * workdays_7)) if avg >= 0.5 and workdays_7 else None
-    if expected_7d is not None and expected_7d > 0:
-        pace_pct = round(completed_7d / expected_7d * 100)
-    else:
-        pace_pct = None
+    def _period(a: date, b: date) -> str:
+        return f"{a.strftime('%d.%m')}–{b.strftime('%d.%m')}"
 
     if week_delta > 0:
         week_delta_label = f"+{week_delta}"
@@ -939,89 +991,16 @@ async def get_productivity_insights(db: AsyncSession) -> dict:
 
     return {
         "avg_workday": int(round(avg)) if avg >= 0.5 else None,
+        "avg_workdays": avg_workdays,
+        "avg_period": _period(avg_start, avg_end),
         "completed_7d": completed_7d,
         "completed_prev_7d": completed_prev_7d,
         "completed_30d": completed_30d,
         "week_delta": week_delta,
         "week_delta_label": week_delta_label,
-        "best_day_7d": best_day_7d,
-        "pace_pct": pace_pct,
-        "workdays_7": workdays_7,
-        "stale_in_progress": stale_in_progress,
-    }
-
-
-async def get_subtask_insights(db: AsyncSession) -> dict:
-    """Аналитика подзадач: создано / закрыто за 7 рабочих дней vs прошлая неделя."""
-    today = date.today()
-    (cur_start, cur_end), (prev_start, prev_end) = rolling_week_windows(today)
-
-    # Подзадачи, созданные в периоде
-    cur_created = await db.scalar(
-        select(func.count(Task.id)).where(
-            func.date(Task.created_at) >= cur_start.isoformat(),
-            func.date(Task.created_at) <= cur_end.isoformat(),
-            Task.parent_task_id.isnot(None),
-            Task.item_kind == "task",
-        )
-    ) or 0
-
-    prev_created = await db.scalar(
-        select(func.count(Task.id)).where(
-            func.date(Task.created_at) >= prev_start.isoformat(),
-            func.date(Task.created_at) <= prev_end.isoformat(),
-            Task.parent_task_id.isnot(None),
-            Task.item_kind == "task",
-        )
-    ) or 0
-
-    # Подзадачи, закрытые в периоде
-    cur_closed = await db.scalar(
-        select(func.count(Task.id)).where(
-            Task.status == "выполнена",
-            Task.completed_at.isnot(None),
-            func.date(Task.completed_at) >= cur_start.isoformat(),
-            func.date(Task.completed_at) <= cur_end.isoformat(),
-            Task.parent_task_id.isnot(None),
-            Task.item_kind == "task",
-        )
-    ) or 0
-
-    prev_closed = await db.scalar(
-        select(func.count(Task.id)).where(
-            Task.status == "выполнена",
-            Task.completed_at.isnot(None),
-            func.date(Task.completed_at) >= prev_start.isoformat(),
-            func.date(Task.completed_at) <= prev_end.isoformat(),
-            Task.parent_task_id.isnot(None),
-            Task.item_kind == "task",
-        )
-    ) or 0
-
-    created_delta = cur_created - prev_created
-    closed_delta = cur_closed - prev_closed
-
-    def _delta_label(d: int) -> str:
-        if d > 0:
-            return f"+{d}"
-        elif d < 0:
-            return f"−{abs(d)}"
-        return "0"
-
-    def _delta_color(d: int) -> str:
-        # Зелёный — рост закрытых (хорошо), серый — рост созданных (нейтрально)
-        return "text-green-400" if d > 0 else "text-red-400/90" if d < 0 else "text-gray-400"
-
-    return {
-        "created_7d": cur_created,
-        "created_prev_7d": prev_created,
-        "created_delta": created_delta,
-        "created_delta_label": _delta_label(created_delta),
-        "closed_7d": cur_closed,
-        "closed_prev_7d": prev_closed,
-        "closed_delta": closed_delta,
-        "closed_delta_label": _delta_label(closed_delta),
-        "closed_delta_color": _delta_color(closed_delta),
+        "week_period": _period(cur_start, cur_end),
+        "week_prev_period": _period(prev_start, prev_end),
+        "month_period": _period(start_30, end_30),
     }
 
 
@@ -1202,53 +1181,62 @@ async def _reading_list_response(request: Request, db: AsyncSession):
     return HTMLResponse(content=_render_reading_list(request, context))
 
 
+def _shift_months(day: date, months: int) -> date:
+    """Первое число месяца со сдвигом на months (без dateutil)."""
+    total = day.month - 1 + months
+    return date(day.year + total // 12, total % 12 + 1, 1)
+
+
 async def get_history_data(db, period: str):
-    """Данные для графика динамики (неделя/месяц — все календарные дни, выходные помечены)."""
+    """Данные для графика динамики.
+
+    Одно определение с карточками: закрытые КОРНЕВЫЕ задачи, без регулярных,
+    `item_kind='task'`, бакеты по ЛОКАЛЬНЫМ суткам. Окно — только полные дни:
+    неполный сегодняшний день в столбики и суммы не входит. Раньше график считал
+    ВСЕ закрытия по UTC-суткам, поэтому его сумма не сходилась с карточками
+    (80 против 48 за 14 дней) — разбор 07.10.2026.
+    """
     today = date.today()
 
     if period == "year":
-        start_date = today.replace(day=1) - timedelta(days=365)
-        query = (
-            select(func.strftime("%Y-%m", Task.completed_at), func.count(Task.id))
-            .where(Task.completed_at >= start_date, Task.status == "выполнена")
-            .group_by(func.strftime("%Y-%m", Task.completed_at))
-            .order_by(func.strftime("%Y-%m", Task.completed_at).asc())
-        )
-        result = await db.execute(query)
-        history = list(result.all())
+        # 12 полных месяцев: прошлый месяц — последний закрытый, текущий не берём.
+        last_full = today.replace(day=1) - timedelta(days=1)
+        first_month = _shift_months(last_full, -11)
+        by_month: dict[str, int] = {}
+        for day, n in (await completed_counts_by_local_day(db, first_month, last_full)).items():
+            key = day.strftime("%Y-%m")
+            by_month[key] = by_month.get(key, 0) + n
+        history = []
+        cursor = first_month
+        while cursor <= last_full:
+            key = cursor.strftime("%Y-%m")
+            history.append((key, by_month.get(key, 0)))
+            cursor = _shift_months(cursor, 1)
         max_val = max([count for _, count in history] + [1])
-        return {"history": history, "max_val": max_val}
+        return {
+            "history": history,
+            "max_val": max_val,
+            "total": sum(count for _, count in history),
+            "period": f"{first_month.strftime('%m.%Y')}–{last_full.strftime('%m.%Y')}",
+        }
 
-    if period == "month":
-        start_date = today - timedelta(days=30)
-    else:
-        start_date = today - timedelta(days=7)
+    end = today - timedelta(days=1)
+    start = end - timedelta(days=29) if period == "month" else end - timedelta(days=6)
 
-    query = (
-        select(func.date(Task.completed_at), func.count(Task.id))
-        .where(
-            func.date(Task.completed_at) >= start_date.isoformat(),
-            func.date(Task.completed_at) <= today.isoformat(),
-            Task.status == "выполнена",
-        )
-        .group_by(func.date(Task.completed_at))
-        .order_by(func.date(Task.completed_at).asc())
-    )
-    result = await db.execute(query)
-    counts_by_date: dict[str, int] = {}
-    for day_key, count in result.all():
-        key = day_key if isinstance(day_key, str) else day_key.isoformat()
-        counts_by_date[key] = count
-
+    counts_by_date = await completed_counts_by_local_day(db, start, end)
     history = []
-    d = start_date
-    while d <= today:
-        ds = d.isoformat()
-        history.append((ds, counts_by_date.get(ds, 0), is_weekend(d)))
+    d = start
+    while d <= end:
+        history.append((d.isoformat(), counts_by_date.get(d, 0), is_weekend(d)))
         d += timedelta(days=1)
 
     max_val = max([count for _, count, *_ in history] + [1])
-    return {"history": history, "max_val": max_val}
+    return {
+        "history": history,
+        "max_val": max_val,
+        "total": sum(count for _, count, *_ in history),
+        "period": f"{start.strftime('%d.%m')}–{end.strftime('%d.%m')}",
+    }
 
 async def get_tasks_today(db: AsyncSession, request: Request):
     """Вспомогательная функция для получения списка задач на сегодня и их отрисовки"""
@@ -1440,7 +1428,6 @@ __all__ = [
     "build_daily_load_warning",
     "get_avg_completed_per_day",
     "get_productivity_insights",
-    "get_subtask_insights",
     "get_history_data",
     "get_tasks_today",
     "dashboard_task_order_by",

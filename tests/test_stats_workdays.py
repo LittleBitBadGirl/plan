@@ -18,10 +18,10 @@ def test_count_workdays_one_week():
 
 
 def test_rolling_week_windows_non_overlapping():
-    today = date(2026, 6, 4)
+    """Окна — по 7 полных дней, сегодня не входит (иначе сравнение недель врёт)."""
+    today = date(2026, 6, 4)  # четверг
     (cur_start, cur_end), (prev_start, prev_end) = rolling_week_windows(today)
-    assert cur_start == date(2026, 5, 28)
-    assert cur_end == today
-    assert prev_end == date(2026, 5, 27)
-    assert prev_start == date(2026, 5, 20)
+    assert (cur_start, cur_end) == (date(2026, 5, 28), date(2026, 6, 3))
+    assert (prev_start, prev_end) == (date(2026, 5, 21), date(2026, 5, 27))
+    assert cur_end < today
     assert prev_end < cur_start
