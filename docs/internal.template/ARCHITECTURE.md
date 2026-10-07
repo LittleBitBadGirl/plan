@@ -39,7 +39,7 @@ app/main.py
 ```
 
 - Импорт в `main.py`: `from app.web.pages import router` — **не менять**
-- Статистика: см. `docs/internal/STATS.md` — owner `deps.py`, UI `stats.html` + `partials/stats_chart.html`
+- Статистика: см. `docs/internal/STATS.md` — owner `deps.py`, UI `stats.html` + `partials/stats_flow.html`
 - `get_today_stats`: re-export из `pages` → `deps`
 - Backlog **только** в `routes/backlog.py`
 

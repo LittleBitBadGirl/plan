@@ -128,7 +128,7 @@ Auth: `Authorization: Bearer $API_TOKEN` для import.
 | POST | `/tasks/{id}/complete` | Завершить (partial) |
 | POST | `/api/calendar/{id}/decline` | «Не пойду» на встречу |
 | POST | `/api/transactions/{id}/category` | Категория транзакции |
-| GET | `/api/stats/chart?period=week\|month\|year` | Partial графика (`partials/stats_chart.html`) |
+| GET | `/api/stats/flow?period=week\|month\|year` | Блок «Поток задач» (`partials/stats_flow.html`) |
 | GET | `/api/ai/prepare-analysis` | AI-анализ продуктивности (partial) |
 | POST | `/api/shopping/*` | CRUD списка покупок |
 

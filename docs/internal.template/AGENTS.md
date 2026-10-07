@@ -19,8 +19,8 @@ Senior AI-инженер: архитектура, код, `pytest tests/` пер
 | `app/services/calendar_sync_service.py` | CalDAV + Google → `calendar_events` |
 | `app/auth.py` + middleware | `API_TOKEN`, cookie |
 | `app/web/pages.py` | Сборка `APIRouter`; логика — `routes/*`, `deps.py` |
-| `app/web/deps.py` | **Статистика:** `get_history_data`, `get_productivity_insights`, `get_avg_completed_per_day`, рабочие дни |
-| `app/web/routes/stats.py` | `/stats`, `/api/stats/chart`, AI partials |
+| `app/web/deps.py` | **Статистика:** `get_flow_data`, `created_flow`, `get_productivity_insights`, `get_avg_completed_per_day`, рабочие дни |
+| `app/web/routes/stats.py` | `/stats`, `/api/stats/flow`, AI partials |
 
 Подробно: `docs/internal/STATS.md` (копия из `internal.template/STATS.md`).
 

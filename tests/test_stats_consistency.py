@@ -35,8 +35,9 @@ def test_windows_are_seven_full_days_and_today_excluded():
     assert ce < today and pe < cs
 
 
-async def _add_task(db, title, *, completed_on=None, completed_at=None, source=None,
-                    parent_id=None, item_kind="task", status="новая"):
+async def _add_task(db, title, *, completed_on=None, completed_at=None, created_on=None,
+                    planned_for=None, source=None, parent_id=None, item_kind="task",
+                    status="новая"):
     task = Task(
         title=title,
         status=status,
@@ -44,8 +45,12 @@ async def _add_task(db, title, *, completed_on=None, completed_at=None, source=N
         source=source,
         parent_task_id=parent_id,
         completed_at=completed_at,
+        planned_for=planned_for,
         created_at=datetime.now(timezone.utc),
     )
+    if created_on is not None:
+        # Полдень локального дня: тест не зависит от часового пояса машины.
+        task.created_at = datetime.combine(created_on, time(12, 0)).astimezone(timezone.utc)
     if completed_on is not None:
         # Полдень локального дня — чтобы тест не зависел от часового пояса машины.
         task.completed_at = datetime.combine(completed_on, time(12, 0)).astimezone(timezone.utc)
@@ -156,26 +161,164 @@ async def test_weekend_filter_counts_local_weekday(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_year_chart_is_twelve_full_months():
-    """Год — 12 ПОЛНЫХ месяцев: текущий неполный в график не входит.
+async def test_flow_year_buckets_are_twelve_full_months():
+    """Год в потоке — 12 ПОЛНЫХ месяцев: текущий неполный не берётся.
 
-    Раньше брался отрезок в 365 дней от первого числа месяца (13 месяцев, включая
-    неполный текущий) — столбики и сумма были неполными.
+    Раньше график брал отрезок в 365 дней от первого числа месяца: 13 месяцев,
+    включая неполный текущий, поэтому и столбики, и сумма были неполными.
     """
-    from app.web.deps import get_history_data
+    from app.web.deps import get_flow_data
 
     async with async_session() as db:
-        data = await get_history_data(db, "year")
+        flow = await get_flow_data(db, "year")
 
-    assert len(data["history"]) == 12
+    assert len(flow["buckets"]) == 12
     today = date.today()
     prev_month = today.replace(day=1) - timedelta(days=1)
-    assert data["history"][-1][0] == prev_month.strftime("%Y-%m")
+    assert flow["buckets"][-1]["label"] == prev_month.strftime("%m.%y")
     first_month = prev_month
     for _ in range(11):
         first_month = (first_month.replace(day=1) - timedelta(days=1)).replace(day=1)
-    assert data["history"][0][0] == first_month.strftime("%Y-%m")
-    assert data["total"] == sum(count for _, count in data["history"])
+    assert flow["buckets"][0]["label"] == first_month.strftime("%m.%y")
+    assert flow["created_total"] == sum(b["created"] for b in flow["buckets"])
+    assert flow["closed_total"] == sum(b["closed"] for b in flow["buckets"])
+    assert flow["series"][0]["day"] == first_month, "первый столбик года — первое число первого месяца"
+
+
+@pytest.mark.asyncio
+async def test_flow_year_bucket_gets_the_arrival_of_its_month():
+    """Данные попадают в свой месячный бакет, а не в соседний.
+
+    Сдвиг на месяц здесь не видно на пустой базе: проверка с реальным прилётом
+    ловит ошибку «бакет считается по следующему месяцу».
+    """
+    from app.web.deps import get_flow_data
+
+    today = date.today()
+    prev_month_day = today.replace(day=1) - timedelta(days=3)  # всегда в прошлом месяце
+    assert prev_month_day.month != today.month
+
+    async with async_session() as db:
+        await _add_task(db, "прилёт прошлого месяца", created_on=prev_month_day)
+        await db.commit()
+
+    async with async_session() as db:
+        flow = await get_flow_data(db, "year")
+
+    last = flow["buckets"][-1]
+    assert last["label"] == (today.replace(day=1) - timedelta(days=1)).strftime("%m.%y")
+    assert last["created"] == 1, "прилёт прошлого месяца обязан попасть в этот бакет"
+    # Ведущие месяцы без данных не показываем: до апреля 2026 у Веры задач нет,
+    # поэтому год начинается с первого непустого месяца, а не с пустой полосы.
+    assert flow["buckets"][0] == last and len(flow["buckets"]) == 1
+    assert flow["created_total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_flow_counts_arrivals_by_local_day_without_recurring_or_subtasks():
+    """«Прилетело» — новые корневые задачи без регулярных, по местным суткам.
+
+    Вера: «5 я утром выбираю, а ещё 6 прилетает, и не из бэклога». Поэтому взятая из
+    бэклога задача, регулярное вхождение и подзадача в прилёт не попадают, а задача,
+    созданная в день, для которого она же и поставлена, считается «сразу на сегодня».
+    """
+    from app.web.deps import get_flow_data
+
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+
+    async with async_session() as db:
+        await _add_task(db, "прилетела вчера", created_on=yesterday)
+        await _add_task(db, "сразу на сегодня", created_on=yesterday, planned_for=yesterday)
+        await _add_task(db, "регулярная", created_on=yesterday, source="recurring")
+        parent = await _add_task(db, "родитель с подзадачами", created_on=yesterday)
+        await _add_task(db, "подзадача", created_on=yesterday, parent_id=parent.id)
+        # Создана вчера, взята сегодня — для сегодняшнего дня это не прилёт.
+        await _add_task(db, "из бэклога", created_on=yesterday, planned_for=today)
+        await db.commit()
+
+    async with async_session() as db:
+        flow = await get_flow_data(db, "week")
+
+    week_created = sum(s["created"] for s in flow["series"])
+    # Прилёт: обычная корневая, «сразу на сегодня», родитель и «из бэклога» —
+    # последняя СОЗДАНА вчера, поэтому она прилёт вчерашнего дня; что её взяли
+    # сегодня, к прилёту не относится (это и есть разница «прилетело / взято»).
+    assert week_created == 4, "подзадача и регулярная в прилёт не входят"
+    assert flow["created_total"] == 4
+    assert flow["by_dow"][6]["created"] + sum(d["created"] for d in flow["by_dow"][:5]) == week_created
+
+
+@pytest.mark.asyncio
+async def test_flow_excludes_non_tasks_and_keeps_null_archive_flag():
+    """В прилёт входят только задачи: покупка и пункт чтения — нет, NULL-архив — да.
+
+    `is_archived` у части строк NULL (их писала интеграция мимо ORM), и «не в архиве»
+    через `== False` такие строки теряет. Прилёт — факт появления, поэтому архивность
+    на него не влияет вовсе; тест держит это явно, чтобы фильтр не появился тихо.
+    """
+    from app.web.deps import get_flow_data
+
+    yesterday = date.today() - timedelta(days=1)
+    async with async_session() as db:
+        await _add_task(db, "обычная задача", created_on=yesterday)
+        await _add_task(db, "покупка", created_on=yesterday, item_kind="purchase")
+        await _add_task(db, "пункт чтения", created_on=yesterday, item_kind="reading")
+        archived = await _add_task(db, "без флага архива", created_on=yesterday)
+        archived.is_archived = None
+        await db.commit()
+
+    async with async_session() as db:
+        flow = await get_flow_data(db, "week")
+
+    assert flow["created_total"] == 2, "покупка и пункт чтения — не задачи"
+
+
+@pytest.mark.asyncio
+async def test_flow_splits_weekend_arrivals_from_workday_ones():
+    """Прилёт выходного дня не попадает в «в рабочие дни» и виден в субботней клетке.
+
+    Регресс, который тут ловится: перепутать выходные и будни в разбивке местами —
+    тогда «в рабочие дни ~X/день» считается по всем дням и врёт в сторону Веры.
+    """
+    from app.web.deps import get_flow_data
+
+    today = date.today()
+    back = (today.weekday() - 5) % 7 or 7
+    saturday = today - timedelta(days=back)
+    assert saturday.weekday() == 5 and saturday < today
+
+    async with async_session() as db:
+        await _add_task(db, "субботний прилёт", created_on=saturday)
+        await _add_task(db, "закрыто в субботу", created_on=saturday, completed_on=saturday)
+        await db.commit()
+
+    async with async_session() as db:
+        flow = await get_flow_data(db, "month")
+
+    sat_entry = next(s for s in flow["series"] if s["day"] == saturday)
+    # Обе задачи созданы в субботу (одна тут же закрыта) — значит в этот день их две.
+    assert sat_entry["created"] == 2 and sat_entry["weekend"] is True
+    assert flow["by_dow"][5]["created"] >= 1, "суббота — индекс 5"
+    assert flow["weekend_created"] >= 1
+    # «в рабочие дни» считается по невыходным дням — субботний прилёт туда не входит
+    assert flow["created_workdays"] == sum(s["created"] for s in flow["series"] if not s["weekend"])
+
+
+@pytest.mark.asyncio
+async def test_stats_page_shows_flow_block(client):
+    """На странице есть блок потока, а период переключается отдельным запросом."""
+    html = (await client.get("/stats")).text
+    assert "Поток задач" in html
+    assert "Прилетело" in html and "прилетело" in html
+    assert "По дням недели" in html
+
+    week = await client.get("/api/stats/flow?period=week")
+    assert week.status_code == 200
+    assert "Поток задач" in week.text and "полные дни" in week.text
+    # Мусор в параметре не должен ронять блок.
+    junk = await client.get("/api/stats/flow?period=вечность")
+    assert junk.status_code == 200 and "Поток задач" in junk.text
 
 
 @pytest.mark.asyncio

@@ -1187,56 +1187,185 @@ def _shift_months(day: date, months: int) -> date:
     return date(day.year + total // 12, total % 12 + 1, 1)
 
 
-async def get_history_data(db, period: str):
-    """Данные для графика динамики.
+def _created_base_filter(start: date, end: date):
+    """«Прилетело» в интервале дат: новые корневые задачи без регулярных."""
+    range_start_utc, _ = _utc_day_bounds(start)
+    _, range_end_utc = _utc_day_bounds(end)
+    return (
+        Task.created_at.isnot(None),
+        Task.created_at >= range_start_utc,
+        Task.created_at <= range_end_utc,
+        Task.parent_task_id == None,
+        or_(Task.source != "recurring", Task.source == None),
+        Task.item_kind == "task",
+    )
 
-    Одно определение с карточками: закрытые КОРНЕВЫЕ задачи, без регулярных,
-    `item_kind='task'`, бакеты по ЛОКАЛЬНЫМ суткам. Окно — только полные дни:
-    неполный сегодняшний день в столбики и суммы не входит. Раньше график считал
-    ВСЕ закрытия по UTC-суткам, поэтому его сумма не сходилась с карточками
-    (80 против 48 за 14 дней) — разбор 07.10.2026.
+
+async def created_flow(db: AsyncSession, start: date, end: date) -> tuple[dict[date, int], int]:
+    """Прилетело по локальным дням + сколько из прилетевшего закрыто в тот же день.
+
+    Второе число сначала считалось через `planned_for`, но так оно врёт в меньшую
+    сторону: ночной возврат в бэклог стирает `planned_for` у незакрытых, поэтому в
+    прошлых днях остаются только закрытые. По `completed_at` видно прямо: прилетело
+    и в тот же день доведено до конца.
+    """
+    rows = await db.execute(
+        select(Task.created_at, Task.completed_at).where(*_created_base_filter(start, end))
+    )
+    counts: dict[date, int] = {}
+    same_day = 0
+    for moment, completed in rows.all():
+        if moment is None:
+            continue
+        day = _local_date(moment)
+        counts[day] = counts.get(day, 0) + 1
+        if completed is not None and _local_date(completed) == day:
+            same_day += 1
+    return counts, same_day
+
+
+def _year_buckets_start(buckets: list[dict], fallback: date) -> date:
+    """Начало показанного года — первый непустой месяц (иначе начало окна)."""
+    if not buckets:
+        return fallback
+    label = buckets[0]["label"]
+    try:
+        month, year = label.split(".")
+        return date(2000 + int(year), int(month), 1)
+    except (ValueError, TypeError):
+        return fallback
+
+
+async def get_flow_data(db: AsyncSession, period: str = "month") -> dict:
+    """Поток задач за период: прилетело, закрыто, взято — по дням, неделям, дням недели.
+
+    Вера: «сделай подсчёт, сколько добавляется в день (кроме 5) — 5 я утром выбираю,
+    а сегодня ещё 6 добавила, и не из бэклога, а прилетающих задач». Поэтому прилёт и
+    закрытия считаются ОДНИМ окном из полных дней и одним определением (корневые без
+    регулярных, локальные сутки), а баланс показывается на одной и той же основе.
     """
     today = date.today()
-
-    if period == "year":
-        # 12 полных месяцев: прошлый месяц — последний закрытый, текущий не берём.
+    if period == "week":
+        end = today - timedelta(days=1)
+        start = end - timedelta(days=6)
+    elif period == "year":
         last_full = today.replace(day=1) - timedelta(days=1)
-        first_month = _shift_months(last_full, -11)
-        by_month: dict[str, int] = {}
-        for day, n in (await completed_counts_by_local_day(db, first_month, last_full)).items():
-            key = day.strftime("%Y-%m")
-            by_month[key] = by_month.get(key, 0) + n
-        history = []
-        cursor = first_month
-        while cursor <= last_full:
-            key = cursor.strftime("%Y-%m")
-            history.append((key, by_month.get(key, 0)))
-            cursor = _shift_months(cursor, 1)
-        max_val = max([count for _, count in history] + [1])
-        return {
-            "history": history,
-            "max_val": max_val,
-            "total": sum(count for _, count in history),
-            "period": f"{first_month.strftime('%m.%Y')}–{last_full.strftime('%m.%Y')}",
+        start, end = _shift_months(last_full, -11), last_full
+    else:
+        end = today - timedelta(days=1)
+        start = end - timedelta(days=29)
+
+    created, same_day = await created_flow(db, start, end)
+    closed = await completed_counts_by_local_day(db, start, end)
+
+    days = []
+    cursor = start
+    while cursor <= end:
+        days.append(cursor)
+        cursor += timedelta(days=1)
+
+    max_val = max([created.get(d, 0) for d in days] + [closed.get(d, 0) for d in days] + [1])
+    series = [
+        {
+            "day": d,
+            "iso": d.isoformat(),
+            "short": f"{d.day:02d}.{d.month:02d}",
+            "created": created.get(d, 0),
+            "closed": closed.get(d, 0),
+            "weekend": is_weekend(d),
+            "created_h": round(created.get(d, 0) / max_val * 100),
+            "closed_h": round(closed.get(d, 0) / max_val * 100),
         }
+        for d in days
+    ]
 
-    end = today - timedelta(days=1)
-    start = end - timedelta(days=29) if period == "month" else end - timedelta(days=6)
+    created_total = sum(created.values())
+    closed_total = sum(closed.values())
+    workdays = count_workdays_between(start, end) or 1
+    created_workdays = sum(n for d, n in created.items() if not is_weekend(d))
+    closed_workdays = sum(n for d, n in closed.items() if not is_weekend(d))
 
-    counts_by_date = await completed_counts_by_local_day(db, start, end)
-    history = []
-    d = start
-    while d <= end:
-        history.append((d.isoformat(), counts_by_date.get(d, 0), is_weekend(d)))
-        d += timedelta(days=1)
+    dow_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    by_dow = [{"name": name, "created": 0, "closed": 0} for name in dow_names]
+    for d in days:
+        idx = d.weekday()
+        by_dow[idx]["created"] += created.get(d, 0)
+        by_dow[idx]["closed"] += closed.get(d, 0)
 
-    max_val = max([count for _, count, *_ in history] + [1])
+    buckets: list[dict] = []
+    if period == "year":
+        cursor = start
+        while cursor <= end:
+            key = cursor.strftime("%Y-%m")
+            covered = sum(1 for d in days if d.strftime("%Y-%m") == key)
+            month_days = (_shift_months(cursor, 1) - cursor).days
+            buckets.append(
+                {
+                    "label": cursor.strftime("%m.%y"),
+                    "created": sum(n for d, n in created.items() if d.strftime("%Y-%m") == key),
+                    "closed": sum(n for d, n in closed.items() if d.strftime("%Y-%m") == key),
+                    "days": covered,
+                    "partial": covered < month_days,
+                }
+            )
+            cursor = _shift_months(cursor, 1)
+    else:
+        for d in days:
+            iso = d.isocalendar()
+            label = f"нед. {iso[1]:02d}"
+            if not buckets or buckets[-1]["label"] != label:
+                # ISO-неделя на краю окна бывает неполной: 30 дней не делятся на 7,
+                # поэтому у крайних недель стоит число дней — иначе полоска недели
+                # из одного дня сравнивается с полной неделей.
+                buckets.append({"label": label, "created": 0, "closed": 0, "days": 0})
+            buckets[-1]["created"] += created.get(d, 0)
+            buckets[-1]["closed"] += closed.get(d, 0)
+            buckets[-1]["days"] += 1
+        for row in buckets:
+            row["partial"] = row["days"] != 7
+    # MAJOR критика 07.10.2026: обе полоски строки обязаны жить на ОДНОЙ шкале.
+    # Раньше каждая нормировалась на свой максимум, и «прилетело 24 при максимуме 55»
+    # выходило короче «закрыто 33 при максимуме 50» — сравнение врало.
+    if period == "year":
+        # Полгода пустых месяцев съедали экран (задачи Веры начинаются с апреля 2026):
+        # ведущие месяцы без единого прилёта и закрытия не показываем. Если данных нет
+        # вовсе — оставляем полный год, чтобы блок не остался без периода.
+        first_with_data = next(
+            (i for i, b in enumerate(buckets) if b["created"] or b["closed"]), None
+        )
+        if first_with_data:
+            buckets = buckets[first_with_data:]
+
+    bucket_max = max(
+        [b["created"] for b in buckets] + [b["closed"] for b in buckets] + [1]
+    )
+    for row in buckets:
+        row["created_h"] = round(row["created"] / bucket_max * 100)
+        row["closed_h"] = round(row["closed"] / bucket_max * 100)
+
     return {
-        "history": history,
-        "max_val": max_val,
-        "total": sum(count for _, count, *_ in history),
-        "period": f"{start.strftime('%d.%m')}–{end.strftime('%d.%m')}",
+        "period": period,
+        "period_label": f"{start.strftime('%d.%m')}–{end.strftime('%d.%m')}"
+        if period != "year"
+        else f"{_year_buckets_start(buckets, start).strftime('%m.%Y')}–{end.strftime('%m.%Y')}",
+        "series": series,
+        "has_bars": any(s["created"] or s["closed"] for s in series),
+        "created_total": created_total,
+        "closed_total": closed_total,
+        "same_day_closed": same_day,
+        "weekend_created": sum(n for d, n in created.items() if is_weekend(d)),
+        "weekend_closed": sum(n for d, n in closed.items() if is_weekend(d)),
+        "created_workdays": created_workdays,
+        "closed_workdays": closed_workdays,
+        "workdays": workdays,
+        "created_per_workday": round(created_workdays / workdays, 1),
+        "closed_per_workday": round(closed_workdays / workdays, 1),
+        "balance": closed_total - created_total,
+        "by_dow": by_dow,
+        "buckets": buckets,
+        "bucket_word": "месяц" if period == "year" else "неделя",
     }
+
 
 async def get_tasks_today(db: AsyncSession, request: Request):
     """Вспомогательная функция для получения списка задач на сегодня и их отрисовки"""
@@ -1428,7 +1557,6 @@ __all__ = [
     "build_daily_load_warning",
     "get_avg_completed_per_day",
     "get_productivity_insights",
-    "get_history_data",
     "get_tasks_today",
     "dashboard_task_order_by",
     "_strip_emoji",

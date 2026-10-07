@@ -25,7 +25,6 @@ from app.web.deps import (
     compute_period_data,
     get_categories_list,
     get_today_stats,
-    get_history_data,
     get_tasks_today,
     append_today_stats_oob,
     _strip_emoji,

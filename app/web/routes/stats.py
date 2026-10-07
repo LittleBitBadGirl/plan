@@ -22,7 +22,7 @@ from app.web.deps import (
     compute_period_data,
     get_categories_list,
     get_today_stats,
-    get_history_data,
+    get_flow_data,
     get_productivity_insights,
     get_avg_completed_per_day,
     count_workdays_between,
@@ -90,8 +90,9 @@ async def stats_page(request: Request, period: str = "month"):
         cat_stats_result = await db.execute(cat_stats_query)
         category_distribution = cat_stats_result.all()
 
-        history_data = await get_history_data(db, period)
         insights = await get_productivity_insights(db)
+        # Поток задач: сколько прилетает против того, сколько закрывается.
+        flow = await get_flow_data(db, "month")
         
         report_result = await db.execute(select(AIReport).order_by(AIReport.report_date.desc()))
         last_report = report_result.scalars().first()
@@ -140,11 +141,7 @@ async def stats_page(request: Request, period: str = "month"):
         "total_active": total_active,
         "category_distribution": category_distribution,
         "insights": insights,
-        "weekly_history": history_data["history"],
-        "max_hist": history_data["max_val"],
-        "hist_total": history_data["total"],
-        "hist_period": history_data["period"],
-        "period": period,
+        "flow": flow,
         "last_report": last_report,
         "career_impacts": impacts,
         "impact_score": impact_score,
@@ -152,19 +149,17 @@ async def stats_page(request: Request, period: str = "month"):
         "postpones_stats": postpones_stats,
     })
 
-@router.get("/api/stats/chart", response_class=HTMLResponse)
-async def get_stats_chart(request: Request, period: str = "month"):
-    """Обновление только блока графика через HTMX"""
+@router.get("/api/stats/flow", response_class=HTMLResponse)
+async def get_stats_flow(request: Request, period: str = "month"):
+    """Блок «Поток задач» целиком — период переключается кнопками в шапке блока."""
+    if period not in ("week", "month", "year"):
+        period = "month"
     async with async_session() as db:
-        history_data = await get_history_data(db, period)
-        
-    return templates.TemplateResponse(request, "partials/stats_chart.html", {
+        flow = await get_flow_data(db, period)
+
+    return templates.TemplateResponse(request, "partials/stats_flow.html", {
         "request": request,
-        "weekly_history": history_data["history"],
-        "max_hist": history_data["max_val"],
-        "hist_total": history_data["total"],
-        "hist_period": history_data["period"],
-        "period": period,
+        "flow": flow,
     })
 
 

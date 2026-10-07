@@ -84,10 +84,8 @@
         </div>
     </section>
 
-    <!-- Динамика -->
-    <div class="mb-8">
-        {% include "partials/stats_chart.html" %}
-    </div>
+    <!-- Поток задач: прилетело против закрытого -->
+    {% include "partials/stats_flow.html" %}
 
     <!-- Анализ Гермеса -->
     <div id="ai-analysis-container" class="mb-8 bg-dark-800 rounded-2xl border {{ 'border-blue-500/30 shadow-2xl' if last_report else 'border-dark-600 border-dashed' }} overflow-hidden">

@@ -1,0 +1,154 @@
+{# Поток задач: сколько прилетает против того, сколько закрывается.
+
+   Метрика Веры (07.10.2026): «сколько добавляется в день (кроме 5) — 5 я утром
+   выбираю, а ещё 6 прилетает». Поэтому оба ряда считаются одинаково (корневые без
+   регулярных, местные сутки) и в одном окне, иначе числа нельзя сравнивать. #}
+<style>
+    /* Размеры и цвета заданы явно: произвольные классы Tailwind (gap-[3px],
+       h-1.5, bg-blue-500/80, text-violet-400/70) в локальную сборку не попадают,
+       поэтому столбики «прилетело» сливались с «закрыто» — разбор 07.10.2026. */
+    .flow-legend { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; font-size: 11px; color: #6b7280; }
+    .flow-legend__swatch { display: inline-block; width: 12px; height: 8px; border-radius: 2px; margin-right: 6px; }
+    .flow-legend__swatch--closed { background: rgba(34, 197, 94, .85); }
+    .flow-legend__swatch--created { background: rgba(59, 130, 246, .8); }
+    .flow-bars { display: flex; align-items: flex-end; gap: 3px; height: 10rem; border-bottom: 1px solid #2a3038; }
+    .flow-day { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; }
+    .flow-day__created { width: 100%; border-radius: 3px 3px 0 0; background: rgba(59, 130, 246, .8); }
+    .flow-day__closed { width: 100%; border-radius: 3px 3px 0 0; background: rgba(34, 197, 94, .85); }
+    .flow-labels { display: flex; align-items: flex-start; gap: 3px; margin-top: 6px; }
+    .flow-labels > div { flex: 1 1 0; min-width: 0; text-align: center; font-size: 11px; color: #6b7280; font-variant-numeric: tabular-nums; }
+    .flow-labels > div.is-weekend { color: rgba(167, 139, 250, .75); }
+    .flow-labels__n { display: inline-block; font-size: 11px; font-weight: 700; margin: 2px 2px 0 2px; }
+    .flow-labels__n--closed { color: #4ade80; }
+    .flow-labels__n--created { color: #60a5fa; }
+    .flow-dow { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+    @media (max-width: 640px) { .flow-dow { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+    .flow-dow__cell { background: rgba(17, 19, 24, .5); border: 1px solid #2a3038; border-radius: 8px; padding: 6px 4px; text-align: center; }
+    .flow-dow__name { font-size: 11px; color: #6b7280; text-transform: uppercase; }
+    .flow-dow__closed { font-size: 12px; font-weight: 700; color: #4ade80; font-variant-numeric: tabular-nums; }
+    .flow-dow__created { font-size: 12px; font-weight: 700; color: #60a5fa; font-variant-numeric: tabular-nums; }
+    .flow-bucket { display: flex; align-items: center; gap: 12px; }
+    .flow-bucket + .flow-bucket { margin-top: 6px; }
+    .flow-bucket__label { width: 4.5rem; flex: 0 0 auto; font-size: 11px; color: #9ca3af; font-variant-numeric: tabular-nums; }
+    .flow-bucket__bars { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .flow-bucket__track { height: 6px; background: #2a3038; border-radius: 999px; overflow: hidden; }
+    .flow-bucket__fill { height: 100%; border-radius: 999px; }
+    .flow-bucket__fill--closed { background: rgba(34, 197, 94, .85); }
+    .flow-bucket__fill--created { background: rgba(59, 130, 246, .8); }
+    .flow-bucket__num { width: 2.25rem; flex: 0 0 auto; text-align: right; font-size: 11px; font-variant-numeric: tabular-nums; }
+    .flow-bucket__num--closed { color: #4ade80; }
+    .flow-bucket__num--created { color: #60a5fa; }
+</style>
+
+<section id="stats-flow" class="bg-dark-800 rounded-2xl border border-dark-600 shadow-xl mb-8 overflow-hidden">
+    <div class="p-5 sm:p-6 border-b border-dark-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="min-w-0">
+            <h2 class="text-xl font-bold text-white">Поток задач</h2>
+            <p class="text-xs text-gray-500 mt-0.5">{{ flow.period_label }} · полные дни, без сегодняшнего</p>
+        </div>
+        <div class="flex gap-1.5 shrink-0">
+            {% for p, title in [('week', 'неделя'), ('month', 'месяц'), ('year', 'год')] %}
+            <button hx-get="/api/stats/flow?period={{ p }}"
+                    hx-target="#stats-flow" hx-swap="outerHTML"
+                    class="px-3 py-1.5 rounded-lg text-xs font-bold transition-colors {{ 'bg-accent text-white' if flow.period == p else 'bg-dark-700 text-gray-400 hover:text-white' }}">{{ title }}</button>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="px-4 py-4 sm:px-6 sm:py-5">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
+            <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Прилетело</p>
+                <p class="text-sm font-bold text-blue-400 tabular-nums">{{ flow.created_total }} <span class="text-gray-500 font-normal text-xs">за период</span></p>
+                <p class="text-[10px] text-gray-600 mt-0.5">{% if flow.same_day_closed %}в тот же день закрыто: {{ flow.same_day_closed }} · {% endif %}в рабочие дни ~{{ flow.created_per_workday }}/день</p>
+            </div>
+            <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Закрыто</p>
+                <p class="text-sm font-bold text-green-400 tabular-nums">{{ flow.closed_total }} <span class="text-gray-500 font-normal text-xs">за период</span></p>
+                <p class="text-[10px] text-gray-600 mt-0.5">в рабочие дни ~{{ flow.closed_per_workday }}/день · будни {{ flow.closed_workdays }}</p>
+            </div>
+            <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5"
+                 title="Закрыто минус прилетело за одно и то же окно. Плюс — успеваешь больше, чем приходит; минус — хвост растёт.">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Баланс</p>
+                <p class="text-sm font-bold tabular-nums {{ 'text-green-400' if flow.balance > 0 else 'text-red-400/90' if flow.balance < 0 else 'text-gray-400' }}">{{ '+' if flow.balance > 0 else '' }}{{ flow.balance }}</p>
+                <p class="text-[10px] text-gray-600 mt-0.5">{{ 'успеваешь больше, чем приходит' if flow.balance > 0 else 'хвост растёт' if flow.balance < 0 else 'ровно по нулю' }}</p>
+            </div>
+            <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5"
+                 title="Суббота и воскресенье за тот же период. Выходные не входят в «в рабочие дни», поэтому сюда уходит разница между суммой и буднями.">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Выходные</p>
+                <p class="text-sm font-bold text-white tabular-nums">{{ flow.weekend_closed }} <span class="text-gray-500 font-normal text-xs">закрыто</span> · {{ flow.weekend_created }} <span class="text-gray-500 font-normal text-xs">прилетело</span></p>
+                <p class="text-[10px] text-gray-600 mt-0.5">в числа по будням не входят</p>
+            </div>
+        </div>
+
+        {% if flow.period == 'year' %}
+        <p class="text-[11px] text-gray-500 mb-4">Дневных столбиков за год не рисую: 365 точек не читаются — смотрите месяцы и дни недели ниже.</p>
+        {% elif flow.has_bars %}
+        <div class="flow-legend">
+            <span><span class="flow-legend__swatch flow-legend__swatch--closed"></span>закрыто</span>
+            <span><span class="flow-legend__swatch flow-legend__swatch--created"></span>прилетело</span>
+        </div>
+        <div class="flow-bars">
+            {% for s in flow.series %}
+            <div class="flow-day"
+                 title="{{ s.short }}: закрыто {{ s.closed }}, прилетело {{ s.created }}{{ ' · выходной' if s.weekend }}">
+                <div class="flow-day__created" style="height: {{ s.created_h }}%"></div>
+                <div class="flow-day__closed" style="height: {{ s.closed_h }}%"></div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="flow-labels">
+            {% for s in flow.series %}
+            <div class="{{ 'is-weekend' if s.weekend }}">
+                {# В году 365 столбиков: подпись ставим только на первое число месяца. #}
+                {% if flow.period == 'week' %}{{ s.short }}{% elif flow.period == 'year' %}{{ s.short if s.day.day == 1 else '' }}{% elif loop.first or loop.last %}{{ s.short }}{% elif loop.index % 5 == 0 %}{{ s.day.day }}{% endif %}
+                {% if flow.period == 'week' %}
+                {# В недельном виде семь дней — числа помещаются и без наведения. #}
+                <span class="flow-labels__n flow-labels__n--closed">{{ s.closed }}</span>
+                <span class="flow-labels__n flow-labels__n--created">{{ s.created }}</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="px-2 py-8 text-center text-sm text-gray-600">За этот период ни прилётов, ни закрытий — график пуст</p>
+        {% endif %}
+
+        <div class="mt-5">
+            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">По дням недели</p>
+            <div class="flow-dow">
+                {% for d in flow.by_dow %}
+                <div class="flow-dow__cell">
+                    <p class="flow-dow__name">{{ d.name }}</p>
+                    <p class="flow-dow__closed">{{ d.closed }}</p>
+                    <p class="flow-dow__created">{{ d.created }}</p>
+                </div>
+                {% endfor %}
+            </div>
+            <p class="text-[10px] text-gray-600 mt-1.5">Верхнее число — закрыто, нижнее — прилетело. Сб и Вс — выходные: туда попадает и прилёт, и работа.</p>
+        </div>
+
+        <div class="mt-5">
+            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">По {{ flow.bucket_word }}м</p>
+            <div>
+                {% for b in flow.buckets %}
+                <div class="flow-bucket">
+                    <span class="flow-bucket__label">{{ b.label }}{% if b.partial %} ·{{ b.days }}д{% endif %}</span>
+                    <div class="flow-bucket__bars">
+                        <div class="flow-bucket__track"><div class="flow-bucket__fill flow-bucket__fill--closed" style="width: {{ b.closed_h }}%"></div></div>
+                        <div class="flow-bucket__track"><div class="flow-bucket__fill flow-bucket__fill--created" style="width: {{ b.created_h }}%"></div></div>
+                    </div>
+                    <span class="flow-bucket__num flow-bucket__num--closed">{{ b.closed }}</span>
+                    <span class="flow-bucket__num flow-bucket__num--created">{{ b.created }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <p class="text-[10px] text-gray-600 mt-4 pt-3 border-t border-dark-700">
+            Оба ряда считаются одинаково: корневые задачи без регулярных, по местным суткам, только полные дни.
+            Утренние взятые из бэклога в «прилетело» не входят — они были известны заранее.
+            {% if flow.period != 'year' %}У крайних недель стоит число дней («·Nд») — окно режет ISO-неделю, и такая полоска неполная.{% endif %}
+        </p>
+    </div>
+</section>

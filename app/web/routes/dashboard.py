@@ -23,7 +23,6 @@ from app.web.deps import (
     load_period_entries_for_dashboard,
     get_categories_list,
     get_dashboard_day_stats,
-    get_history_data,
     get_tasks_today,
     get_day_taken_subtasks,
     build_day_pool_context,

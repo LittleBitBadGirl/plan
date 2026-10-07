@@ -23,7 +23,6 @@ from app.web.deps import (
     compute_period_data,
     get_categories_list,
     get_today_stats,
-    get_history_data,
     get_tasks_today,
     _strip_emoji,
     _render_shopping_list,
