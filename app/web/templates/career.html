@@ -3,63 +3,145 @@
 {% block title %}Карьерный капитал — Планировщик{% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto">
-    <div class="mb-6">
-        <a href="/stats" class="text-xs text-gray-500 hover:text-gray-300">&larr; Аналитика</a>
-        <h1 class="text-3xl font-bold text-white mt-1">Карьерный капитал</h1>
-        <p class="text-gray-400 mt-1 text-sm">Закрытые задачи, которые оценены как вклад в карьеру. Собрано автоматически, правит Вера.</p>
+{# Карьерный капитал: разбор месяца по активам. Список задач не разворачиваем:
+   Вера смотрит на активы и на то, что в них реально сделано, а не на 126 строк.
+   Оценок вклада нет: Jev на коротких заголовках ставит их наугад. #}
+<style>
+    .cap-wrap { max-width: 1180px; margin: 0 auto; }
+    .cap-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 16px; margin-bottom: 6px; }
+    .cap-head h1 { font-size: 26px; margin: 0; color: #f3f4f6; }
+    .cap-head .cap-period { font-size: 14px; color: #ff9a4d; }
+    .cap-lead { color: #9aa3b2; font-size: 13px; margin: 0 0 20px; max-width: 900px; }
+    .cap-lead b { color: #e8eaf0; }
+    .cap-panel { background: #14181f; border: 1px solid #232833; border-radius: 14px; padding: 16px 18px; margin-bottom: 18px; }
+    .cap-row { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+    .cap-row:last-child { margin-bottom: 0; }
+    .cap-lbl { flex: 0 0 15rem; font-size: 12.5px; color: #b9c0cd; }
+    .cap-lbl i { color: #6d7686; font-style: normal; font-size: 11.5px; }
+    .cap-track { flex: 0 1 40rem; height: 12px; background: #1e232c; border-radius: 6px; overflow: hidden; }
+    .cap-fill { display: block; height: 100%; background: #ff7a1a; border-radius: 6px; }
+    .cap-fill--muted { background: #6b7280; }
+    .cap-num { font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #98a0b0; min-width: 2.2rem; }
+    .cap-card { background: #14181f; border: 1px solid #232833; border-radius: 14px; padding: 15px 18px; margin-bottom: 10px; }
+    .cap-card--muted { background: #12151b; border-color: #282d36; }
+    .cap-card--warn { background: #1a1710; border-color: #4a3c17; }
+    .cap-card__head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .cap-card__head h2 { font-size: 16px; margin: 0; color: #f3f4f6; }
+    .cap-card__head .cap-count { color: #ff9a4d; font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .cap-card--muted .cap-card__head .cap-count { color: #8b93a1; }
+    .cap-badge { margin-left: auto; font-size: 11.5px; color: #e3b341; border: 1px solid #4a3c17; background: #241f10; border-radius: 999px; padding: 2px 9px; }
+    .cap-lines { margin: 0; padding: 0 0 0 16px; }
+    .cap-lines li { font-size: 13.5px; color: #d3d8e2; margin-bottom: 5px; }
+    .cap-empty { color: #8b93a1; font-size: 13px; margin: 0; }
+    .cap-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
+    .cap-btn { background: #ff7a1a; color: #14181f; border: 0; border-radius: 9px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .cap-btn--ghost { background: transparent; color: #b9c0cd; border: 1px solid #333a46; font-weight: 400; text-decoration: none; padding: 7px 13px; border-radius: 9px; font-size: 13px; }
+    .cap-foot { color: #7d8798; font-size: 12px; margin-top: 16px; max-width: 900px; }
+    .cap-foot b { color: #a9b1c0; }
+    .cap-archive { margin-top: 26px; }
+    .cap-archive summary { cursor: pointer; color: #8b93a1; font-size: 12.5px; }
+    .cap-archive__item { border-top: 1px solid #1e232c; padding: 8px 0; font-size: 12.5px; color: #a9b1c0; }
+    .cap-archive__cat { color: #6d7686; }
+</style>
+
+<div class="cap-wrap">
+    <div class="cap-head">
+        <h1>Карьерный капитал</h1>
+        {% if review %}<span class="cap-period">разбор за {{ review_label }}</span>{% endif %}
     </div>
 
-    <section class="bg-dark-800 rounded-2xl border border-dark-600 shadow-xl mb-8 p-5 sm:p-6">
-        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
-            <div>
-                <p class="text-[11px] text-gray-500 uppercase tracking-wide">Записей о вкладе в карьеру</p>
-                <p class="text-3xl font-black text-accent tabular-nums">{{ impact_total }}</p>
-                <p class="text-[11px] text-gray-500 mt-1">за {{ impact_span }}</p>
-            </div>
-            <div class="flex flex-wrap items-center gap-3">
-                <a href="/api/career/export"
-                   class="px-4 py-2 bg-dark-700 hover:bg-dark-600 text-gray-300 text-xs font-bold rounded-xl border border-dark-600 transition-all">
-                    Скачать .md
-                </a>
-                <button hx-get="/api/ai/generate-milestones"
-                        hx-target="#impact-results"
-                        hx-indicator=".htmx-indicator"
-                        class="px-4 py-2 bg-accent hover:bg-blue-600 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95 inline-flex items-center gap-2">
-                    Анализировать
-                    <svg class="animate-spin h-3.5 w-3.5 htmx-indicator" viewBox="0 0 24 24" style="display:none">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                    </svg>
-                </button>
-            </div>
-        </div>
-
-        <div id="impact-results">
-                {% if career_impacts %}
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[420px] overflow-y-auto pr-1">
-                    {% for impact in career_impacts %}
-                    <div class="bg-dark-900/50 rounded-xl p-4 border border-dark-700 hover:border-accent/30 transition-all">
-                        <div class="flex items-center gap-2 mb-2">
-                            <span class="text-[10px] bg-accent/20 text-accent px-2 py-0.5 rounded font-bold uppercase">{{ impact.category_name | noemoji }}</span>
-                            <span class="text-[10px] text-gray-600">{{ impact.period_month }}</span>
-                        </div>
-                        <h3 class="text-gray-100 font-bold text-sm mb-2 leading-snug">{{ impact.impact_description }}</h3>
-                        <p class="text-[10px] text-gray-500 italic">На базе задачи: «{{ impact.original_title }}»</p>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="text-center py-10 border-2 border-dashed border-dark-700 rounded-2xl">
-                    <p class="text-gray-500 text-sm">Здесь появятся ваши профессиональные победы.</p>
-                    <p class="text-[10px] text-gray-600 mt-1 uppercase">Нажмите «Анализировать», чтобы AI нашёл их в списке задач</p>
-                </div>
-                {% endif %}
-        </div>
-    </section>
-
-    <p class="text-[11px] text-gray-600">
-        Список правится в базе: строки живут в <span class="font-mono">career_impacts</span>, «Анализировать» только добавляет новые за месяц.
+    {% if request.query_params.get('started') %}
+    <p class="cap-lead" style="color:#ff9a4d">
+        {% if request.query_params.get('started') == 'already' %}
+        Разбор уже собирается. Обнови страницу через пару минут.
+        {% else %}
+        Разбор собирается, это занимает пару минут. Обнови страницу позже.
+        {% endif %}
     </p>
+    {% endif %}
+
+    {% if review %}
+    <p class="cap-lead">
+        <b>{{ review.total_tasks }}</b> закрытых задач месяца, разложены по активам.
+        Пункты под каждым активом собраны из этих же задач, рутина вынесена отдельно.
+        Разбор обновляется сам раз в месяц.
+    </p>
+
+    <div class="cap-panel">
+        {% for row in bars %}
+        <div class="cap-row">
+            <span class="cap-lbl">{{ row.asset }}{% if row.maintenance %} <i>вне активов</i>{% endif %}</span>
+            <span class="cap-track"><span class="cap-fill {% if row.maintenance %}cap-fill--muted{% endif %}" style="width: {{ row.width }}%"></span></span>
+            <span class="cap-num">{{ row.count }}</span>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% for asset in assets %}
+    <section class="cap-card {% if asset.maintenance %}cap-card--muted{% endif %}">
+        <div class="cap-card__head">
+            <h2>{{ asset.asset }}</h2>
+            <span class="cap-count">{{ asset.count }}</span>
+            {% if asset.low_confidence %}
+            <span class="cap-badge">{{ asset.low_confidence }} на проверку</span>
+            {% endif %}
+        </div>
+        {% if asset.lines %}
+        <ul class="cap-lines">
+            {% for line in asset.lines %}<li>{{ line }}</li>{% endfor %}
+        </ul>
+        {% else %}
+        <p class="cap-empty">Задачи есть, формулировки не собрались. Можно собрать разбор заново.</p>
+        {% endif %}
+    </section>
+    {% endfor %}
+
+    {% if review.unclassified %}
+    <section class="cap-card cap-card--warn">
+        <div class="cap-card__head">
+            <h2>Не разобрано</h2>
+            <span class="cap-count">{{ review.unclassified | length }}</span>
+            <span class="cap-badge">проверить руками</span>
+        </div>
+        <p class="cap-empty">Модель не отнесла эти задачи к активам. Ни в один актив они не попали и рутиной не считаются.</p>
+        <ul class="cap-lines">
+            {% for task in review.unclassified[:12] %}<li>{{ task.title }}</li>{% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    <p class="cap-foot">
+        Оценок «высокий или низкий вклад» здесь нет намеренно: на коротких заголовках
+        модель ставит их наугад. Пункт можно проверить по списку задач месяца.
+        <b>Рутина не смешана с активами.</b> Разбор собирает
+        <span style="font-family: ui-monospace, Menlo, monospace">scripts/career_review.py</span> по крону на сервере.
+        Если модель не разобрала больше четверти задач месяца, снимок не перезаписывается:
+        остаётся прошлый, а в логе появляется причина.
+    </p>
+    {% else %}
+    <p class="cap-lead">
+        Разбор ещё не собирался. Его можно собрать прямо сейчас или дождаться
+        ближайшего запуска по расписанию.
+    </p>
+    {% endif %}
+
+    <div class="cap-actions">
+        <form method="post" action="/career/refresh">
+            <button class="cap-btn" type="submit">{% if review %}Собрать разбор заново{% else %}Собрать разбор{% endif %}</button>
+        </form>
+        <a class="cap-btn--ghost" href="/api/career/export">Скачать .md</a>
+    </div>
+
+    {% if career_impacts %}
+    <details class="cap-archive">
+        <summary>Прежние записи о вкладе ({{ impact_total }}{% if impact_span %}, {{ impact_span }}{% endif %})</summary>
+        {% for imp in career_impacts %}
+        <div class="cap-archive__item">
+            <span class="cap-archive__cat">{{ imp.period_month }} · {{ imp.category_name | noemoji }}</span>
+            {{ imp.impact_description or imp.original_title }}
+        </div>
+        {% endfor %}
+    </details>
+    {% endif %}
 </div>
 {% endblock %}

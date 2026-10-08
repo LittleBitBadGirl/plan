@@ -46,7 +46,7 @@
 {% set p = request.url.path %}
 {% set v = request.query_params.get('view') or '' %}
 {% set on_backlog = p == '/backlog' %}
-{% set dash_group = p == '/' or on_backlog or p == '/recurring' or p == '/archive' %}
+{% set dash_group = p == '/' or on_backlog or p == '/recurring' or p == '/archive' or p == '/career' %}
 {% set fin_group = p == '/finance' %}
     <!-- Верхняя полоса с защёлкой меню. Меню спрятано по умолчанию: Вера им
          пользуется редко, но открыть должно быть легко. Esc и клик по фону
@@ -128,6 +128,8 @@
                                    class="pnav__child {% if on_backlog and v == 'calendar' %}is-active{% endif %}">Календарь</a>
                                 <a href="/backlog?view=categories" @click="sidebarOpen = false"
                                    class="pnav__child {% if on_backlog and v == 'categories' %}is-active{% endif %}">Категории задач</a>
+                                <a href="/career" @click="sidebarOpen = false"
+                                   class="pnav__child {% if p == '/career' %}is-active{% endif %}">Карьерный капитал</a>
                             </div>
                         </div>
                         <a href="/recurring" @click="sidebarOpen = false"
@@ -180,14 +182,6 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621.504-1.125 1.125-1.125h.375a2.625 2.625 0 002.625-2.625V9.75M7.5 18.75v-3.375c0-.621-.504-1.125-1.125-1.125H6a2.625 2.625 0 01-2.625-2.625V9.75m16.5-3.75V4.5A1.5 1.5 0 0018.375 3H5.625A1.5 1.5 0 004.125 4.5v1.5m16.5 0c0 3.728-3.022 6.75-6.75 6.75h-3.75C6.397 12.75 3.375 9.728 3.375 6"/>
                     </svg>
                     <span>Достижения</span>
-                </a>
-
-                <a href="/career" @click="sidebarOpen = false"
-                   class="pnav__link {% if p == '/career' %}is-active{% endif %}">
-                    <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 3.75l2.47 5.32 5.78.75-4.24 3.99 1.09 5.69L12 16.75l-5.1 2.75 1.09-5.69-4.24-3.99 5.78-.75z"/>
-                    </svg>
-                    <span>Карьерный капитал</span>
                 </a>
 
                 <a href="/cycle" @click="sidebarOpen = false"

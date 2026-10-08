@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, date
 from app.api.dependencies import get_db_session
 from app.services.ai_service import ai_service
 from app.models.task import Task, task_is_active
-from app.models.report import AIReport
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
@@ -22,34 +21,6 @@ class FeedbackRequest(BaseModel):
     old_category_id: int
     new_category_id: int
     reason: str
-
-
-class SaveReportRequest(BaseModel):
-    report_date: date
-    content: str
-
-
-@router.post("/save-report")
-async def save_report(
-    data: SaveReportRequest,
-    db: AsyncSession = Depends(get_db_session),
-):
-    """Сохранить AI отчет в базу"""
-    # Проверяем, есть ли уже отчет на эту дату
-    existing = await db.execute(select(AIReport).where(AIReport.report_date == data.report_date))
-    report = existing.scalar_one_or_none()
-    
-    if report:
-        report.content = data.content
-    else:
-        report = AIReport(
-            report_date=data.report_date,
-            content=data.content
-        )
-        db.add(report)
-    
-    await db.commit()
-    return {"status": "success", "date": data.report_date}
 
 
 @router.post("/categorize")

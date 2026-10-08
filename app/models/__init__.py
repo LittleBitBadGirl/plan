@@ -7,6 +7,7 @@ from .recurring import RecurringTask
 from .recurring_completion import RecurringCompletion
 from .report import AIReport
 from .impact import CareerImpact
+from .career_review import CareerReview
 from .shopping import ShoppingItem
 from .tag import Tag
 from .finance import Transaction

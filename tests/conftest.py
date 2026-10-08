@@ -30,6 +30,7 @@ from app.models.recurring import RecurringTask
 from app.models.recurring_completion import RecurringCompletion
 from app.models.shopping import ShoppingItem
 from app.models.tag import Tag, shopping_item_tags
+from app.models.career_review import CareerReview
 
 TEST_AUTH_HEADERS = {
     "Authorization": "Bearer test-api-token",
@@ -59,6 +60,7 @@ async def setup_test_db():
 async def isolate_tasks_and_calendar():
     """Чистые tasks/calendar/events/recurring между тестами."""
     async with async_session() as session:
+        await session.execute(delete(CareerReview))
         await session.execute(delete(RecurringCompletion))
         await session.execute(delete(CalendarEvent))
         await session.execute(delete(Event))

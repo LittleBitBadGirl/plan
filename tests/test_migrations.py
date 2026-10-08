@@ -19,6 +19,10 @@ from app.models import portfolio as _pf  # noqa: F401
 from app.models import recurring_completion as _rc  # noqa: F401
 from app.models.base import Base
 
+# Голова миграций. Обновляется одной строкой при новой ревизии: раньше номер
+# стоял в четырёх ассертах, и каждый новый шаг схемы ронял четыре теста сразу.
+HEAD_REVISION = "023_career_reviews"
+
 
 @pytest.mark.asyncio
 async def test_run_migrations_on_fresh_db():
@@ -45,7 +49,7 @@ async def test_run_migrations_on_fresh_db():
                 text("SELECT version_num FROM alembic_version")
             )
             version = result.scalar_one()
-        assert version == "022_task_planned_for"
+        assert version == HEAD_REVISION
 
         sync = sqlite3.connect(db_path)
         task_cols = {row[1] for row in sync.execute("PRAGMA table_info(tasks)")}
@@ -60,6 +64,22 @@ async def test_run_migrations_on_fresh_db():
             row[1]
             for row in sync.execute("PRAGMA index_list(tasks)")
         }
+        # Миграция 023: снимок разбора карьерного капитала; месяц уникален, чтобы
+        # две сборки не завели две строки на один период.
+        assert "career_reviews" in tables, "таблица разбора не создалась"
+        career_sql = sync.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='career_reviews'"
+        ).fetchone()[0]
+        career_cols = {row[1] for row in sync.execute("PRAGMA table_info(career_reviews)")}
+        assert {"period_start", "period_end", "period_month", "total_tasks", "payload"} <= career_cols
+        # Уникальность SQLite выражает либо словом UNIQUE в CREATE TABLE, либо
+        # отдельным уникальным индексом — проверяем оба варианта.
+        unique_cols = set()
+        for idx in sync.execute("PRAGMA index_list(career_reviews)"):
+            if idx[2]:
+                unique_cols |= {r[2] for r in sync.execute(f"PRAGMA index_info({idx[1]})")}
+        assert "UNIQUE" in career_sql.upper() or "period_month" in unique_cols, \
+            "period_month обязан быть уникальным"
         # Миграция 022: «взято на день» — по ней собирается день, поэтому
         # колонка и индекс обязаны существовать после прогона миграций.
         assert "planned_for" in task_cols
@@ -178,7 +198,7 @@ async def test_achievements_migration_creates_table_itself():
         cols = {row[1] for row in sync.execute("PRAGMA table_info(achievements)")}
         sync.close()
 
-        assert version == "022_task_planned_for"
+        assert version == HEAD_REVISION
         assert "achievements" in tables
         assert {"text", "sphere", "is_archived", "created_at"} <= cols
 
@@ -420,7 +440,7 @@ async def test_habit_log_migration_replaces_legacy_unique_and_fixes_overlap():
             (2, 8, 1, "2026-09-28"),
         ], "отметки потерялись при пересборке таблицы"
         assert indexes >= {"ix_habit_logs_id", "ix_habit_logs_habit_cycle"}
-        assert version == "022_task_planned_for"
+        assert version == HEAD_REVISION
         assert start_date == "2026-09-29", "нахлёст не убран: цикл всё ещё начинается днём прошлого"
 
         # Повторный прогон (контейнер перезапускается) ничего не меняет.
@@ -507,7 +527,7 @@ async def test_event_visit_migration_clears_decisions_without_a_day():
         cols = {row[1] for row in sync.execute("PRAGMA table_info(events)")}
         sync.close()
 
-        assert version == "022_task_planned_for"
+        assert version == HEAD_REVISION
         assert {"visit_date", "visit_time"} <= cols
         assert statuses["Не иду"] == "none"
         assert statuses["Иду без дня"] == "none"

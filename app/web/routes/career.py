@@ -5,21 +5,18 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date, datetime, time, timedelta
 from typing import List, Optional
+import asyncio
 import re
 import json
 
 from app.db.database import async_session
 from app.models.task import Task
 from app.models.category import Category
-from app.models.recurring import RecurringTask
-from app.models.shopping import ShoppingItem
-from app.models.report import AIReport
-from app.models.finance import Transaction
 from app.config import settings
+from app.utils.logger import app_logger
 
 from app.web.deps import (
     templates,
-    compute_period_data,
     get_categories_list,
     get_today_stats,
     get_tasks_today,
@@ -325,14 +322,22 @@ async def generate_milestones(request: Request, month: str = None, stage: str = 
 
 @router.get("/career", response_class=HTMLResponse)
 async def career_page(request: Request):
-    """Карьерный капитал отдельной страницей: блок вынесен с /stats.
+    """Карьерный капитал: разбор месяца по активам.
 
-    Шапка показывает, сколько записей о вкладе лежит в списке и за какие месяцы —
-    без выдуманных процентов. Новые записи добавляет «Анализировать».
+    Страница рисует готовый снимок из `career_reviews`: числа берутся из того,
+    что посчитал генератор, и на рендере ничего не пересчитывается. Прежние
+    записи о вкладе остаются ниже под сноской, чтобы ничего не потерялось.
     """
+    from app.models.career_review import CareerReview
     from app.models.impact import CareerImpact
 
     async with async_session() as db:
+        review_res = await db.execute(
+            select(CareerReview)
+            .order_by(CareerReview.period_month.desc(), CareerReview.id.desc())
+            .limit(1)
+        )
+        review_row = review_res.scalars().first()
         impact_res = await db.execute(
             select(CareerImpact).order_by(
                 CareerImpact.period_month.desc(), CareerImpact.created_at.desc()
@@ -340,22 +345,83 @@ async def career_page(request: Request):
         )
         impacts = impact_res.scalars().all()
 
-    # Прежний «Impact Score» считал, сколько строк AI создал за 30 дней (0%: последний
-    # прогон был в июне) — число ничего не значило. Здесь только то, что видно в списке.
+    review = None
+    assets: list = []
+    bars: list = []
+    if review_row:
+        try:
+            review = json.loads(review_row.payload)
+        except (ValueError, TypeError):
+            review = None
+        if not isinstance(review, dict):
+            review = None
+    if review:
+        assets = review.get("assets") or []
+        top = max((asset.get("count") or 0) for asset in assets) if assets else 0
+        for asset in assets:
+            count = asset.get("count") or 0
+            bars.append({
+                "asset": asset.get("asset"),
+                "count": count,
+                "maintenance": bool(asset.get("maintenance")),
+                "width": round(count / top * 100, 1) if top else 0.0,
+            })
+
     months = sorted({i.period_month for i in impacts if i.period_month})
     if len(months) > 1:
         span = _month_label(months[0]) + "-" + _month_label(months[-1])
     elif months:
         span = _month_label(months[0])
     else:
-        span = "нет записей"
+        span = ""
 
     return templates.TemplateResponse(request, "career.html", {
         "request": request,
+        "review": review,
+        "assets": assets,
+        "bars": bars,
+        "review_label": _month_label(review_row.period_month) if review_row else "",
         "career_impacts": impacts,
         "impact_total": len(impacts),
         "impact_span": span,
     })
+
+
+# Сборка разбора идёт фоном и занимает минуты: модель опрашивается по каждой задаче.
+# Флаг не даёт запустить вторую сборку поверх первой (кнопка и крон вместе).
+CAREER_REVIEW_RUNNING = False
+# Ссылка на фоновую задачу: без неё сборщик мусора вправе её забрать.
+CAREER_REVIEW_TASK = None
+
+
+@router.post("/career/refresh")
+async def refresh_career():
+    """Собрать разбор за прошлый полный месяц (тем же кодом, что и крон)."""
+    global CAREER_REVIEW_RUNNING
+    if CAREER_REVIEW_RUNNING:
+        return RedirectResponse("/career?started=already", status_code=303)
+
+    from scripts.career_review import ReviewBusy, ReviewRefused, previous_month, run_review
+
+    month = previous_month()
+    CAREER_REVIEW_RUNNING = True
+
+    async def job(period: str) -> None:
+        global CAREER_REVIEW_RUNNING
+        try:
+            review = await run_review(period)
+            app_logger.info("career review %s собран: задач %s", period, review.get("total_tasks"))
+        except (ReviewRefused, ReviewBusy) as problem:
+            # Разбор не сохранён намеренно: прошлый снимок цел, причина в логе.
+            app_logger.warning("career review %s не сохранён: %s", period, problem)
+        except Exception as error:  # noqa: BLE001 — кнопка не должна ронять приложение
+            app_logger.error("career review %s не собрался: %s", period, error)
+        finally:
+            CAREER_REVIEW_RUNNING = False
+
+    global CAREER_REVIEW_TASK
+    CAREER_REVIEW_TASK = asyncio.create_task(job(month))
+    return RedirectResponse("/career?started=1", status_code=303)
 
 
 def _month_label(period_month: str) -> str:
@@ -369,7 +435,35 @@ def _month_label(period_month: str) -> str:
 
 @router.get("/api/career/export", response_class=HTMLResponse)
 async def export_career_capital(request: Request):
-    """Экспорт всех достижений в Markdown."""
+    """Экспорт карьерного капитала в Markdown: свежий разбор, иначе прежние записи."""
+    from app.models.career_review import CareerReview
+
+    async with async_session() as db:
+        review_res = await db.execute(
+            select(CareerReview)
+            .order_by(CareerReview.period_month.desc(), CareerReview.id.desc())
+            .limit(1)
+        )
+        review_row = review_res.scalars().first()
+        if review_row:
+            try:
+                review = json.loads(review_row.payload)
+            except (ValueError, TypeError):
+                review = None
+            if review:
+                lines = [f"# Карьерный капитал — Вера Осолодкина\n",
+                         f"## Разбор за {_month_label(review_row.period_month)}\n",
+                         f"Закрытых задач в периоде: {review.get('total_tasks')}\n"]
+                for asset in review.get("assets") or []:
+                    lines.append(f"\n### {asset.get('asset')} ({asset.get('count')})")
+                    for line in asset.get("lines") or []:
+                        lines.append(f"- {line}")
+                return Response(
+                    "\n".join(lines),
+                    media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="career-capital.md"'},
+                )
+
     async with async_session() as db:
         from app.models.impact import CareerImpact
 
@@ -395,8 +489,6 @@ async def export_career_capital(request: Request):
             md_content += f"### {imp.category_name}\n"
             md_content += f"- **{imp.impact_description}**\n"
             md_content += f"  *(из задачи: {imp.original_title})*\n"
-
-        from fastapi.responses import Response
 
         return Response(
             content=md_content,

@@ -18,15 +18,17 @@ async def test_stats_page_keeps_only_links_to_career_and_cycle(client):
     assert "Поток задач" in html, "остальная аналитика на месте"
 
 
-async def test_career_page_renders_list_and_export(client):
+async def test_career_page_renders_and_exports(client):
     response = await client.get("/career")
 
     assert response.status_code == 200
     html = response.text
     assert "Карьерный капитал" in html
-    assert 'id="impact-results"' in html
     assert 'href="/api/career/export"' in html
-    assert 'href="/stats"' in html
+    # Старый блок со списком записей на странице больше не главный: разбор
+    # по активам рисуется из снимка, а прежние записи убраны под сноску.
+    assert 'id="impact-results"' not in html
+    assert "Прежние записи" in html or "Разбор ещё не собирался" in html
 
 
 async def test_cycle_page_renders_or_shows_empty_state(client):

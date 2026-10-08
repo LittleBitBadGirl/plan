@@ -1,0 +1,7 @@
+# Разбор карьерного капитала: раз в месяц, 1-го числа.
+# Запускает тот же скрипт, что и кнопка «Собрать разбор заново» на странице
+# /career, поэтому кнопка и крон не могут разойтись в поведении.
+# TZ передаём явно: скрипт режет период по локальным суткам, а не по UTC.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+10 10 1 * * root docker exec -e TZ=Europe/Moscow task_planner python /app/scripts/career_review.py >> /var/log/career-review.log 2>&1
