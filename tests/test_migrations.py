@@ -1,8 +1,12 @@
 import os
 import sqlite3
+import sys
 import tempfile
+from pathlib import Path
 
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -19,9 +23,20 @@ from app.models import portfolio as _pf  # noqa: F401
 from app.models import recurring_completion as _rc  # noqa: F401
 from app.models.base import Base
 
-# Голова миграций. Обновляется одной строкой при новой ревизии: раньше номер
-# стоял в четырёх ассертах, и каждый новый шаг схемы ронял четыре теста сразу.
-HEAD_REVISION = "026_retelling_books"
+# Голова миграций — считается из alembic-скриптов, а не захардкожена: раньше номер
+# стоял в четырёх ассертах, и каждый новый шаг схемы ронял их все сразу.
+def _head_revision() -> str:
+    root = Path(__file__).resolve().parent.parent
+    alembic_dir = root / "alembic"
+    # Скрипты миграций импортируют migration_utils из своей папки — при живом
+    # прогоне это делает alembic/env.py, при подсчёте головы добавляем сами.
+    if str(alembic_dir) not in sys.path:
+        sys.path.insert(0, str(alembic_dir))
+    cfg = Config(str(root / "alembic.ini"))
+    return ScriptDirectory.from_config(cfg).get_current_head()
+
+
+HEAD_REVISION = _head_revision()
 
 
 @pytest.mark.asyncio
@@ -93,6 +108,9 @@ async def test_run_migrations_on_fresh_db():
         }
         feedback_cols = {
             row[1] for row in sync.execute("PRAGMA table_info(manager_feedback)")
+        }
+        period_cols = {
+            row[1] for row in sync.execute("PRAGMA table_info(period_entries)")
         }
         feedback_indexes = {
             row[1]
@@ -175,6 +193,8 @@ async def test_run_migrations_on_fresh_db():
             "is_archived",
         } <= event_cols
         assert "ix_events_range" in event_indexes
+        # Миграция 023: архивные отметки цикла — колонка обязана появиться.
+        assert "is_archival" in period_cols
 
         assert "day_wins" in tables
         assert {"day", "level", "tasks_done", "recurring_done", "created_at"} <= win_cols

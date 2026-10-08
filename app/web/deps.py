@@ -163,6 +163,69 @@ def _build_month_calendar(today: date, period_map: dict) -> tuple[str, int, list
     return month_label, start_weekday, calendar_days
 
 
+def _group_period_cycles(sorted_entries):
+    """Группирует записи в циклы (разрыв ≤ 2 дня). Возвращает (группы, старты циклов).
+
+    Старт цикла — первый день реального кровотечения (не мазни).
+    """
+    groups: list[list] = []
+    if not sorted_entries:
+        return groups, []
+
+    group = [sorted_entries[0]]
+    for entry in sorted_entries[1:]:
+        if (entry.date - group[-1].date).days <= 2:
+            group.append(entry)
+        else:
+            groups.append(group)
+            group = [entry]
+    groups.append(group)
+
+    starts = []
+    for g in groups:
+        period_day = next((e.date for e in g if not e.is_spotting), None)
+        if period_day is not None:
+            starts.append(period_day)
+    return groups, starts
+
+
+def _build_period_archive(archival_entries) -> Optional[dict]:
+    """Архив отметок (старое приложение): считается отдельно, в средние не входит."""
+    if not archival_entries:
+        return None
+
+    groups, starts = _group_period_cycles(sorted(archival_entries, key=lambda e: e.date))
+    lengths = [(starts[i + 1] - starts[i]).days for i in range(len(starts) - 1)]
+    real_groups = [g for g in groups if any(not e.is_spotting for e in g)]
+    day_counts = [sum(1 for e in g if not e.is_spotting) for g in real_groups]
+
+    cycles = []
+    for idx, g in enumerate(real_groups):
+        bleed = [e for e in g if not e.is_spotting]
+        cycles.append({
+            "num": idx + 1,
+            "start": bleed[0].date.strftime("%d.%m.%Y"),
+            "end": bleed[-1].date.strftime("%d.%m.%Y"),
+            "period_days": len(bleed),
+            "length": lengths[idx] if idx < len(lengths) else None,
+        })
+
+    if not cycles:
+        return None
+
+    return {
+        "cycles": cycles,
+        "count": len(cycles),
+        "tracked_days": len(archival_entries),
+        "avg_cycle": round(mean(lengths)) if lengths else None,
+        "avg_period": max(1, round(mean(day_counts))) if day_counts else None,
+        "min": min(lengths) if lengths else None,
+        "max": max(lengths) if lengths else None,
+        "first": cycles[0]["start"],
+        "last": cycles[-1]["end"],
+    }
+
+
 def compute_period_data(entries, today: date) -> dict:
     """
     entries: list of PeriodEntry objects.
@@ -170,7 +233,16 @@ def compute_period_data(entries, today: date) -> dict:
 
     Spotting days (is_spotting=True) are tracked but excluded from avg_period.
     Cycle starts from the first non-spotting day in each group.
+
+    Архивные записи (is_archival=True — перенесённые из старого приложения)
+    в средние, текущий цикл и календарь не входят: для них считается
+    отдельный блок `archive`.
     """
+    entries = list(entries)
+    archival_entries = [e for e in entries if getattr(e, "is_archival", False)]
+    entries = [e for e in entries if not getattr(e, "is_archival", False)]
+    archive = _build_period_archive(archival_entries)
+
     period_map = {e.date: (e.has_pain, e.is_spotting) for e in entries} if entries else {}
 
     if not entries:
@@ -194,6 +266,7 @@ def compute_period_data(entries, today: date) -> dict:
             "cycles_history": [],
             "pending_spotting_days": 0,
             "pending_spotting_start": None,
+            "archive": archive,
         }
 
     sorted_entries = sorted(entries, key=lambda e: e.date)
@@ -337,6 +410,7 @@ def compute_period_data(entries, today: date) -> dict:
         "cycles_history": cycles_history,
         "pending_spotting_days": pending_spotting_days,
         "pending_spotting_start": pending_spotting_start,
+        "archive": archive,
     }
 
 
@@ -346,13 +420,18 @@ PERIOD_DASHBOARD_WINDOW_DAYS = 120
 async def load_period_entries_for_dashboard(
     db: AsyncSession, today: date, *, window_days: int = PERIOD_DASHBOARD_WINDOW_DAYS
 ) -> list:
-    """Period entries для дашборда — только последние window_days."""
+    """Period entries для дашборда — только последние window_days.
+
+    Архивные отметки (is_archival) в карточку дашборда не попадают — они живут
+    отдельным блоком на /cycle.
+    """
     from app.models.period_entry import PeriodEntry
 
     window_start = today - timedelta(days=window_days)
     result = await db.execute(
         select(PeriodEntry)
         .where(PeriodEntry.date >= window_start)
+        .where(PeriodEntry.is_archival == False)  # noqa: E712
         .order_by(PeriodEntry.date)
     )
     return list(result.scalars().all())

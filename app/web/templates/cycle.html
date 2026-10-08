@@ -147,13 +147,83 @@
 {% if period_stats.pending_spotting_days %}Сейчас предменструальная мазня: {{ period_stats.pending_spotting_days }} дн. (с {{ period_stats.pending_spotting_start }}), месячные ещё не начались.
 {% endif %}
 {% set pain_cycles = period_stats.cycles_history | selectattr('pain_days', 'gt', 0) | list %}{% if pain_cycles %}Боли отмечены в {{ pain_cycles|length }} из {{ period_stats.cycles_history|length }} цикл(ов).{% else %}Болей не отмечено.{% endif %}
-Регулярность цикла: {{ period_stats.regularity }}{% if period_stats.cycle_stddev is not none %} (σ = {{ period_stats.cycle_stddev }} дн.){% endif %}.</pre>
+Регулярность цикла: {{ period_stats.regularity }}{% if period_stats.cycle_stddev is not none %} (σ = {{ period_stats.cycle_stddev }} дн.){% endif %}.
+{% if period_stats.archive %}Архив (перенесено вручную из старого приложения, в средние выше не входит): {{ period_stats.archive.count }} цикл(ов) с {{ period_stats.archive.first }} по {{ period_stats.archive.last }}, средняя длина цикла {{ period_stats.archive.avg_cycle }} дней (разброс {{ period_stats.archive.min }}–{{ period_stats.archive.max }}), средняя продолжительность менструации {{ period_stats.archive.avg_period }} дня.
+{% endif %}</pre>
         </div>
     </div>
     {% else %}
     <div class="text-center py-16 border-2 border-dashed border-dark-600 rounded-2xl">
         <p class="text-gray-400 text-sm">Данных пока нет.</p>
         <p class="text-[11px] text-gray-600 mt-1">Циклы отмечаются на дашборде, здесь появится сводка.</p>
+    </div>
+    {% endif %}
+
+    {% if period_stats.archive %}
+    {% set arc = period_stats.archive %}
+    <div class="bg-dark-800/60 rounded-2xl border border-dark-600 p-4 sm:p-6 mb-8">
+        <div class="mb-5 sm:mb-6">
+            <h2 class="text-lg sm:text-xl font-bold text-gray-300">Архив — старое приложение</h2>
+            <p class="text-gray-500 text-xs mt-1">{{ arc.count }} цикл(ов) с {{ arc.first }} по {{ arc.last }} · {{ arc.tracked_days }} отмеченных дней · в средние выше не входит</p>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 sm:mb-6">
+            <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Ср. цикл</p>
+                <p class="text-lg sm:text-xl font-black text-gray-300 tabular-nums">{{ arc.avg_cycle }}<span class="text-xs font-normal text-gray-500"> дн.</span></p>
+            </div>
+            <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Ср. менструация</p>
+                <p class="text-lg sm:text-xl font-black text-gray-300 tabular-nums">{{ arc.avg_period }}<span class="text-xs font-normal text-gray-500"> дн.</span></p>
+            </div>
+            <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Разброс</p>
+                <p class="text-lg sm:text-xl font-black text-gray-300 tabular-nums">{{ arc.min }}–{{ arc.max }}<span class="text-xs font-normal text-gray-500"> дн.</span></p>
+            </div>
+            <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Циклов</p>
+                <p class="text-lg sm:text-xl font-black text-gray-300 tabular-nums">{{ arc.count }}</p>
+            </div>
+        </div>
+
+        <!-- Мобиль: карточки -->
+        <div class="md:hidden space-y-2">
+            {% for c in arc.cycles %}
+            <div class="rounded-xl border border-dark-600 bg-dark-900/40 p-3">
+                <div class="flex items-center justify-between gap-2">
+                    <p class="text-sm font-bold text-gray-300">Цикл {{ c.num }}</p>
+                    <p class="text-xs text-gray-400 tabular-nums">{{ c.length|string + ' дн.' if c.length else '—' }}</p>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">{{ c.start }} — {{ c.end }} · крит. {{ c.period_days }} дн.</p>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Десктоп: таблица -->
+        <div class="hidden md:block overflow-x-auto rounded-xl border border-dark-600">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-dark-700/50 text-[10px] text-gray-500 uppercase tracking-widest">
+                        <th class="px-4 py-3 text-left">Цикл</th>
+                        <th class="px-4 py-3 text-left">Начало</th>
+                        <th class="px-4 py-3 text-left">Конец</th>
+                        <th class="px-4 py-3 text-center">Дней крит.</th>
+                        <th class="px-4 py-3 text-center">Длина цикла</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-dark-700">
+                    {% for c in arc.cycles %}
+                    <tr class="hover:bg-dark-700/30 transition-colors">
+                        <td class="px-4 py-2.5 font-bold text-gray-400">Цикл {{ c.num }}</td>
+                        <td class="px-4 py-2.5 text-gray-400">{{ c.start }}</td>
+                        <td class="px-4 py-2.5 text-gray-400">{{ c.end }}</td>
+                        <td class="px-4 py-2.5 text-center text-gray-400">{{ c.period_days }}</td>
+                        <td class="px-4 py-2.5 text-center text-gray-400">{{ c.length|string + ' дн.' if c.length else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
     {% endif %}
 </div>
