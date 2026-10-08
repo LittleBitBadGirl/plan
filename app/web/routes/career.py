@@ -401,9 +401,23 @@ async def refresh_career():
     if CAREER_REVIEW_RUNNING:
         return RedirectResponse("/career?started=already", status_code=303)
 
-    from scripts.career_review import ReviewBusy, ReviewRefused, previous_month, run_review
+    from scripts.career_review import (
+        ReviewBusy,
+        ReviewRefused,
+        acquire_lock,
+        previous_month,
+        release_lock,
+        run_review,
+    )
 
     month = previous_month()
+
+    # Лок может быть занят кроном — про это флаг в процессе не знает, поэтому
+    # проверяем его здесь, чтобы страница не обещала запуск, которого не будет.
+    probe = acquire_lock()
+    if probe is None:
+        return RedirectResponse("/career?started=already", status_code=303)
+    release_lock(probe)
     CAREER_REVIEW_RUNNING = True
 
     async def job(period: str) -> None:

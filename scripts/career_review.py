@@ -313,11 +313,14 @@ def acquire_lock():
     Внутренний флаг в приложении крон не видит, поэтому без файла две сборки
     могли пойти одновременно и подраться за снимок одного месяца.
     """
+    handle = None
     try:
         handle = open(LOCK_PATH, "w")
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         return handle
     except OSError:
+        if handle is not None:
+            handle.close()
         return None
 
 
