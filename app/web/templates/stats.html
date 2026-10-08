@@ -84,6 +84,9 @@
         </div>
     </section>
 
+    <!-- Дни без хвоста: закрытые до последней задачи дни, подсвечены отдельно -->
+    {% if wins %}{% include "partials/day_wins_block.html" %}{% endif %}
+
     <!-- Поток задач: прилетело против закрытого -->
     {% include "partials/stats_flow.html" %}
 

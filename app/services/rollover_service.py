@@ -19,6 +19,23 @@ from app.services.day_pool_service import return_unfinished_to_backlog
 
 
 async def _rollover_impl(db: AsyncSession):
+    # Последний шанс запомнить вчерашний день: у его задач planned_for ещё на
+    # месте, а return_unfinished_to_backlog ниже его сотрёт — после этого любой
+    # прошлый день выглядел бы закрытым, даже если хвост оставался.
+    # Сбой памяти о дне не должен ломать саму зачистку дня.
+    from datetime import date, timedelta
+
+    from app.services.day_win_service import sync_day_win
+    from app.utils.logger import app_logger
+
+    try:
+        await sync_day_win(db, date.today() - timedelta(days=1))
+    except Exception as exc:  # noqa: BLE001
+        # Сессию после сбойного запроса вернуть в рабочее состояние: иначе на
+        # этом же коммите упадёт и сама зачистка дня — а она важнее памяти.
+        await db.rollback()
+        app_logger.warning(f"Day win sync skipped: {exc}")
+
     return await return_unfinished_to_backlog(db)
 
 

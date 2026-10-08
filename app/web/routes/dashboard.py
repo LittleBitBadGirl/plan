@@ -29,6 +29,8 @@ from app.web.deps import (
     append_today_stats_oob,
     load_subtasks_map,
     repair_archived_subtasks,
+    load_today_day_state,
+    day_win_view,
     dashboard_task_order_by,
     _strip_emoji,
     _render_shopping_list,
@@ -155,6 +157,13 @@ async def dashboard(request: Request):
 
         await repair_archived_subtasks(db)
         subtasks_map = await load_subtasks_map(db, [t.id for t in tasks])
+        # Память о дне без хвоста пишется тем же коммитом: пока planned_for у
+        # сегодняшних задач на месте, состояние дня честное (ночная зачистка
+        # стирает его у незакрытых, и задним числом день выглядел бы закрытым).
+        from app.services.day_win_service import sync_day_win
+
+        day_state = await load_today_day_state(db, hide_work)
+        await sync_day_win(db, today, day_state)
         await db.commit()
 
         # Разделяем задачи: с подзадачами и standalone
@@ -248,6 +257,7 @@ async def dashboard(request: Request):
         "calendar_personal_events": calendar_personal_events,
         "calendar_sync_active": calendar_sync_active(),
         "managers_widget": managers_widget,
+        "day_win": day_win_view(day_state),
         **events_week,
     })
 

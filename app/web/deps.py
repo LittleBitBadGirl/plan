@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import async_session
 from app.models.task import Task, task_is_active
 from app.models.category import Category
+from app.services.day_win_service import day_win_view
 from app.services.postpones_service import WORK_CATEGORY_NAMES
 
 # ─── Period tracker helpers ───────────────────────────────────────────────────
@@ -875,18 +876,23 @@ async def append_today_stats_oob(content: str, db: AsyncSession, request=None) -
     ``request`` нужен, чтобы на выходных числа считались в том же составе, что
     и список на экране (без рабочих задач).
     """
-    bundle = await get_dashboard_day_stats(db, hide_work=weekend_hide_work(request))
+    hide_work = weekend_hide_work(request)
+    bundle = await get_dashboard_day_stats(db, hide_work=hide_work)
     # Числа прогресса — из того же bundle: один проход и один и тот же прогресс
     # и в подмене полосы, и в блоке сводки.
     pool = await build_day_pool_context(
         db, request=request, progress=(bundle.completed, bundle.total)
     )
+    # Поздравление дня: закрыл последнюю задачу — оно обязано появиться сразу,
+    # не дожидаясь перезагрузки страницы (закрытие карточки списка не рисует).
+    day_win = day_win_view(await load_today_day_state(db, hide_work))
     return (
         content
         + today_stats_oob_html(bundle.completed, bundle.total)
         + today_subtask_stats_oob_html(bundle.subtask_progress)
         + ai_warning_oob_from(bundle.ai_warning)
         + render_day_pool_block(pool, oob=True)
+        + render_day_win_block(day_win, oob=True)
     )
 
 
@@ -1257,6 +1263,11 @@ async def get_flow_data(db: AsyncSession, period: str = "month") -> dict:
 
     created, same_day = await created_flow(db, start, end)
     closed = await completed_counts_by_local_day(db, start, end)
+    # Дни без хвоста — для подсветки на графике: видно не только «сколько
+    # закрыто», но и где день был закрыт целиком.
+    from app.services.day_win_service import LEVEL_FULL, load_day_wins
+
+    wins = await load_day_wins(db, start, end)
 
     days = []
     cursor = start
@@ -1273,6 +1284,8 @@ async def get_flow_data(db: AsyncSession, period: str = "month") -> dict:
             "created": created.get(d, 0),
             "closed": closed.get(d, 0),
             "weekend": is_weekend(d),
+            "win": d in wins,
+            "win_full": d in wins and wins[d].level == LEVEL_FULL,
             "created_h": round(created.get(d, 0) / max_val * 100),
             "closed_h": round(closed.get(d, 0) / max_val * 100),
         }
@@ -1406,12 +1419,18 @@ async def get_tasks_today(db: AsyncSession, request: Request):
 
     template = templates.get_template("partials/tasks_list_split.html")
     taken_subs = await get_day_taken_subtasks(db, today)
+    # Состояние дня уходит в шаблон: по нему список отличает «день был и всё
+    # закрыто» от «дня ещё не было» (см. partials/tasks_list_split.html).
+    day_win = day_win_view(
+        await load_today_day_state(db, weekend_hide_work(request))
+    )
     content = template.render({
         "request": request,
         "tasks_with_subtasks": tasks_with_subtasks,
         "standalone_tasks": standalone_tasks,
         "subtasks_map": subtasks_map,
         "taken_subtasks": taken_subs,
+        "day_win": day_win,
     })
 
     return await append_today_stats_oob(content, db, request)
@@ -1536,6 +1555,27 @@ def render_day_pool_block(ctx: dict, oob: bool = False) -> str:
         "oob": oob,
     })
 
+
+async def load_today_day_state(db: AsyncSession, hide_work: bool = False):
+    """Состояние сегодняшнего дня: закрыто ли всё, что взято на день.
+
+    Определение то же, что у списка дня (см. day_win_service), иначе список и
+    поздравление говорили бы про разные дни.
+    """
+    from app.services.day_win_service import load_day_state
+
+    work_ids = await work_category_ids(db) if hide_work else None
+    return await load_day_state(db, date.today(), work_ids)
+
+
+def render_day_win_block(win: dict, oob: bool = False) -> str:
+    """Отрисовать поздравление «день без хвоста» (страница и OOB — один шаблон)."""
+    return templates.get_template("partials/day_win_block.html").render({
+        "win": win,
+        "oob": oob,
+    })
+
+
 __all__ = [
     "templates",
     "compute_period_data",
@@ -1558,6 +1598,9 @@ __all__ = [
     "get_avg_completed_per_day",
     "get_productivity_insights",
     "get_tasks_today",
+    "day_win_view",
+    "load_today_day_state",
+    "render_day_win_block",
     "dashboard_task_order_by",
     "_strip_emoji",
     "_render_shopping_list",

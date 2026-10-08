@@ -196,6 +196,13 @@
     </script>
     {% endif %}
 
+    {# День без хвоста: поздравление про день целиком, поэтому стоит в шапке, а не
+       внутри списка задач. Блок сам себя подменяет после закрытия задач
+       (OOB из append_today_stats_oob). #}
+    {% with win = day_win %}
+        {% include "partials/day_win_block.html" %}
+    {% endwith %}
+
     {# Дашборд: два столбца вместо трёх. Раскладку задаёт .dash-grid в design.css
        (сборки Tailwind в репозитории нет, поэтому новые Tailwind-классы не
        сработали бы). На телефоне порядок блоков прежний — он держится на
@@ -250,6 +257,15 @@
                     </div>
                     {% endfor %}
                 </div>
+            </div>
+            {% elif day_win and day_win.recurring_total and not day_win.recurring_left %}
+            {# Блок «Регулярные» раньше просто исчезал, когда всё отмечено: Вера
+               видела пустое место вместо «сделано». Показываем строку-итог. #}
+            <div class="space-y-4">
+                <h2 class="text-xl font-bold text-stone-300 px-1">Регулярные</h2>
+                <p class="text-xs text-gray-500 px-1">
+                    Все {{ day_win.recurring_total }} регулярных на сегодня закрыты.
+                </p>
             </div>
             {% endif %}
 

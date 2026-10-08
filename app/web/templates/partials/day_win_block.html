@@ -1,0 +1,59 @@
+{# День без хвоста — поздравление на дашборде.
+
+   Вера: «если там уже были задачи и они все ушли — писать, что ты молодец,
+   мы запомним этот день». Блок стоит в шапке дашборда, а не внутри списка
+   задач: он про день целиком. Когда закрыто вообще всё (и регулярные тоже),
+   текст другой — «ты закрыла вообще всё».
+
+   Блок всегда в DOM (при отсутствии победы — скрыт): живые обновления
+   подменяют его целиком через hx-swap-oob по id="day-win"
+   (см. deps.render_day_win_block).
+
+   Стили заданы здесь явно, а не классами Tailwind: сборки Tailwind в
+   репозитории нет, новые произвольные классы просто не появятся в CSS. #}
+<style>
+    .day-win { margin-bottom: 1.5rem; }
+    .day-win__card {
+        border: 1px solid rgba(217, 119, 6, .45);
+        background: linear-gradient(90deg, rgba(120, 53, 15, .35), rgba(120, 53, 15, .12));
+        border-radius: 12px;
+        padding: 14px 16px;
+    }
+    .day-win__card--full {
+        border-color: rgba(245, 158, 11, .65);
+        background: linear-gradient(90deg, rgba(146, 64, 14, .55), rgba(120, 53, 15, .18));
+    }
+    .day-win__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .day-win__title { font-size: 15px; font-weight: 800; color: #fbbf24; letter-spacing: .01em; }
+    .day-win__link { font-size: 11px; font-weight: 700; color: #d1d5db; text-decoration: none; white-space: nowrap; }
+    .day-win__link:hover { color: #fff; }
+    .day-win__text { font-size: 12.5px; color: #e5e7eb; margin-top: 4px; line-height: 1.45; }
+    .day-win__nums { color: #fbbf24; font-weight: 700; font-variant-numeric: tabular-nums; }
+</style>
+
+<div id="day-win"{% if oob %} hx-swap-oob="true"{% endif %}
+     class="day-win{% if not win.is_win %} hidden{% endif %}">
+    {% if win.is_win %}
+    <div class="day-win__card{% if win.level == 'full' %} day-win__card--full{% endif %}">
+        <div class="day-win__head">
+            {% if win.level == 'full' %}
+            <span class="day-win__title">Ты закрыла вообще всё</span>
+            {% else %}
+            <span class="day-win__title">Ты закрыла все задачи на сегодня</span>
+            {% endif %}
+            <a href="/stats" class="day-win__link">в аналитике →</a>
+        </div>
+        <p class="day-win__text">
+            {% if win.level == 'full' %}
+            Задачи дня и все регулярные закрыты: <span class="day-win__nums">{{ win.tasks_done }}</span>
+            {%- if win.recurring_done %} + <span class="day-win__nums">{{ win.recurring_done }}</span> регулярных{% endif %}.
+            Ни одного хвоста. День отмечен в аналитике.
+            {% else %}
+            <span class="day-win__nums">{{ win.tasks_done }}</span> закрыто, ни одной незакрытой.
+            {% if win.recurring_total %}Осталось только регулярное: {{ win.recurring_left }} из {{ win.recurring_total }}.{% endif %}
+            Мы запомнили этот день.
+            {% endif %}
+        </p>
+    </div>
+    {% endif %}
+</div>

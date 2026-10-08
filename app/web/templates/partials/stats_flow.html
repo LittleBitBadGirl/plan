@@ -18,6 +18,10 @@
     .flow-labels { display: flex; align-items: flex-start; gap: 3px; margin-top: 6px; }
     .flow-labels > div { flex: 1 1 0; min-width: 0; text-align: center; font-size: 11px; color: #6b7280; font-variant-numeric: tabular-nums; }
     .flow-labels > div.is-weekend { color: rgba(167, 139, 250, .75); }
+    /* День без хвоста: янтарная точка над числом — видно, где день был закрыт целиком. */
+    .flow-labels > div.is-win { color: #fbbf24; font-weight: 700; }
+    .flow-labels__win { display: inline-block; width: 6px; height: 6px; border-radius: 999px; background: #fbbf24; margin: 0 2px 2px 0; }
+    .flow-legend__swatch--win { background: #fbbf24; }
     .flow-labels__n { display: inline-block; font-size: 11px; font-weight: 700; margin: 2px 2px 0 2px; }
     .flow-labels__n--closed { color: #4ade80; }
     .flow-labels__n--created { color: #60a5fa; }
@@ -87,11 +91,12 @@
         <div class="flow-legend">
             <span><span class="flow-legend__swatch flow-legend__swatch--closed"></span>закрыто</span>
             <span><span class="flow-legend__swatch flow-legend__swatch--created"></span>прилетело</span>
+            <span><span class="flow-legend__swatch flow-legend__swatch--win"></span>день без хвоста</span>
         </div>
         <div class="flow-bars">
             {% for s in flow.series %}
             <div class="flow-day"
-                 title="{{ s.short }}: закрыто {{ s.closed }}, прилетело {{ s.created }}{{ ' · выходной' if s.weekend }}">
+                 title="{{ s.short }}: закрыто {{ s.closed }}, прилетело {{ s.created }}{{ ' · выходной' if s.weekend }}{{ ' · день без хвоста' if s.win }}{{ ' (закрыто вообще всё)' if s.win_full }}">
                 <div class="flow-day__created" style="height: {{ s.created_h }}%"></div>
                 <div class="flow-day__closed" style="height: {{ s.closed_h }}%"></div>
             </div>
@@ -99,8 +104,9 @@
         </div>
         <div class="flow-labels">
             {% for s in flow.series %}
-            <div class="{{ 'is-weekend' if s.weekend }}">
+            <div class="{{ 'is-weekend' if s.weekend }}{{ ' is-win' if s.win }}">
                 {# В году 365 столбиков: подпись ставим только на первое число месяца. #}
+                {% if s.win %}<span class="flow-labels__win" title="день без хвоста"></span>{% endif %}
                 {% if flow.period == 'week' %}{{ s.short }}{% elif flow.period == 'year' %}{{ s.short if s.day.day == 1 else '' }}{% elif loop.first or loop.last %}{{ s.short }}{% elif loop.index % 5 == 0 %}{{ s.day.day }}{% endif %}
                 {% if flow.period == 'week' %}
                 {# В недельном виде семь дней — числа помещаются и без наведения. #}

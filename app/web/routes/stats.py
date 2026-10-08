@@ -12,10 +12,12 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select, func
+from datetime import date
 
 from app.db.database import async_session
 from app.models.task import Task, task_is_active
 from app.models.category import Category
+from app.services.day_win_service import day_wins_summary
 
 from app.web.deps import (
     templates,
@@ -67,6 +69,9 @@ async def stats_page(request: Request, period: str = "month"):
         )
         postpones_stats = postpones_query.all()
 
+        # Дни без хвоста: память о днях, закрытых целиком (таблица day_wins).
+        wins = await day_wins_summary(db, date.today())
+
     return templates.TemplateResponse(request, "stats.html", {
         "request": request,
         "total_completed": total_completed,
@@ -74,6 +79,7 @@ async def stats_page(request: Request, period: str = "month"):
         "category_distribution": category_distribution,
         "insights": insights,
         "flow": flow,
+        "wins": wins,
         "postpones_stats": postpones_stats,
     })
 

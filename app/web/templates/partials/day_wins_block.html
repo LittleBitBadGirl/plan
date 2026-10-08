@@ -1,0 +1,83 @@
+{# Аналитика: «Дни без хвоста».
+
+   Вера: «в аналитике надо такие дни показывать и подсвечивать как то в каком то
+   блоке». Дни берутся из таблицы day_wins — она пишется в момент закрытия дня,
+   поэтому здесь только то, что было на самом деле: задним числом «без хвоста»
+   выглядел бы любой день, где осталась хотя бы одна закрытая задача.
+
+   Стили заданы здесь явно: сборки Tailwind в репозитории нет. #}
+<style>
+    .dw-block {
+        background: linear-gradient(180deg, rgba(120, 53, 15, .18), rgba(17, 19, 24, .2));
+        border: 1px solid rgba(217, 119, 6, .35);
+        border-radius: 16px;
+        padding: 18px 20px;
+        margin-bottom: 1.5rem;
+    }
+    .dw-block__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .dw-block__title { font-size: 18px; font-weight: 800; color: #fff; }
+    .dw-block__period { font-size: 11px; color: #9ca3af; }
+    .dw-kpis { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    .dw-kpi { background: rgba(17, 19, 24, .55); border: 1px solid #2a3038; border-radius: 10px; padding: 8px 12px; min-width: 7.5rem; }
+    .dw-kpi__label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; }
+    .dw-kpi__value { font-size: 20px; font-weight: 800; color: #fbbf24; line-height: 1.2; font-variant-numeric: tabular-nums; }
+    .dw-kpi__hint { font-size: 10px; color: #6b7280; }
+    .dw-days { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+    .dw-day {
+        display: inline-flex; align-items: baseline; gap: 4px;
+        background: rgba(120, 53, 15, .35);
+        border: 1px solid rgba(217, 119, 6, .45);
+        border-radius: 999px; padding: 3px 9px;
+        font-size: 11.5px; color: #fde68a; font-variant-numeric: tabular-nums;
+    }
+    .dw-day--full { border-color: rgba(245, 158, 11, .85); background: rgba(146, 64, 14, .55); color: #fff; }
+    .dw-day__mark { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #fbbf24; }
+    .dw-day--full .dw-day__mark { color: #fff; }
+    .dw-empty { font-size: 12.5px; color: #9ca3af; margin-top: 12px; }
+    .dw-note { font-size: 10px; color: #6b7280; margin-top: 14px; padding-top: 10px; border-top: 1px solid #2a3038; line-height: 1.5; }
+</style>
+
+<section class="dw-block">
+    <div class="dw-block__head">
+        <h2 class="dw-block__title">Дни без хвоста</h2>
+        <span class="dw-block__period">{{ wins.window_label }} · окно {{ wins.window_days }} дней</span>
+    </div>
+
+    <div class="dw-kpis">
+        <div class="dw-kpi">
+            <div class="dw-kpi__label">В окне</div>
+            <div class="dw-kpi__value">{{ wins.count }}</div>
+            <div class="dw-kpi__hint">дней закрыто полностью</div>
+        </div>
+        <div class="dw-kpi">
+            <div class="dw-kpi__label">Из них вообще всё</div>
+            <div class="dw-kpi__value">{{ wins.full }}</div>
+            <div class="dw-kpi__hint">задачи + регулярные</div>
+        </div>
+        <div class="dw-kpi">
+            <div class="dw-kpi__label">Всего записано</div>
+            <div class="dw-kpi__value">{{ wins.total }}</div>
+            <div class="dw-kpi__hint">из них вообще всё: {{ wins.total_full }}</div>
+        </div>
+    </div>
+
+    {% if wins.has_any %}
+    <div class="dw-days">
+        {% for d in wins.days %}
+        <span class="dw-day{{ ' dw-day--full' if d.full }}"
+              title="{{ 'закрыто вообще всё: задачи и регулярные' if d.full else 'закрыты все задачи дня' }} · закрыто {{ d.tasks_done }}{% if d.recurring_done %} + регулярных {{ d.recurring_done }}{% endif %}">
+            {{ d.label }} {{ d.weekday }}{% if d.full %}<span class="dw-day__mark">всё</span>{% endif %}
+        </span>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="dw-empty">Пока ни одного дня без хвоста. Закрой всё, что взято на день, и он появится здесь.</p>
+    {% endif %}
+
+    <p class="dw-note">
+        День попадает сюда, когда закрыто всё, что стоит в дне: задачи и подзадачи, взятые на сегодня,
+        плюс все регулярные этого дня. Запись делается в момент закрытия дня — задним числом дни не
+        пересчитываются, поэтому список не приписывает закрытых дней, которых не было.
+        Дни помечены «всё», если в них закрыты ещё и регулярные.
+    </p>
+</section>

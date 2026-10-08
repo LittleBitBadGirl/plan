@@ -33,9 +33,27 @@
 {% include "partials/day_subtasks.html" %}
 
 {% if not tasks_with_subtasks and not standalone_tasks and not taken_subtasks %}
+{# Пустой список дня бывает разным: день ещё не собран или день уже закрыт.
+   Вера: «если там уже были задачи и они все ушли — писать, что ты молодец».
+   Разницу знает сервер (day_win, см. day_win_service) — по списку её не видно,
+   потому что закрытые задачи уезжают из выборки. #}
+{% if day_win and day_win.is_win %}
+<div class="text-center py-10">
+    <p class="text-lg font-bold text-amber-400">Все задачи на сегодня закрыты</p>
+    <p class="text-xs mt-1 text-gray-500">
+        {% if day_win.level == 'full' %}
+        Закрыто вообще всё: {{ day_win.tasks_done }} задач и {{ day_win.recurring_done }} регулярных.
+        {% else %}
+        {{ day_win.tasks_done }} закрыто, ни одной незакрытой. Мы запомнили этот день.
+        {% endif %}
+    </p>
+    <a href="/backlog" class="text-amber-600 hover:text-amber-500 mt-2 inline-block text-sm">Хочешь ещё — загляни в бэклог →</a>
+</div>
+{% else %}
 <div class="text-center py-10 text-gray-500">
     <p>День пока пустой</p>
     <p class="text-xs mt-1 text-gray-600">Возьми из бэклога то, что успеешь сделать сегодня</p>
     <a href="/backlog" class="text-amber-600 hover:text-amber-500 mt-2 inline-block text-sm">Перейти в бэклог →</a>
 </div>
+{% endif %}
 {% endif %}

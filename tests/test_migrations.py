@@ -21,7 +21,7 @@ from app.models.base import Base
 
 # Голова миграций. Обновляется одной строкой при новой ревизии: раньше номер
 # стоял в четырёх ассертах, и каждый новый шаг схемы ронял четыре теста сразу.
-HEAD_REVISION = "024_habit_cycle_mode"
+HEAD_REVISION = "025_day_wins"
 
 
 @pytest.mark.asyncio
@@ -122,6 +122,14 @@ async def test_run_migrations_on_fresh_db():
         event_indexes = {
             row[1] for row in sync.execute("PRAGMA index_list(events)")
         }
+        # Миграция 025: память о днях без хвоста — таблица day_wins со своим
+        # уникальным индексом на день (одна строка на день).
+        win_cols = {
+            row[1] for row in sync.execute("PRAGMA table_info(day_wins)")
+        }
+        win_indexes = {
+            row[1] for row in sync.execute("PRAGMA index_list(day_wins)")
+        }
         sync.close()
         assert "estimated_minutes" in task_cols
         assert "overdue_since" in task_cols
@@ -162,6 +170,10 @@ async def test_run_migrations_on_fresh_db():
             "is_archived",
         } <= event_cols
         assert "ix_events_range" in event_indexes
+
+        assert "day_wins" in tables
+        assert {"day", "level", "tasks_done", "recurring_done", "created_at"} <= win_cols
+        assert "ix_day_wins_day" in win_indexes
 
         await engine.dispose()
 
@@ -632,5 +644,85 @@ async def test_cycle_mode_migration_adds_column_to_old_habits():
         again = sync.execute("SELECT cycle_mode FROM habits WHERE id = 5").fetchone()[0]
         sync.close()
         assert again == mode
+
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_day_wins_migration_creates_table_itself():
+    """Миграция 025: таблицу памяти о днях без хвоста создаёт сама миграция.
+
+    Боевая база приезжает с 24-й ревизией. Появись таблица только через
+    create_all — на VPS её бы не было, и «мы запомнили этот день» терялось бы
+    молча: запись падала бы на отсутствующей таблице.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = os.path.join(tmp, "day_wins_migrate.db")
+        url = f"sqlite+aiosqlite:///{db_path}"
+        engine = create_async_engine(url, connect_args={"check_same_thread": False})
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        from app.config import settings
+
+        prev_url = settings.database_url
+        settings.database_url = url
+        try:
+            run_migrations()
+
+            # Откатываем состояние до 24-й ревизии и убираем таблицу, как будто
+            # база старая.
+            sync = sqlite3.connect(db_path)
+            sync.execute("DROP TABLE day_wins")
+            sync.execute("UPDATE alembic_version SET version_num = '024_habit_cycle_mode'")
+            sync.commit()
+            sync.close()
+
+            run_migrations()
+        finally:
+            settings.database_url = prev_url
+
+        sync = sqlite3.connect(db_path)
+        tables = {
+            row[0] for row in sync.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        cols = {row[1] for row in sync.execute("PRAGMA table_info(day_wins)")}
+        indexes = {row[1] for row in sync.execute("PRAGMA index_list(day_wins)")}
+        unique_day = False
+        for idx in sync.execute("PRAGMA index_list(day_wins)"):
+            if idx[2] and [r[2] for r in sync.execute(f"PRAGMA index_info({idx[1]})")] == ["day"]:
+                unique_day = True
+        sync.execute("INSERT INTO day_wins (day, level, tasks_done) VALUES ('2026-10-08', 'tasks', 3)")
+        sync.commit()
+        duplicate = None
+        try:
+            sync.execute(
+                "INSERT INTO day_wins (day, level, tasks_done) VALUES ('2026-10-08', 'full', 5)"
+            )
+            sync.commit()
+        except sqlite3.IntegrityError:
+            duplicate = "rejected"
+        sync.close()
+
+        assert "day_wins" in tables, "таблица памяти о днях не создалась"
+        assert {"day", "level", "tasks_done", "recurring_done"} <= cols
+        assert unique_day, "день обязан быть уникальным: одна строка на день"
+        assert duplicate == "rejected", "вторая строка на тот же день записалась"
+
+        # Повторный прогон (контейнер перезапускается) ничего не ломает.
+        settings.database_url = url
+        try:
+            run_migrations()
+        finally:
+            settings.database_url = prev_url
+
+        sync = sqlite3.connect(db_path)
+        rows = sync.execute("SELECT COUNT(*) FROM day_wins").fetchone()[0]
+        version = sync.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+        sync.close()
+        assert rows == 1, "повторный прогон миграции продублировал записи"
+        assert version == HEAD_REVISION
+        assert indexes  # индекс на месте (иначе PRAGMA выше не нашёл бы уникальность)
 
         await engine.dispose()

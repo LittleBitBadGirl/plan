@@ -18,6 +18,7 @@ from app.models.finance import Transaction
 from app.config import settings
 
 from app.services.day_pool_service import take_to_day, return_to_backlog
+from app.services.day_win_service import sync_day_win
 from app.services.task_delete_service import delete_tasks_hard
 
 from app.web.deps import (
@@ -448,6 +449,11 @@ async def complete_subtask_htmx(request: Request, task_id: int):
         await _complete_subtask_impl(db, subtask)
         await db.commit()
 
+        # Подзадача могла быть последним незакрытым куском дня — тогда день
+        # закрылся именно сейчас, и память о нём пишем сразу.
+        await sync_day_win(db, date.today())
+        await db.commit()
+
         row = templates.get_template("partials/subtask_row.html").render({
             "request": request,
             "sub": subtask,
@@ -470,6 +476,8 @@ async def task_to_backlog(request: Request, task_id: int):
         if task:
             await return_to_backlog(db, task)
             await db.commit()
+            await sync_day_win(db, date.today())
+            await db.commit()
             return HTMLResponse(content=await get_tasks_today(db, request))
     raise HTTPException(status_code=404, detail="Задача не найдена")
 
@@ -489,6 +497,8 @@ async def day_complete_subtask_htmx(request: Request, task_id: int):
             raise HTTPException(status_code=404, detail="Subtask not found")
 
         await _complete_subtask_impl(db, subtask)
+        await db.commit()
+        await sync_day_win(db, date.today())
         await db.commit()
         return HTMLResponse(content=await get_tasks_today(db, request))
 
@@ -531,6 +541,12 @@ async def complete_task(request: Request, task_id: int):
                     child.completed_at = datetime.utcnow()
                     child.is_archived = False
                     child.overdue_since = None  # закрытые дети тоже больше не «тянутся»
+            await db.commit()
+
+            # Могла закрыться последняя задача дня: пишем память о дне сразу, а не
+            # ждём ночной зачистки — «мы запомнили этот день» обязано быть правдой
+            # в ту же минуту (запись нужна и аналитике, не только карточке).
+            await sync_day_win(db, date.today())
             await db.commit()
 
             if is_backlog:

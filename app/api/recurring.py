@@ -236,6 +236,12 @@ async def complete_recurring(
 
     await db.commit()
 
+    # Отметила последнюю регулярную — день мог стать «закрыт вообще всё».
+    from app.services.day_win_service import sync_day_win
+
+    await sync_day_win(db, today)
+    await db.commit()
+
     hide_card = f'<div id="recurring-{recurring_id}" hx-swap-oob="true"></div>'
     return HTMLResponse(
         content=await append_today_stats_oob(hide_card, db, request)
