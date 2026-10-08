@@ -78,7 +78,7 @@ Auth: `Authorization: Bearer $API_TOKEN` для import.
 |---------|----------|
 | `/api/categories` | CRUD категорий |
 | `/api/recurring` | CRUD периодических, toggle, complete, for-date |
-| `/api/habits` | Привычки: create, toggle, archive, next-cycle. Отметка принимается только внутри окна текущего цикла, иначе 409 |
+| `/api/habits` | Трекеры: create, toggle, archive, next-cycle. `create` принимает `cycle_mode` = `days` (цикл ровно на `target_days` дней) или `monthly` (непрерывный, цикл — календарный месяц); старт всегда сегодня, `start_date` в запросе игнорируется. `next-cycle` переводит цикл только с последнего дня окна (раньше дата не принимается, у `monthly` обработчик ничего не делает — цикл меняется сам). Отметка принимается только внутри окна текущего цикла, иначе 409 |
 | `/api/period/toggle` | Трекер периода |
 
 ---

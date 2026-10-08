@@ -25,6 +25,10 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
                         </svg>
                         <span class="text-xs font-bold text-gray-200">Цикл {{ cycle.cycle_number }}</span>
+                        {# У непрерывного трекера по номеру цикла не понять, какой это месяц. #}
+                        {% if cycle.window_label %}
+                        <span class="text-[10px] text-gray-500 tabular-nums">{{ cycle.window_label }}</span>
+                        {% endif %}
                         {% if cycle.is_current %}
                         <span class="text-[9px] bg-accent/20 text-accent px-1.5 py-0.5 rounded uppercase font-bold">Текущий</span>
                         {% endif %}

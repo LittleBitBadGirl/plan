@@ -48,7 +48,13 @@ from app.services.ai_service import ai_service
 async def dashboard(request: Request):
     """Дашборд — задачи на сегодня"""
     from app.models.recurring import RecurringTask
-    from app.api.habits import build_habit_cycle_grid, load_habit_logs_map
+    from app.api.habits import (
+        build_habit_cycle_grid,
+        days_label,
+        is_monthly,
+        load_habit_logs_map,
+        sync_monthly_cycle,
+    )
     from app.models.habit import Habit
 
     today = date.today()
@@ -63,18 +69,47 @@ async def dashboard(request: Request):
             select(Habit).where(Habit.is_active == True, Habit.is_archived == False)
         )
         habits = list(habits_result.scalars().all())
+        # Непрерывный трекер переводится сам вместе с календарным месяцем.
+        # Синхронизируем номер цикла до чтения отметок: сетка и галочки должны
+        # говорить про один и тот же цикл (пишется только при расхождении).
+        for h in habits:
+            sync_monthly_cycle(h, today)
         logs_map = await load_habit_logs_map(db, habits)
 
         habits_data = []
         for h in habits:
             grid = build_habit_cycle_grid(h, today)
             h_logs = logs_map.get(h.id, set())
+            monthly = is_monthly(h)
+            target_days = grid["target_days"]
+            cycle_over = grid["end"] < today
+            # Продлевать есть что только с последнего дня окна: раньше кнопка
+            # уводила старт нового цикла в будущее и трекер выглядел сломанным.
+            can_extend = grid["end"] <= today
             habits_data.append({
                 "habit": h,
                 "dates": grid["dates"],
                 "logs": h_logs,
                 "progress": len(h_logs),
                 "start_weekday": grid["start_weekday"],
+                "target_days": target_days,
+                "is_monthly": monthly,
+                # Окно цикла кончилось: карточка сама показывает «Продлить» и
+                # архив — что делать дальше, Вера решает сама.
+                "cycle_over": cycle_over,
+                "can_extend": can_extend,
+                "cycle_label": "по месяцам" if monthly else days_label(target_days),
+                "window_label": (
+                    f"{grid['start'].strftime('%d.%m')} – "
+                    f"{grid['end'].strftime('%d.%m')}"
+                ),
+                # Текст вопроса кнопки считаем здесь: в шаблоне не собрать
+                # «21 день» / «30 дней» без склонения на месте.
+                "next_promise": (
+                    f"Начать новый цикл на {days_label(target_days)}?"
+                    if cycle_over
+                    else f"Начать следующие {days_label(target_days)}?"
+                ),
             })
 
         # Period tracker data (последние 120 дней — достаточно для фазы и календаря)

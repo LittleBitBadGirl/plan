@@ -21,7 +21,7 @@ from app.models.base import Base
 
 # Голова миграций. Обновляется одной строкой при новой ревизии: раньше номер
 # стоял в четырёх ассертах, и каждый новый шаг схемы ронял четыре теста сразу.
-HEAD_REVISION = "023_career_reviews"
+HEAD_REVISION = "024_habit_cycle_mode"
 
 
 @pytest.mark.asyncio
@@ -88,6 +88,9 @@ async def test_run_migrations_on_fresh_db():
             row[1]
             for row in sync.execute("PRAGMA index_list(habit_logs)")
         }
+        habit_cols = {
+            row[1] for row in sync.execute("PRAGMA table_info(habits)")
+        }
         feedback_cols = {
             row[1] for row in sync.execute("PRAGMA table_info(manager_feedback)")
         }
@@ -129,6 +132,8 @@ async def test_run_migrations_on_fresh_db():
         assert "ix_tasks_dashboard_day" in task_indexes
         assert "ix_tasks_completed_at" in task_indexes
         assert "ix_habit_logs_habit_cycle" in habit_indexes
+        # Миграция 024: режим цикла трекера — «на N дней» или «непрерывный».
+        assert "cycle_mode" in habit_cols
         assert "ix_manager_feedback_manager" in feedback_indexes
         assert {"period_month", "kind", "files", "links"} <= feedback_cols
         assert "Алёна Савченко" in seeded_managers
@@ -545,5 +550,87 @@ async def test_event_visit_migration_clears_decisions_without_a_day():
         again = dict(sync.execute("SELECT title, status FROM events").fetchall())
         sync.close()
         assert again == statuses, "повторный прогон миграции изменил решения"
+
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_cycle_mode_migration_adds_column_to_old_habits():
+    """Миграция 024: у базы 23-й ревизии колонки режима нет — она появляется сама.
+
+    Боевая база приезжает с 23-й ревизией. Появись колонка только через
+    create_all, на VPS её бы не было, и трекер Веры «не курю» остался бы без
+    цикла: нечем отличить «на 30 дней» от «непрерывного».
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = os.path.join(tmp, "cycle_mode_migrate.db")
+        url = f"sqlite+aiosqlite:///{db_path}"
+        engine = create_async_engine(url, connect_args={"check_same_thread": False})
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        from app.config import settings
+
+        prev_url = settings.database_url
+        settings.database_url = url
+        try:
+            run_migrations()
+
+            # Старая схема habits: колонки режима нет, привычка лежит как в бою.
+            sync = sqlite3.connect(db_path)
+            sync.execute("DROP TABLE habits")
+            sync.execute(
+                """
+                CREATE TABLE habits (
+                    id INTEGER NOT NULL,
+                    title VARCHAR(500) NOT NULL,
+                    description VARCHAR,
+                    category_id INTEGER,
+                    is_active BOOLEAN,
+                    is_archived BOOLEAN,
+                    start_date DATE,
+                    target_days INTEGER,
+                    current_cycle INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (id),
+                    FOREIGN KEY(category_id) REFERENCES categories (id)
+                )
+                """
+            )
+            sync.execute("CREATE INDEX ix_habits_id ON habits (id)")
+            sync.execute(
+                "INSERT INTO habits (id, title, start_date, target_days, current_cycle, is_active, is_archived) "
+                "VALUES (5, 'не курю', '2026-09-28', 30, 2, 1, 0)"
+            )
+            sync.execute("UPDATE alembic_version SET version_num = '023_career_reviews'")
+            sync.commit()
+            sync.close()
+
+            run_migrations()
+        finally:
+            settings.database_url = prev_url
+
+        sync = sqlite3.connect(db_path)
+        version = sync.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+        cols = {row[1] for row in sync.execute("PRAGMA table_info(habits)")}
+        mode = sync.execute("SELECT cycle_mode FROM habits WHERE id = 5").fetchone()[0]
+        sync.close()
+
+        assert version == HEAD_REVISION
+        assert "cycle_mode" in cols, "колонка режима не появилась"
+        assert mode == "days", "старый трекер обязан остаться циклом на 30 дней"
+
+        # Повторный прогон (контейнер перезапускается) ничего не ломает.
+        settings.database_url = url
+        try:
+            run_migrations()
+        finally:
+            settings.database_url = prev_url
+
+        sync = sqlite3.connect(db_path)
+        again = sync.execute("SELECT cycle_mode FROM habits WHERE id = 5").fetchone()[0]
+        sync.close()
+        assert again == mode
 
         await engine.dispose()
