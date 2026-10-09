@@ -163,7 +163,15 @@ async def link_retellings(
         if book is None:
             report.unmatched.append((retelling.id, retelling.source_title or "—"))
             continue
-        reason = "точное название" if match_score(book.title or "", retelling.source_title or "", retelling.source_author) >= 0.9 else "похожее название"
+        score = match_score(book.title or "", retelling.source_title or "", retelling.source_author)
+        if score >= 0.99:
+            reason = "названия совпадают"
+        elif score >= 0.9:
+            reason = "название и автор из записи"
+        elif score >= 0.75:
+            reason = "название входит в сказанное"
+        else:
+            reason = "похожее название"
         report.linked.append((retelling.id, book.title or "", reason))
         if apply:
             retelling.book_item_id = book.id
