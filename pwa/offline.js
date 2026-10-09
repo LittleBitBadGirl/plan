@@ -291,6 +291,28 @@
         return Boolean(taskId && stateCache[taskId]);
     }
 
+    /**
+     * «Куда задачу» для офлайн-создания: выбор живёт в `hx-vals` кнопки
+     * («Сегодня» / «В бэклог»), а не в полях формы. Пока читали только форму,
+     * задача с кнопки «Сегодня» офлайн всегда уезжала в бэклог — на сервере
+     * `where: today` кладёт её в план дня (`planned_for`).
+     */
+    function whereChoice(element, form) {
+        for (const el of [element, form]) {
+            if (!el || !el.getAttribute) continue;
+            const raw = el.getAttribute('hx-vals');
+            if (!raw) continue;
+            try {
+                const values = JSON.parse(raw);
+                const where = String((values && values.where) || '').trim();
+                if (where) return where === 'today' ? 'today' : 'backlog';
+            } catch (error) {
+                // hx-vals не JSON (например, js:-выражение) — смотрим дальше.
+            }
+        }
+        return 'backlog';
+    }
+
 
     /**
      * Превратить отправку формы/кнопки в действие очереди.
@@ -322,7 +344,7 @@
                 due_date: values.due_date ? toIso(values.due_date) : todayIso(),
                 // Куда задачу: день собирается руками, поэтому без явного выбора
                 // задача ждёт в бэклоге и её видно, а не пропадает из виду.
-                where: values.where || 'backlog',
+                where: values.where || whereChoice(element, form),
             };
             if (values.deadline) payload.deadline = toIso(values.deadline);
             if (values.size) payload.size = values.size;
@@ -860,6 +882,21 @@
             return false;
         }
         await enqueue(action);
+        if (action.kind === 'create_task') {
+            // Форма быстрого ввода чистит поле и пишет «задача в дне» только по
+            // ответу сервера. Офлайн ответа не будет, поэтому сообщаем ей своим
+            // событием: иначе текст остаётся в поле и выглядит, будто нажатие
+            // не сработало, а задача «не зарегистрировалась».
+            const form = element.tagName === 'FORM'
+                ? element
+                : (element.closest ? element.closest('form') : null);
+            if (form) {
+                form.dispatchEvent(new CustomEvent('quick-add-queued', {
+                    bubbles: true,
+                    detail: { where: action.payload && action.payload.where || 'backlog' },
+                }));
+            }
+        }
         return true;
     }
 

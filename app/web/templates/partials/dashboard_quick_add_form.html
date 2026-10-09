@@ -15,6 +15,12 @@
                         clearTimeout($data.noticeTimer);
                         $data.noticeTimer = setTimeout(() => notice = '', 4000);
                         $refs.title.focus();"
+      @quick-add-queued="chooser = false;
+                         notice = $event.detail.where === 'today' ? 'Нет сети. Задача в дне — уйдёт, как только появится связь' : 'Нет сети. Задача в бэклоге — уйдёт, как только появится связь';
+                         $refs.title.value = '';
+                         $refs.title.style.height = 'auto';
+                         clearTimeout($data.noticeTimer);
+                         $data.noticeTimer = setTimeout(() => notice = '', 6000);"
       @quick-add-failed="chooser = false;
                          notice = 'Не получилось сохранить — попробуй ещё раз';
                          clearTimeout($data.noticeTimer);

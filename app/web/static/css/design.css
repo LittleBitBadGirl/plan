@@ -2413,6 +2413,15 @@ h3,
   white-space: nowrap;
 }
 
+/* design.css подключается после tailwind.css, поэтому `display: inline-flex`
+   выше перебивал tailwind-класс `hidden`: кнопка «Добавить» (hidden lg:inline-flex)
+   оставалась висеть на телефоне, занимала 144px и оставляла полю ввода 128px —
+   текст переносился по слогам в столбик. Селектор из двух классов весит больше
+   одиночного, так что `hidden` снова побеждает. */
+.cta-square.hidden {
+  display: none;
+}
+
 /* Быстрый ввод на дашборде: размеры держим здесь, а не утилитами Tailwind.
    Tailwind в проекте собран локально, новые утилиты (lg:min-h-[44px], lg:py-2.5)
    в сборку не попадают, поэтому поле ввода схлопывалось до 28px и блок выглядел
@@ -2430,6 +2439,16 @@ h3,
 .dash-quick__chooser {
     padding: 8px 10px;
     row-gap: 8px;
+}
+/* На телефоне подпись «Куда задачу» съедала строку и «Отмена» уезжала
+   на вторую линию одна. Прячем подпись — три кнопки встают в один ряд. */
+@media (max-width: 640px) {
+    .dash-quick__chooser > span {
+        display: none;
+    }
+    .dash-quick__chooser > button {
+        flex: 1 1 auto;
+    }
 }
 .dash-quick__notice {
     padding-left: 2px;
