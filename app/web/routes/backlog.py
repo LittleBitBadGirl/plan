@@ -34,7 +34,11 @@ from app.web.deps import (
     _shopping_list_response,
 )
 
-from app.services.day_pool_service import take_to_day
+from app.services.day_pool_service import (
+    planned_ahead_filter,
+    return_to_backlog,
+    take_to_day,
+)
 from app.services.task_delete_service import delete_tasks_hard
 from app.services.ai_service import ai_service
 
@@ -42,15 +46,17 @@ router = APIRouter()
 
 
 def _backlog_where(side: Optional[str] = None) -> list:
-    """Условия бэклога: активное, не взято на день, корневое, не регулярное.
+    """Условия бэклога: активное, не взятое на день, корневое, не регулярное.
 
     side="work" — только рабочие задачи, side="personal" — только личные.
     Признак «рабочая» — из deps.work_task_filter: у Веры клиенты висят
     подкатегориями под «Работа», по имени подкатегории их не отловить.
+    Задачи с будущей датой (день проставлен из «⋯» на 15.10) тоже остаются
+    здесь — с подписью даты, пока этот день не наступил.
     """
     where = [
         task_is_active(),
-        Task.planned_for.is_(None),
+        planned_ahead_filter(),
         Task.parent_task_id == None,
         Task.source.is_distinct_from("recurring"),
         Task.item_kind == "task",
@@ -330,6 +336,42 @@ async def plan_task_today(request: Request, task_id: int):
             return HTMLResponse(f'<div id="task-{task_id}" class="text-red-400">Ошибка</div>')
 
         await take_to_day(db, task)
+        await db.commit()
+
+        html = await _render_backlog_list(request, db)
+        pool = await build_day_pool_context(db, request)
+        return HTMLResponse(content=html + render_day_pool_block(pool, oob=True))
+
+
+@router.post("/backlog/{task_id}/plan-date", response_class=HTMLResponse)
+async def plan_task_date(
+    request: Request,
+    task_id: int,
+    planned_for: str = Form(""),
+):
+    """HTMX: поставить задачу из бэклога на конкретный день (⋯ → «Поставить дату»).
+
+    В отличие от молнии, которая всегда берёт на сегодня, здесь день выбирает
+    сама Вера (решение 09.10.2026). Дата приходит из поля-календаря строкой
+    YYYY-MM-DD, пустая строка — снять дату.
+
+    Поле — именно «день» (planned_for), а не срок: день «сегодня» тем же путём,
+    что молния, сразу уводит задачу в день, будущий день оставляет её в бэклоге
+    с подписью «на 15.10» и в свой день она встанет сама.
+    """
+    from app.web.routes.tasks import _parse_due_date_form
+
+    async with async_session() as db:
+        result = await db.execute(select(Task).where(Task.id == task_id))
+        task = result.scalar_one_or_none()
+        if not task:
+            raise HTTPException(status_code=404, detail="Задача не найдена")
+
+        target = _parse_due_date_form(planned_for)
+        if target is None:
+            await return_to_backlog(db, task)
+        else:
+            await take_to_day(db, task, target)
         await db.commit()
 
         html = await _render_backlog_list(request, db)

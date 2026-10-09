@@ -45,14 +45,28 @@ def day_filter(day: date):
     )
 
 
+def planned_ahead_filter(today: Optional[date] = None):
+    """Ждёт в бэклоге: день не назначен или назначен на будущее.
+
+    Решение Веры 09.10.2026: день можно проставить прямо из бэклога
+    (⋯ → «Поставить дату»), не при создании задачи. Задача с будущей датой
+    остаётся видимой в бэклоге с подписью «на 15.10» — иначе она исчезла бы с
+    глаз до самого дня. Наступил этот день — planned_for == today, задача сама
+    уходит в день, а из бэклога пропадает: условие «будущее» перестаёт
+    выполняться.
+    """
+    today = today or date.today()
+    return or_(Task.planned_for.is_(None), Task.planned_for > today)
+
+
 def backlog_filter():
-    """Бэклог: активное, не взятое на день и не регулярное.
+    """Бэклог: активное, не взятое на день (либо взятое на будущий день) и не регулярное.
 
     Подзадачи тоже живут в бэклоге — но показываются внутри родителя.
     """
     return and_(
         open_task_filter(),
-        Task.planned_for.is_(None),
+        planned_ahead_filter(),
         Task.source.is_distinct_from("recurring"),
         Task.item_kind == "task",
     )
@@ -135,14 +149,18 @@ async def count_taken(db: AsyncSession, day: Optional[date] = None) -> int:
 
 
 async def count_backlog(db: AsyncSession) -> int:
-    """Сколько корневых задач лежит в бэклоге (для сводки)."""
+    """Сколько корневых задач лежит в бэклоге (для сводки).
+
+    Считаем и задачи с будущей датой: они лежат в бэклоге с подписью, и число
+    на экране обязано совпадать со списком.
+    """
     # Фильтр ровно такой же, как у списка бэклога (_load_backlog): иначе на
     # экране соседствовали два разных числа про одно и то же («Задачи 60» и
     # «56 в бэклоге»).
     result = await db.execute(
         select(func.count(Task.id)).where(
             task_is_active(),
-            Task.planned_for.is_(None),
+            planned_ahead_filter(),
             or_(Task.parent_task_id.is_(None), Task.parent_task_id == 0),
             Task.source.is_distinct_from("recurring"),
             Task.item_kind == "task",
