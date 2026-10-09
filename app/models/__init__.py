@@ -23,3 +23,4 @@ from .offline import OfflineAction, OfflineConflict
 from .achievement import Achievement
 from .event import Event
 from .day_win import DayWin
+from .retelling import Retelling, RetellingThought

@@ -1109,6 +1109,60 @@ def reading_items_view(items: list) -> list:
     return view
 
 
+async def books_in_progress(db: AsyncSession) -> tuple[list[dict], list[dict]]:
+    """Книги «читаю сейчас» и отдельно «на паузе» — для блока на дашборде.
+
+    Вера: «те книги которые я сейчас читаю надо выносить в дашборд». Прогресс
+    лежит в самой записи чтения, а пересказы — в retellings: у книги видно,
+    сколько по ней уже наговорено вслух и какая мысль была последней.
+
+    Книга на паузе из блока не исчезает: иначе её легко потерять вместе с
+    прогрессом, а прогресс Вера просила сохранить.
+    """
+    from sqlalchemy import select
+
+    from app.models.shopping import ShoppingItem
+    from app.services import retelling_service as retellings
+
+    result = await db.execute(
+        select(ShoppingItem)
+        .where(
+            ShoppingItem.item_kind == "reading",
+            ShoppingItem.is_archived == False,  # noqa: E712
+            ShoppingItem.reading_status.in_(("reading", "paused")),
+        )
+        .order_by(ShoppingItem.id.desc())
+    )
+    items = list(result.scalars().all())
+    if not items:
+        return [], []
+
+    book_ids = [item.id for item in items]
+    stats = await retellings.book_retelling_stats(db, book_ids)
+    latest = await retellings.last_thoughts(db, book_ids)
+    today = date.today()
+
+    now: list[dict] = []
+    paused: list[dict] = []
+    for card, item in zip(reading_items_view(items), items):
+        card["retellings"] = stats.get(item.id, {"count": 0, "thoughts": 0, "last_day": ""})
+        card["thought"] = (latest.get(item.id) or {}).get("thought", "")
+        if (item.reading_status or "") == "paused":
+            paused_at = item.reading_paused_at
+            card["paused_days"] = (today - paused_at.date()).days if paused_at else None
+            paused.append(card)
+        else:
+            now.append(card)
+    return now, paused
+
+
+async def render_reading_now_block(request: Request, db: AsyncSession) -> str:
+    """Блок «Читаю сейчас» отдельным ответом — на кнопку «не читаю» с дашборда."""
+    now, paused = await books_in_progress(db)
+    tpl = templates.get_template("partials/reading_now_block.html")
+    return tpl.render({"request": request, "reading_now": now, "reading_paused": paused})
+
+
 async def reading_filters_from_request(request: Request):
     """Фильтры страницы чтения: из строки запроса, а для POST — из полей формы.
 

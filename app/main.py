@@ -30,6 +30,27 @@ from app.services.backup_service import create_backup
 from app.services.calendar_sync_service import sync_calendar_events
 
 
+async def _link_retellings_job() -> None:
+    """Связать пересказы с книгами из «Читать» — ночной догоняющий прогон.
+
+    Голосовые с мыслями Вера пишет днём, серверный Hermes связывает их сразу.
+    Ночью догоняем то, что не связалось: например, книгу добавили в список
+    «Читать» уже после записи.
+    """
+    from app.services.retelling_service import link_retellings
+
+    try:
+        async with async_session() as db:
+            report = await link_retellings(db)
+    except Exception as exc:  # noqa: BLE001 — связка не важнее остальных задач
+        app_logger.warning(f"Retellings link skipped: {exc}")
+        return
+    if report.linked or report.unmatched:
+        app_logger.info(
+            f"Пересказы: связано {len(report.linked)}, без книги {len(report.unmatched)}"
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan: инициализация БД и seed категорий"""
@@ -76,6 +97,14 @@ async def lifespan(app: FastAPI):
         CronTrigger(hour=0, minute=10),
         id="rollover_tasks",
         name="Перенос просроченных задач",
+    )
+
+    # Связка пересказов с книгами в «Читать» ежедневно в 23:50
+    scheduler.add_job(
+        _link_retellings_job,
+        CronTrigger(hour=23, minute=50),
+        id="link_retellings",
+        name="Связка пересказов с книгами",
     )
 
     calendar_active = settings.calendar_sync_enabled or (

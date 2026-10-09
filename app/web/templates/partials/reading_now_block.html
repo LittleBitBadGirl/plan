@@ -1,0 +1,105 @@
+<section id="reading-now" class="rnow">
+    {# Книги, которые читаю сейчас. Вера: «те книги которые я сейчас читаю надо
+       выносить в дашборд» и «интереснее делать несколько связей». Связей в
+       блоке три: прогресс по страницам, пересказы-голосовые («5 мыслей»),
+       и та мысль, которую она сказала последней. #}
+    <div class="rnow__head">
+        <span class="rnow__label">Читаю сейчас</span>
+        <a href="/reading" class="rnow__all">весь список &rarr;</a>
+    </div>
+
+    {% if reading_now %}
+        {% for book in reading_now %}
+        <div class="rnow__book">
+            <div class="rnow__top">
+                {% if book.url %}
+                <a class="rnow__title" href="{{ book.url }}" target="_blank" rel="noopener noreferrer">{{ book.title }}</a>
+                {% else %}
+                <span class="rnow__title">{{ book.title }}</span>
+                {% endif %}
+                {% if book.reading_format %}<span class="rnow__chip">{{ book.reading_format }}</span>{% endif %}
+            </div>
+
+            {% if book.pages_total %}
+            <div class="rnow__bar"><i style="width: {{ book.pages_pct }}%"></i></div>
+            {% endif %}
+
+            <div class="rnow__meta">
+                {% if book.pages_total %}
+                <span class="rnow__pages">{{ book.pages_read }}/{{ book.pages_total }} · {{ book.pages_pct }}%</span>
+                {% endif %}
+                {% if book.retellings.count %}
+                <span class="rnow__tales">пересказов {{ book.retellings.count }}{% if book.retellings.thoughts %} · мыслей {{ book.retellings.thoughts }}{% endif %}{% if book.retellings.last_day %} · последний {{ book.retellings.last_day[8:10] }}.{{ book.retellings.last_day[5:7] }}{% endif %}</span>
+                {% else %}
+                <span class="rnow__none">пересказов пока нет</span>
+                {% endif %}
+            </div>
+
+            {% if book.thought %}
+            <p class="rnow__thought">{{ book.thought }}</p>
+            {% endif %}
+
+            <div class="rnow__actions">
+                <form hx-post="/api/reading/{{ book.id }}/pause" hx-target="#reading-now" hx-swap="outerHTML">
+                    <input type="hidden" name="surface" value="dashboard">
+                    <button type="submit" class="rnow__btn" title="Отложить книгу, страницы сохранятся">не читаю</button>
+                </form>
+                <a href="/reading" class="rnow__btn rnow__btn--ghost">страницы</a>
+            </div>
+        </div>
+        {% endfor %}
+    {% elif not reading_paused %}
+        <p class="rnow__empty">Ничего не читаю. <a href="/reading">Взять из списка &rarr;</a></p>
+    {% endif %}
+
+    {% if reading_paused %}
+    <div class="rnow__paused">
+        <span class="rnow__paused-label">на паузе</span>
+        {% for book in reading_paused %}
+        <span class="rnow__paused-item">
+            <span class="rnow__paused-title">{{ book.title }}</span>
+            {% if book.pages_total %}<span class="rnow__pages">{{ book.pages_read }}/{{ book.pages_total }}</span>{% endif %}
+            {% if book.paused_days is not none %}<span class="rnow__none">{{ book.paused_days }} дн.</span>{% endif %}
+            <form hx-post="/api/reading/{{ book.id }}/pause" hx-target="#reading-now" hx-swap="outerHTML" class="rnow__resume">
+                <input type="hidden" name="surface" value="dashboard">
+                <button type="submit" class="rnow__btn rnow__btn--mini">продолжаю</button>
+            </form>
+        </span>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {# Стили живут в самом блоке: он приезжает и ответом на кнопку, а файлы
+       статики кешируются по версии — так правки видны сразу. #}
+    <style>
+        .rnow { background: #1c1917; border: 1px solid #44403c; border-radius: 12px; padding: 14px 16px; }
+        .rnow__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+        .rnow__label { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #78716c; }
+        .rnow__all { font-size: 12px; color: #f59e0b; text-decoration: none; }
+        .rnow__all:hover { text-decoration: underline; }
+        .rnow__book + .rnow__book { margin-top: 12px; padding-top: 12px; border-top: 1px solid #292524; }
+        .rnow__top { display: flex; align-items: baseline; gap: 8px; }
+        .rnow__title { font-size: 14px; font-weight: 600; color: #e7e5e4; text-decoration: none; }
+        a.rnow__title:hover { color: #fbbf24; text-decoration: underline; }
+        .rnow__chip { font-size: 11px; color: #a8a29e; border: 1px solid #44403c; border-radius: 999px; padding: 1px 7px; white-space: nowrap; }
+        .rnow__bar { height: 4px; margin: 8px 0 6px; background: #292524; border-radius: 999px; overflow: hidden; }
+        .rnow__bar > i { display: block; height: 100%; background: #f59e0b; border-radius: 999px; }
+        .rnow__meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: #a8a29e; }
+        .rnow__pages { color: #d6d3d1; }
+        .rnow__tales { color: #fbbf24; }
+        .rnow__none { color: #78716c; }
+        .rnow__thought { margin: 8px 0 0; font-size: 12px; line-height: 1.45; color: #d6d3d1; border-left: 2px solid #44403c; padding-left: 8px; }
+        .rnow__actions { display: flex; gap: 8px; margin-top: 10px; }
+        .rnow__btn { font-size: 12px; color: #d6d3d1; background: #292524; border: 1px solid #44403c; border-radius: 8px; padding: 4px 10px; cursor: pointer; text-decoration: none; }
+        .rnow__btn:hover { border-color: #f59e0b; color: #fbbf24; }
+        .rnow__btn--ghost { background: transparent; }
+        .rnow__btn--mini { padding: 2px 8px; font-size: 11px; }
+        .rnow__empty { margin: 0; font-size: 12px; color: #78716c; }
+        .rnow__empty a { color: #f59e0b; text-decoration: none; }
+        .rnow__paused { margin-top: 12px; padding-top: 10px; border-top: 1px solid #292524; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+        .rnow__paused-label { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #78716c; }
+        .rnow__paused-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #a8a29e; background: #292524; border-radius: 999px; padding: 3px 10px; }
+        .rnow__paused-title { color: #d6d3d1; }
+        .rnow__resume { display: inline; }
+    </style>
+</section>

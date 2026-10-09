@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
@@ -10,6 +12,7 @@ from app.web.deps import (
     _reading_list_response,
     build_reading_context,
     reading_filters_from_request,
+    render_reading_now_block,
     templates,
 )
 
@@ -148,9 +151,44 @@ async def toggle_reading_progress(request: Request, item_id: int):
         current = item.reading_status or "want_to_read"
         if current == "want_to_read":
             item.reading_status = "reading"
+        elif current == "paused":
+            # Отложенную книгу кнопка статуса возвращает в чтение, а не в архив:
+            # случайный клик не должен закрывать книгу, которую Вера не дочитала.
+            item.reading_status = "reading"
+            item.reading_paused_at = None
         elif current == "reading":
             archive_purchased_item(item)
         await db.commit()
+        return await _reading_list_response(request, db)
+
+
+@router.post("/api/reading/{item_id}/pause", response_class=HTMLResponse)
+async def pause_reading(
+    request: Request,
+    item_id: int,
+    surface: str = Form("list"),
+):
+    """«Не читаю» / «продолжаю»: пауза без потери прогресса.
+
+    Вера: «я могу временно не читать книгу и надо иметь возможность нажать кнопку
+    не читаю и не потерять прогресс». Меняется только статус и дата паузы —
+    ``pages_read`` и ``pages_total`` не трогаем вовсе, поэтому книга открывается
+    на той же странице.
+
+    ``surface=dashboard`` — кнопка нажата в блоке «Читаю сейчас»: ответом идёт
+    сам блок, а не список страницы «Читать».
+    """
+    async with async_session() as db:
+        item = await _reading_item(db, item_id)
+        if (item.reading_status or "") == "paused":
+            item.reading_status = "reading"
+            item.reading_paused_at = None
+        else:
+            item.reading_status = "paused"
+            item.reading_paused_at = datetime.now()
+        await db.commit()
+        if surface == "dashboard":
+            return HTMLResponse(await render_reading_now_block(request, db))
         return await _reading_list_response(request, db)
 
 

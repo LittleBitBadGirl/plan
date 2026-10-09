@@ -21,7 +21,7 @@ from app.models.base import Base
 
 # Голова миграций. Обновляется одной строкой при новой ревизии: раньше номер
 # стоял в четырёх ассертах, и каждый новый шаг схемы ронял четыре теста сразу.
-HEAD_REVISION = "025_day_wins"
+HEAD_REVISION = "026_retelling_books"
 
 
 @pytest.mark.asyncio
@@ -130,6 +130,11 @@ async def test_run_migrations_on_fresh_db():
         win_indexes = {
             row[1] for row in sync.execute("PRAGMA index_list(day_wins)")
         }
+        # Миграция 026: пауза чтения у книги и таблицы пересказов. Связка с
+        # книгой — колонка book_item_id в пересказе.
+        shop_cols = {row[1] for row in sync.execute("PRAGMA table_info(shopping_items)")}
+        retelling_cols = {row[1] for row in sync.execute("PRAGMA table_info(retellings)")}
+        thought_cols = {row[1] for row in sync.execute("PRAGMA table_info(retelling_thoughts)")}
         sync.close()
         assert "estimated_minutes" in task_cols
         assert "overdue_since" in task_cols
@@ -174,6 +179,13 @@ async def test_run_migrations_on_fresh_db():
         assert "day_wins" in tables
         assert {"day", "level", "tasks_done", "recurring_done", "created_at"} <= win_cols
         assert "ix_day_wins_day" in win_indexes
+
+        # Миграция 026: пауза чтения у книги и таблицы пересказов.
+        assert "retellings" in tables
+        assert "retelling_thoughts" in tables
+        assert "reading_paused_at" in shop_cols
+        assert {"recorded_at", "source_title", "habit_log_id", "book_item_id"} <= retelling_cols
+        assert {"retelling_id", "position", "thought"} <= thought_cols
 
         await engine.dispose()
 
@@ -724,5 +736,86 @@ async def test_day_wins_migration_creates_table_itself():
         assert rows == 1, "повторный прогон миграции продублировал записи"
         assert version == HEAD_REVISION
         assert indexes  # индекс на месте (иначе PRAGMA выше не нашёл бы уникальность)
+
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_retelling_books_migration_creates_tables_and_adds_pause_column():
+    """Миграция 026: книга получает паузу чтения, пересказ — связку с книгой.
+
+    Две стороны одной правки. На базе без таблиц пересказов миграция их создаёт
+    (иначе на VPS их бы не было, а дашборд читает их как обычные таблицы), а на
+    боевой, где таблицы уже завёл серверный Hermes, она только добавляет колонку
+    книги и не трогает содержимое.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = os.path.join(tmp, "retelling_books_migrate.db")
+        url = f"sqlite+aiosqlite:///{db_path}"
+        engine = create_async_engine(url, connect_args={"check_same_thread": False})
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        await engine.dispose()
+
+        from app.config import settings
+
+        prev_url = settings.database_url
+        settings.database_url = url
+        try:
+            run_migrations()
+
+            # Откатываем состояние до 026: таблиц пересказов нет, колонки паузы
+            # нет — как на базе до этой правки.
+            sync = sqlite3.connect(db_path)
+            sync.execute("DROP TABLE retelling_thoughts")
+            sync.execute("DROP TABLE retellings")
+            sync.execute("ALTER TABLE shopping_items DROP COLUMN reading_paused_at")
+            sync.execute("UPDATE alembic_version SET version_num = '025_day_wins'")
+            sync.commit()
+            sync.close()
+
+            run_migrations()
+        finally:
+            settings.database_url = prev_url
+
+        sync = sqlite3.connect(db_path)
+        tables = {
+            row[0] for row in sync.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        shop_cols = {row[1] for row in sync.execute("PRAGMA table_info(shopping_items)")}
+        retelling_cols = {row[1] for row in sync.execute("PRAGMA table_info(retellings)")}
+        thought_cols = {row[1] for row in sync.execute("PRAGMA table_info(retelling_thoughts)")}
+
+        # Запись пересказа с мыслью проходит, а вторая мысль на той же позиции — нет.
+        sync.execute(
+            "INSERT INTO retellings (recorded_at, source_title, book_item_id, habit_log_id)"
+            " VALUES ('2026-10-06 11:48', 'Ненасильственное общение', 606, 167)"
+        )
+        retelling_id = sync.execute("SELECT id FROM retellings").fetchone()[0]
+        sync.execute(
+            "INSERT INTO retelling_thoughts (retelling_id, position, thought)"
+            " VALUES (?, 1, 'Потребности у всех общие, различаются стратегии')",
+            (retelling_id,),
+        )
+        sync.commit()
+        duplicate = None
+        try:
+            sync.execute(
+                "INSERT INTO retelling_thoughts (retelling_id, position, thought)"
+                " VALUES (?, 1, 'дубль позиции')",
+                (retelling_id,),
+            )
+            sync.commit()
+        except sqlite3.IntegrityError:
+            duplicate = "rejected"
+        sync.close()
+
+        assert "retellings" in tables, "таблица пересказов не создалась"
+        assert "retelling_thoughts" in tables, "таблица мыслей не создалась"
+        assert {"recorded_at", "source_title", "habit_log_id", "book_item_id"} <= retelling_cols
+        assert {"retelling_id", "position", "thought"} <= thought_cols
+        assert "reading_paused_at" in shop_cols, "колонка паузы чтения не добавилась"
+        assert duplicate == "rejected", "две мысли на одной позиции записались"
 
         await engine.dispose()

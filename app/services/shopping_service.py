@@ -28,7 +28,8 @@ async def load_active_reading(db: AsyncSession) -> list[ShoppingItem]:
     from sqlalchemy import case
     status_order = case(
         (ShoppingItem.reading_status == "reading", 0),
-        else_=1,
+        (ShoppingItem.reading_status == "paused", 1),
+        else_=2,
     )
     result = await db.execute(
         select(ShoppingItem)

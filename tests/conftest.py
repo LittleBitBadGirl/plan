@@ -32,6 +32,7 @@ from app.models.shopping import ShoppingItem
 from app.models.tag import Tag, shopping_item_tags
 from app.models.career_review import CareerReview
 from app.models.day_win import DayWin
+from app.models.retelling import Retelling, RetellingThought
 
 TEST_AUTH_HEADERS = {
     "Authorization": "Bearer test-api-token",
@@ -63,6 +64,8 @@ async def isolate_tasks_and_calendar():
     async with async_session() as session:
         await session.execute(delete(CareerReview))
         await session.execute(delete(DayWin))
+        await session.execute(delete(RetellingThought))
+        await session.execute(delete(Retelling))
         await session.execute(delete(RecurringCompletion))
         await session.execute(delete(CalendarEvent))
         await session.execute(delete(Event))

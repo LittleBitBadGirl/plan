@@ -37,6 +37,7 @@ from app.web.deps import (
     _shopping_stats_oob,
     _shopping_list_response,
     reading_items_view,
+    books_in_progress,
     is_weekend,
     not_work_task_filter,
     work_task_filter,
@@ -189,6 +190,9 @@ async def dashboard(request: Request):
 
         shopping_items = await load_active_shopping(db)
         reading_items = await load_active_reading(db)
+        # Книги, которые читаю сейчас, и те, что отложены: в блоке видно прогресс
+        # по страницам и пересказы по каждой книге.
+        reading_now, reading_paused = await books_in_progress(db)
 
         # Мероприятия: блок «ближайшая неделя» в правой колонке и переход
         # в календарь мероприятий. Считает сервис — тот же код, что отдаёт
@@ -249,6 +253,8 @@ async def dashboard(request: Request):
         "period_data": period_data,
         "shopping_items": shopping_items,
         "reading_items": reading_items_view(reading_items),
+        "reading_now": reading_now,
+        "reading_paused": reading_paused,
         "shop_stats": {
             "total": len(shopping_items),
             "remaining": len(shopping_items),

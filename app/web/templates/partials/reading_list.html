@@ -32,6 +32,8 @@
                             hx-post="/api/reading/{{ item.id }}/progress" hx-target="#reading-list"
                             hx-swap="innerHTML" hx-include="#reading-filters"
                             title="В процессе, нажми чтобы завершить">читаю</button>
+                    {% elif item.status == 'paused' %}
+                    <span class="reading-card__status" title="Книга отложена, прогресс сохранён">на паузе</span>
                     {% elif item.is_archived %}
                     <span class="reading-card__status reading-card__status--done">прочитано</span>
                     {% else %}
@@ -113,6 +115,19 @@
                 {% endif %}
 
                 <div class="reading-card__actions">
+                    {# «Не читаю» — пауза без потери прогресса: страницы остаются,
+                       меняется только статус. Вернуться можно с той же страницы. #}
+                    {% if item.status == 'reading' %}
+                    <button type="button" class="reading-card__action"
+                            hx-post="/api/reading/{{ item.id }}/pause" hx-target="#reading-list"
+                            hx-swap="innerHTML" hx-include="#reading-filters"
+                            title="Отложить книгу: страницы останутся">не читаю</button>
+                    {% elif item.status == 'paused' %}
+                    <button type="button" class="reading-card__action"
+                            hx-post="/api/reading/{{ item.id }}/pause" hx-target="#reading-list"
+                            hx-swap="innerHTML" hx-include="#reading-filters"
+                            title="Вернуться к книге с той же страницы">продолжаю</button>
+                    {% endif %}
                     {% if item.content %}
                     <button type="button" class="reading-card__action" onclick="showReadingPopup({{ item.id }})"
                             title="Показать заметку целиком">подробнее</button>

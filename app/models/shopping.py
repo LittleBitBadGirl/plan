@@ -42,9 +42,12 @@ class ShoppingItem(Base):
 
     # --- Reading tracker fields ---
     reading_status = Column(String(20), default="want_to_read", nullable=False)
-    # want_to_read / reading / done
+    # want_to_read / reading / paused / archived (прочитано = is_archived)
     pages_total = Column(Integer, nullable=True)
     pages_read = Column(Integer, default=0)
+    # «Не читаю» — временная пауза: статус меняется, страницы остаются. Дата
+    # нужна, чтобы на дашборде честно сказать, сколько книга уже лежит.
+    reading_paused_at = Column(DateTime(timezone=True), nullable=True)
 
     # --- Таксономия чтения (см. reading_service) ---------------------------
     # Категория берётся из общей таблицы categories с type='reading':

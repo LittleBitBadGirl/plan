@@ -190,7 +190,11 @@ async def load_reading(db: AsyncSession, filters: ReadingFilters) -> list[Shoppi
     if filters.sort == "title":
         query = query.order_by(func.lower(ShoppingItem.title))
     else:
-        status_order = case((ShoppingItem.reading_status == "reading", 0), else_=1)
+        status_order = case(
+            (ShoppingItem.reading_status == "reading", 0),
+            (ShoppingItem.reading_status == "paused", 1),
+            else_=2,
+        )
         query = query.order_by(status_order, ShoppingItem.created_at.desc())
     query = query.limit(filters.limit)
     result = await db.execute(query)
