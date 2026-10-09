@@ -1157,10 +1157,24 @@ async def books_in_progress(db: AsyncSession) -> tuple[list[dict], list[dict]]:
 
 
 async def render_reading_now_block(request: Request, db: AsyncSession) -> str:
-    """Блок «Читаю сейчас» отдельным ответом — на кнопку «не читаю» с дашборда."""
-    now, paused = await books_in_progress(db)
+    """Блок «Читаю сейчас» на дашборде — ответ на кнопку «не читаю»."""
+    now, _paused = await books_in_progress(db)
     tpl = templates.get_template("partials/reading_now_block.html")
-    return tpl.render({"request": request, "reading_now": now, "reading_paused": paused})
+    return tpl.render({"request": request, "reading_now": now})
+
+
+async def render_reading_top_block(request: Request, db: AsyncSession, oob: bool = False) -> str:
+    """Большой блок «Я читаю сейчас» вверху страницы «Читать».
+
+    Показывает и то, что читается, и то, что отложено: Вера просила, чтобы
+    «прям видно было, что я тормознула». ``oob=True`` — блок приезжает ответом на
+    кнопку и подменяет себя на месте (элемент помечен hx-swap-oob).
+    """
+    now, paused = await books_in_progress(db)
+    tpl = templates.get_template("partials/reading_top_block.html")
+    return tpl.render(
+        {"request": request, "reading_now": now, "reading_paused": paused, "oob": oob}
+    )
 
 
 async def reading_filters_from_request(request: Request):
@@ -1199,8 +1213,12 @@ async def build_reading_context(db: AsyncSession, filters) -> dict:
     ]
     tag_pairs = await rs.tag_counts(db, filters)
     tag_all = len(tag_pairs) <= rs.TAG_CHIPS_LIMIT or filters.all_tags
+    # Большой блок «Я читаю сейчас» вверху страницы: что читаю и что отложено.
+    reading_now, reading_paused = await books_in_progress(db)
     return {
         "shelves": shelves,
+        "reading_now": reading_now,
+        "reading_paused": reading_paused,
         # found — сколько всего подходит под фильтры, shown — сколько уже
         # нарисовали (порция PAGE_SIZE, дальше кнопка «показать ещё»).
         "found": found,
@@ -1238,7 +1256,12 @@ async def _reading_list_response(request: Request, db: AsyncSession):
     context = await build_reading_context(db, filters)
     # htmx присылает HX-Request: тогда вместе со списком обновляем чипсы фильтров.
     context["oob"] = request.headers.get("HX-Request") == "true"
-    return HTMLResponse(content=_render_reading_list(request, context))
+    content = _render_reading_list(request, context)
+    if context["oob"]:
+        # Блок «Я читаю сейчас» стоит выше списка и в список не входит: после
+        # любой правки (пауза, страницы, статус) его тоже надо перерисовать.
+        content += await render_reading_top_block(request, db, oob=True)
+    return HTMLResponse(content=content)
 
 
 def _shift_months(day: date, months: int) -> date:

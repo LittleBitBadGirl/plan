@@ -10,9 +10,11 @@ from app.services import reading_service as rs
 from app.services.shopping_service import archive_purchased_item
 from app.web.deps import (
     _reading_list_response,
+    _render_reading_list,
     build_reading_context,
     reading_filters_from_request,
     render_reading_now_block,
+    render_reading_top_block,
     templates,
 )
 
@@ -162,6 +164,23 @@ async def toggle_reading_progress(request: Request, item_id: int):
         return await _reading_list_response(request, db)
 
 
+async def _reading_page_response(request: Request, db) -> HTMLResponse:
+    """Ответ на кнопки в большом блоке «Я читаю сейчас».
+
+    Подменяем два элемента сразу: сам блок (он выше списка) и список карточек —
+    иначе после паузы в списке осталась бы старая кнопка «не читаю».
+    """
+    filters = await reading_filters_from_request(request)
+    context = await build_reading_context(db, filters)
+    html = await render_reading_top_block(request, db, oob=True)
+    html += (
+        '<div id="reading-list" hx-swap-oob="innerHTML">'
+        + _render_reading_list(request, context)
+        + "</div>"
+    )
+    return HTMLResponse(html)
+
+
 @router.post("/api/reading/{item_id}/pause", response_class=HTMLResponse)
 async def pause_reading(
     request: Request,
@@ -175,8 +194,10 @@ async def pause_reading(
     ``pages_read`` и ``pages_total`` не трогаем вовсе, поэтому книга открывается
     на той же странице.
 
-    ``surface=dashboard`` — кнопка нажата в блоке «Читаю сейчас»: ответом идёт
-    сам блок, а не список страницы «Читать».
+    ``surface`` подсказывает, откуда нажали: ``dashboard`` — блок «Читаю сейчас»
+    на дашборде (оттуда отложенная книга просто исчезает), ``top`` — большой блок
+    вверху страницы «Читать» (там она переезжает в «на паузе»), иначе — карточка
+    в списке.
     """
     async with async_session() as db:
         item = await _reading_item(db, item_id)
@@ -189,6 +210,8 @@ async def pause_reading(
         await db.commit()
         if surface == "dashboard":
             return HTMLResponse(await render_reading_now_block(request, db))
+        if surface == "top":
+            return await _reading_page_response(request, db)
         return await _reading_list_response(request, db)
 
 

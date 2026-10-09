@@ -190,9 +190,10 @@ async def dashboard(request: Request):
 
         shopping_items = await load_active_shopping(db)
         reading_items = await load_active_reading(db)
-        # Книги, которые читаю сейчас, и те, что отложены: в блоке видно прогресс
-        # по страницам и пересказы по каждой книге.
-        reading_now, reading_paused = await books_in_progress(db)
+        # Книги, которые читаю сейчас: в блоке видно прогресс по страницам и
+        # пересказы по каждой. Отложенные («не читаю») на дашборде не показываем —
+        # они живут большим блоком вверху страницы «Читать».
+        reading_now, _reading_paused = await books_in_progress(db)
 
         # Мероприятия: блок «ближайшая неделя» в правой колонке и переход
         # в календарь мероприятий. Считает сервис — тот же код, что отдаёт
@@ -254,7 +255,6 @@ async def dashboard(request: Request):
         "shopping_items": shopping_items,
         "reading_items": reading_items_view(reading_items),
         "reading_now": reading_now,
-        "reading_paused": reading_paused,
         "shop_stats": {
             "total": len(shopping_items),
             "remaining": len(shopping_items),

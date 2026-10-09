@@ -1,0 +1,112 @@
+{# Большой блок «Что читаю» вверху страницы «Читать».
+
+   Вера: «есть смысл на странице риддинг вверху сделать большой блок что читаю и
+   там уже что на паузе выложить, чтоб прям видно было, что я тормознула». На
+   дашборде место тесное, поэтому отложенные книги живут здесь. #}
+<section id="reading-top" class="rtop"{% if oob %} hx-swap-oob="outerHTML"{% endif %}>
+    <div class="rtop__head">
+        <h2 class="rtop__title">Я читаю сейчас</h2>
+        <span class="rtop__counts">
+            в процессе: {{ reading_now | length }}
+            {% if reading_paused %} · на паузе: {{ reading_paused | length }}{% endif %}
+        </span>
+    </div>
+
+    {% if reading_now %}
+    <div class="rtop__grid">
+        {% for book in reading_now %}
+        <article class="rtop__book">
+            <div class="rtop__row">
+                {% if book.url %}
+                <a class="rtop__name" href="{{ book.url }}" target="_blank" rel="noopener noreferrer">{{ book.title }}</a>
+                {% else %}
+                <span class="rtop__name">{{ book.title }}</span>
+                {% endif %}
+                {% if book.reading_format %}<span class="rtop__chip">{{ book.reading_format }}</span>{% endif %}
+            </div>
+
+            {% if book.pages_total %}
+            <div class="rtop__progress">
+                <span class="rtop__pages">{{ book.pages_read }} / {{ book.pages_total }}</span>
+                <span class="rtop__bar"><i style="width: {{ book.pages_pct }}%"></i></span>
+                <span class="rtop__pct">{{ book.pages_pct }}%</span>
+            </div>
+            {% endif %}
+
+            <div class="rtop__meta">
+                {% if book.retellings.count %}
+                <span class="rtop__tales">пересказов {{ book.retellings.count }} · мыслей {{ book.retellings.thoughts }}{% if book.retellings.last_day %} · последний {{ book.retellings.last_day[8:10] }}.{{ book.retellings.last_day[5:7] }}{% endif %}</span>
+                {% else %}
+                <span class="rtop__none">пересказов пока нет</span>
+                {% endif %}
+            </div>
+
+            {% if book.thought %}
+            <p class="rtop__thought">{{ book.thought }}</p>
+            {% endif %}
+
+            <div class="rtop__actions">
+                <button type="button" class="rtop__btn"
+                        hx-post="/api/reading/{{ book.id }}/pause" hx-target="#reading-top" hx-swap="none"
+                        title="Отложить книгу: страницы останутся">не читаю</button>
+                <a href="#reading-{{ book.id }}" class="rtop__btn rtop__btn--ghost">к карточке</a>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if reading_paused %}
+    <div class="rtop__stalled">
+        <div class="rtop__stalled-head">На паузе</div>
+        {% for book in reading_paused %}
+        <div class="rtop__stalled-row">
+            <span class="rtop__stalled-name">{{ book.title }}</span>
+            {% if book.pages_total %}<span class="rtop__pages">{{ book.pages_read }} / {{ book.pages_total }}</span>{% endif %}
+            {% if book.paused_days is not none %}<span class="rtop__days">стоит {{ book.paused_days }} дн.</span>{% endif %}
+            <button type="button" class="rtop__btn rtop__btn--mini"
+                    hx-post="/api/reading/{{ book.id }}/pause" hx-target="#reading-top" hx-swap="none"
+                    title="Вернуться к книге с той же страницы">продолжаю</button>
+        </div>
+        {% endfor %}
+    </div>
+    {% elif not reading_now %}
+    <p class="rtop__empty">Ничего не читаю. Взять книгу можно ниже, из списка.</p>
+    {% endif %}
+
+    {# Стили в самом блоке: он приезжает и ответом на кнопку, а файлы статики
+       кешируются по версии — так правки видны сразу. #}
+    <style>
+        .rtop { background: #1c1917; border: 1px solid #44403c; border-radius: 14px; padding: 18px 20px; }
+        .rtop__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+        .rtop__title { margin: 0; font-size: 20px; font-weight: 700; color: #f5f5f4; }
+        .rtop__counts { font-size: 12px; color: #a8a29e; }
+        .rtop__grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+        .rtop__book { background: #292524; border: 1px solid #44403c; border-radius: 12px; padding: 14px 16px; }
+        .rtop__row { display: flex; align-items: baseline; gap: 8px; }
+        .rtop__name { font-size: 16px; font-weight: 600; color: #e7e5e4; text-decoration: none; }
+        a.rtop__name:hover { color: #fbbf24; text-decoration: underline; }
+        .rtop__chip { font-size: 11px; color: #a8a29e; border: 1px solid #57534e; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+        .rtop__progress { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+        .rtop__pages { font-size: 15px; font-weight: 700; color: #fbbf24; white-space: nowrap; }
+        .rtop__bar { flex: 1; height: 6px; background: #171412; border-radius: 999px; overflow: hidden; }
+        .rtop__bar > i { display: block; height: 100%; background: #f59e0b; border-radius: 999px; }
+        .rtop__pct { font-size: 12px; color: #a8a29e; min-width: 34px; text-align: right; }
+        .rtop__meta { margin-top: 8px; font-size: 12px; }
+        .rtop__tales { color: #fbbf24; }
+        .rtop__none { color: #78716c; }
+        .rtop__thought { margin: 8px 0 0; font-size: 12px; line-height: 1.45; color: #d6d3d1; border-left: 2px solid #57534e; padding-left: 8px; }
+        .rtop__actions { display: flex; gap: 8px; margin-top: 12px; }
+        .rtop__btn { font-size: 12px; color: #d6d3d1; background: #1c1917; border: 1px solid #57534e; border-radius: 8px; padding: 5px 12px; cursor: pointer; text-decoration: none; }
+        .rtop__btn:hover { border-color: #f59e0b; color: #fbbf24; }
+        .rtop__btn--ghost { background: transparent; }
+        .rtop__btn--mini { padding: 3px 10px; font-size: 11px; }
+        .rtop__empty { margin: 0; font-size: 13px; color: #a8a29e; }
+        .rtop__stalled { margin-top: 16px; border-top: 1px solid #44403c; padding-top: 14px; }
+        .rtop__stalled-head { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #f59e0b; margin-bottom: 10px; }
+        .rtop__stalled-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #292524; }
+        .rtop__stalled-row:last-child { border-bottom: none; }
+        .rtop__stalled-name { flex: 1; font-size: 15px; color: #d6d3d1; }
+        .rtop__days { font-size: 12px; color: #f59e0b; white-space: nowrap; }
+    </style>
+</section>

@@ -51,30 +51,45 @@ async def test_dashboard_shows_book_with_progress_and_retellings(client, db):
 
 
 @pytest.mark.asyncio
-async def test_pause_keeps_progress_and_book_stays_on_dashboard(client, db):
-    """«Не читаю» — пауза: страницы на месте, книга не исчезает с дашборда."""
+async def test_pause_keeps_progress_and_moves_book_out_of_dashboard(client, db):
+    """«Не читаю» — пауза: страницы целы, с дашборда книга уходит.
+
+    Вера: «на паузе не надо оставлять на дашборде — нет в этом смысла! Но есть
+    смысл на странице риддинг вверху сделать большой блок что читаю и там уже что
+    на паузе выложить, чтоб прям видно было, что я тормознула».
+    """
     book = await _book(db, "Ненасильственное общение", pages_read=31, pages_total=254)
 
     resp = await client.post(f"/api/reading/{book.id}/pause", data={"surface": "dashboard"})
     assert resp.status_code == 200
     assert 'id="reading-now"' in resp.text  # ответом приезжает сам блок
-    assert "на паузе" in resp.text
-    assert "31/254" in resp.text
+    assert "Ничего не читаю" in resp.text  # и отложенной книги в нём уже нет
     await db.refresh(book)
     assert book.reading_status == "paused"
     assert (book.pages_read, book.pages_total) == (31, 254)
     assert book.reading_paused_at is not None
 
     html = (await client.get("/")).text
-    assert "Ненасильственное общение" in html
-    assert "на паузе" in html
+    assert "Ненасильственное общение" not in html
+    assert "на паузе" not in html
 
-    resp = await client.post(f"/api/reading/{book.id}/pause", data={"surface": "dashboard"})
+    reading = (await client.get("/reading")).text
+    assert "Я читаю сейчас" in reading
+    assert "На паузе" in reading
+    assert "Ненасильственное общение" in reading
+    assert "31 / 254" in reading
+    assert "стоит 0 дн." in reading
+
+    # возврат из большого блока: блок и список подменяются вместе
+    resp = await client.post(f"/api/reading/{book.id}/pause", data={"surface": "top"})
+    assert resp.status_code == 200
+    assert 'id="reading-top"' in resp.text and "hx-swap-oob" in resp.text
+    assert 'id="reading-list"' in resp.text
+    assert "не читаю" in resp.text
     await db.refresh(book)
     assert book.reading_status == "reading"
     assert book.reading_paused_at is None
     assert (book.pages_read, book.pages_total) == (31, 254)
-    assert "не читаю" in resp.text
 
 
 @pytest.mark.asyncio
