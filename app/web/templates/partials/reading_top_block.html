@@ -81,7 +81,7 @@
         .rtop__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
         .rtop__title { margin: 0; font-size: 20px; font-weight: 700; color: #f5f5f4; }
         .rtop__counts { font-size: 12px; color: #a8a29e; }
-        .rtop__grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+        .rtop__grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
         .rtop__book { background: #292524; border: 1px solid #44403c; border-radius: 12px; padding: 14px 16px; }
         .rtop__row { display: flex; align-items: baseline; gap: 8px; }
         .rtop__name { font-size: 16px; font-weight: 600; color: #e7e5e4; text-decoration: none; }
@@ -108,5 +108,24 @@
         .rtop__stalled-row:last-child { border-bottom: none; }
         .rtop__stalled-name { flex: 1; font-size: 15px; color: #d6d3d1; }
         .rtop__days { font-size: 12px; color: #f59e0b; white-space: nowrap; }
+
+        /* Мобильный: карточки не должны вылезать за экран, а строка «на паузе»
+           переносится — иначе название зажимается в столбик, а кнопка уезжает. */
+        @media (max-width: 560px) {
+            .rtop { padding: 14px 12px; border-radius: 12px; }
+            .rtop__head { flex-direction: column; align-items: flex-start; gap: 2px; margin-bottom: 12px; }
+            .rtop__title { font-size: 18px; }
+            .rtop__counts { font-size: 11px; }
+            .rtop__grid { grid-template-columns: 1fr; gap: 10px; }
+            .rtop__book { padding: 12px; }
+            .rtop__row { flex-wrap: wrap; }
+            .rtop__name { font-size: 15px; }
+            .rtop__progress { gap: 8px; }
+            .rtop__pages { font-size: 14px; }
+            .rtop__bar { min-width: 60px; }
+            .rtop__stalled-row { flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 0; }
+            .rtop__stalled-name { flex: 1 1 100%; font-size: 14px; }
+            .rtop__btn--mini { margin-left: auto; }
+        }
     </style>
 </section>
