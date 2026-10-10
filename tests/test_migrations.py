@@ -193,7 +193,7 @@ async def test_run_migrations_on_fresh_db():
             "is_archived",
         } <= event_cols
         assert "ix_events_range" in event_indexes
-        # Миграция 023: архивные отметки цикла — колонка обязана появиться.
+        # Миграция 027: архивные отметки цикла — колонка обязана появиться.
         assert "is_archival" in period_cols
 
         assert "day_wins" in tables

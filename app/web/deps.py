@@ -431,7 +431,10 @@ async def load_period_entries_for_dashboard(
     result = await db.execute(
         select(PeriodEntry)
         .where(PeriodEntry.date >= window_start)
-        .where(PeriodEntry.is_archival == False)  # noqa: E712
+        # NULL читаем как «не архив»: колонка заводилась позже данных, и сравнение
+        # с False выбрасывало такие отметки из карточки, хотя в средние они
+        # попадали (там пустое значение читается как false).
+        .where(or_(PeriodEntry.is_archival.is_(None), PeriodEntry.is_archival == False))  # noqa: E712
         .order_by(PeriodEntry.date)
     )
     return list(result.scalars().all())

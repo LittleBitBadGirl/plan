@@ -148,7 +148,7 @@
 {% endif %}
 {% set pain_cycles = period_stats.cycles_history | selectattr('pain_days', 'gt', 0) | list %}{% if pain_cycles %}Боли отмечены в {{ pain_cycles|length }} из {{ period_stats.cycles_history|length }} цикл(ов).{% else %}Болей не отмечено.{% endif %}
 Регулярность цикла: {{ period_stats.regularity }}{% if period_stats.cycle_stddev is not none %} (σ = {{ period_stats.cycle_stddev }} дн.){% endif %}.
-{% if period_stats.archive %}Архив (перенесено вручную из старого приложения, в средние выше не входит): {{ period_stats.archive.count }} цикл(ов) с {{ period_stats.archive.first }} по {{ period_stats.archive.last }}, средняя длина цикла {{ period_stats.archive.avg_cycle }} дней (разброс {{ period_stats.archive.min }}–{{ period_stats.archive.max }}), средняя продолжительность менструации {{ period_stats.archive.avg_period }} дня.
+{% if period_stats.archive %}{% set arc = period_stats.archive %}Архив (перенесено вручную из старого приложения, в средние выше не входит): {{ arc.count }} цикл(ов) с {{ arc.first }} по {{ arc.last }}{% if arc.avg_cycle %}, средняя длина цикла {{ arc.avg_cycle }} дней (разброс {{ arc.min }}–{{ arc.max }}){% endif %}{% if arc.avg_period %}, средняя продолжительность менструации {{ arc.avg_period }} дня{% endif %}.
 {% endif %}</pre>
         </div>
     </div>
@@ -170,7 +170,7 @@
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 sm:mb-6">
             <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
                 <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Ср. цикл</p>
-                <p class="text-lg sm:text-xl font-black text-gray-300 tabular-nums">{{ arc.avg_cycle }}<span class="text-xs font-normal text-gray-500"> дн.</span></p>
+                <p class="text-lg sm:text-xl font-black text-gray-300 tabular-nums">{{ arc.avg_cycle if arc.avg_cycle else '—' }}<span class="text-xs font-normal text-gray-500"> дн.</span></p>
             </div>
             <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
                 <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Ср. менструация</p>
@@ -178,7 +178,7 @@
             </div>
             <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
                 <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Разброс</p>
-                <p class="text-lg sm:text-xl font-black text-gray-300 tabular-nums">{{ arc.min }}–{{ arc.max }}<span class="text-xs font-normal text-gray-500"> дн.</span></p>
+                <p class="text-lg sm:text-xl font-black text-gray-300 tabular-nums">{{ (arc.min ~ '–' ~ arc.max) if arc.min and arc.max else '—' }}<span class="text-xs font-normal text-gray-500"> дн.</span></p>
             </div>
             <div class="rounded-xl bg-dark-900/50 border border-dark-700 px-3 py-2.5">
                 <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Циклов</p>
