@@ -164,6 +164,14 @@ def _build_month_calendar(today: date, period_map: dict) -> tuple[str, int, list
     return month_label, start_weekday, calendar_days
 
 
+# Пауза длиннее этого — не цикл. Между последней отметкой старого приложения
+# (март 2024) и первой отметкой нового (май 2026) был разрыв 792 дня, и он
+# попадал в «среднюю длину цикла» архива как один цикл. Такие промежутки —
+# пауза, а не цикл: в статистику не идут, у цикла перед паузой длина не
+# показывается (просьба Веры, 10.10.2026).
+MAX_CYCLE_LENGTH_DAYS = 60
+
+
 def _group_period_cycles(sorted_entries):
     """Группирует записи в циклы (разрыв ≤ 2 дня). Возвращает (группы, старты циклов).
 
@@ -196,7 +204,10 @@ def _build_period_archive(archival_entries) -> Optional[dict]:
         return None
 
     groups, starts = _group_period_cycles(sorted(archival_entries, key=lambda e: e.date))
-    lengths = [(starts[i + 1] - starts[i]).days for i in range(len(starts) - 1)]
+    gaps = [(starts[i + 1] - starts[i]).days for i in range(len(starts) - 1)]
+    # В средние берём только настоящие циклы: паузы длиннее MAX_CYCLE_LENGTH_DAYS
+    # (разрыв между старым приложением и новым) в статистику не идут.
+    lengths = [gap for gap in gaps if gap <= MAX_CYCLE_LENGTH_DAYS]
     real_groups = [g for g in groups if any(not e.is_spotting for e in g)]
     day_counts = [sum(1 for e in g if not e.is_spotting) for g in real_groups]
 
@@ -208,7 +219,8 @@ def _build_period_archive(archival_entries) -> Optional[dict]:
             "start": bleed[0].date.strftime("%d.%m.%Y"),
             "end": bleed[-1].date.strftime("%d.%m.%Y"),
             "period_days": len(bleed),
-            "length": lengths[idx] if idx < len(lengths) else None,
+            # Длину показываем только у настоящих циклов: после паузы — «—».
+            "length": gaps[idx] if idx < len(gaps) and gaps[idx] <= MAX_CYCLE_LENGTH_DAYS else None,
         })
 
     if not cycles:
@@ -298,6 +310,8 @@ def compute_period_data(entries, today: date) -> dict:
     cycle_lengths = [
         (cycle_starts[i + 1] - cycle_starts[i]).days
         for i in range(len(cycle_starts) - 1)
+        # Паузу (разрыв длиннее MAX_CYCLE_LENGTH_DAYS) циклом не считаем.
+        if (cycle_starts[i + 1] - cycle_starts[i]).days <= MAX_CYCLE_LENGTH_DAYS
     ]
 
     # avg_period = mean of non-spotting days per REAL cycle (skip spotting-only groups)
@@ -1286,6 +1300,19 @@ async def render_reading_now_block(request: Request, db: AsyncSession) -> str:
     now, _paused = await books_in_progress(db)
     tpl = templates.get_template("partials/reading_now_block.html")
     return tpl.render({"request": request, "reading_now": now})
+
+
+async def render_reading_shortcut(request: Request, db: AsyncSession, oob: bool = True) -> str:
+    """Плашка «Читать» в шапке дашборда.
+
+    Её возвращают ответы на правку страниц и на паузу: без этого процент в шапке
+    оставался от прошлой загрузки, пока блок «Читаю сейчас» уже обновился.
+    """
+    from app.services.shopping_service import load_active_reading
+
+    items = await load_active_reading(db)
+    tpl = templates.get_template("partials/reading_shortcut.html")
+    return tpl.render({"request": request, "reading_items": reading_items_view(items), "oob": oob})
 
 
 async def render_reading_top_block(request: Request, db: AsyncSession, oob: bool = False) -> str:

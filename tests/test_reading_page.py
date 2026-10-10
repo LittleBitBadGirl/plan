@@ -73,3 +73,28 @@ async def test_dashboard_has_reading_shortcut_not_list(client, db):
 async def test_nav_links_to_reading(client):
     html = (await client.get("/")).text
     assert 'href="/reading"' in html
+
+
+@pytest.mark.asyncio
+async def test_reading_pages_editable_from_dashboard(client, db):
+    """Страницы правятся прямо на дашборде: ответ — блок «Читаю сейчас», не список."""
+    item = ShoppingItem(
+        title="Книга на дашборде", item_kind="reading", reading_status="reading",
+        pages_read=10, pages_total=100,
+    )
+    db.add(item)
+    await db.commit()
+
+    html = (await client.get("/")).text
+    assert 'name="pages_read"' in html          # поле есть прямо на дашборде
+    assert 'id="reading-shortcut"' in html      # плашка «Читать» на месте
+
+    resp = await client.post(
+        f"/api/reading/{item.id}/pages",
+        data={"pages_read": "42", "surface": "dashboard"},
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'id="reading-now"' in body           # вернулся блок дашборда
+    assert "42/100" in body
+    assert 'hx-swap-oob="outerHTML"' in body    # и свежая плашка «Читать» вместе с ним

@@ -118,3 +118,22 @@ def test_entries_without_archival_attribute_still_work():
 
     assert data["avg_cycle"] == 32
     assert data["archive"] is None
+
+
+def test_pauza_mezhdu_prilozheniyami_ne_schitaetsya_ciklem():
+    """Разрыв между старым приложением и новым (792 дня) — пауза, а не цикл:
+    в средние не входит, у цикла перед паузой длина не показывается («—»)."""
+    entries = [
+        _entry("2024-03-22", archival=True), _entry("2024-03-23", archival=True),
+        _entry("2024-03-24", archival=True), _entry("2024-03-25", archival=True),
+        _entry("2026-05-23", archival=True), _entry("2026-05-24", archival=True),
+        _entry("2026-05-25", archival=True),
+        _entry("2026-06-22", archival=True), _entry("2026-06-23", archival=True),
+        _entry("2026-06-24", archival=True),
+    ]
+    archive = compute_period_data(entries, TODAY)["archive"]
+
+    assert archive["count"] == 3
+    assert [c["length"] for c in archive["cycles"]] == [None, 30, None]
+    assert archive["avg_cycle"] == 30
+    assert (archive["min"], archive["max"]) == (30, 30)

@@ -39,12 +39,25 @@
             <p class="rnow__thought">{{ book.thought }}</p>
             {% endif %}
 
+            {% if book.pages_total %}
+            <form class="rnow__pages" hx-post="/api/reading/{{ book.id }}/pages"
+                  hx-target="#reading-now" hx-swap="outerHTML">
+                <input type="hidden" name="surface" value="dashboard">
+                <label class="rnow__pages-label" for="rnow-pages-{{ book.id }}">прочитано</label>
+                <input id="rnow-pages-{{ book.id }}" class="rnow__pages-input" type="number"
+                       inputmode="numeric" name="pages_read" value="{{ book.pages_read }}"
+                       min="0" max="{{ book.pages_total }}">
+                <span class="rnow__pages-of">из {{ book.pages_total }}</span>
+                <button type="submit" class="rnow__btn rnow__btn--mini">ок</button>
+            </form>
+            {% endif %}
+
             <div class="rnow__actions">
                 <form hx-post="/api/reading/{{ book.id }}/pause" hx-target="#reading-now" hx-swap="outerHTML">
                     <input type="hidden" name="surface" value="dashboard">
                     <button type="submit" class="rnow__btn" title="Отложить книгу, страницы сохранятся">не читаю</button>
                 </form>
-                <a href="/reading" class="rnow__btn rnow__btn--ghost">страницы</a>
+                <a href="/reading" class="rnow__btn rnow__btn--ghost" title="Карточка книги в списке чтения">карточка</a>
             </div>
         </div>
         {% endfor %}
@@ -77,6 +90,13 @@
         .rnow__btn:hover { border-color: #f59e0b; color: #fbbf24; }
         .rnow__btn--ghost { background: transparent; }
         .rnow__btn--mini { padding: 2px 8px; font-size: 11px; }
+        /* Правка страниц прямо на дашборде: без ухода в карточку книги. */
+        .rnow__pages { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+        .rnow__pages-label { font-size: 11px; color: #78716c; }
+        .rnow__pages-input { width: 72px; font-size: 13px; color: #f5f5f4; background: #292524;
+            border: 1px solid #44403c; border-radius: 8px; padding: 4px 6px; }
+        .rnow__pages-input:focus { outline: none; border-color: #f59e0b; }
+        .rnow__pages-of { font-size: 12px; color: #a8a29e; }
         .rnow__empty { margin: 0; font-size: 12px; color: #78716c; }
         .rnow__empty a { color: #f59e0b; text-decoration: none; }
     </style>

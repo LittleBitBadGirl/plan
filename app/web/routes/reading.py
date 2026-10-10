@@ -14,6 +14,7 @@ from app.web.deps import (
     build_reading_context,
     reading_filters_from_request,
     render_reading_now_block,
+    render_reading_shortcut,
     render_reading_top_block,
     templates,
 )
@@ -209,7 +210,11 @@ async def pause_reading(
             item.reading_paused_at = datetime.now()
         await db.commit()
         if surface == "dashboard":
-            return HTMLResponse(await render_reading_now_block(request, db))
+            # Отдаём блок «Читаю сейчас» и вместе с ним свежую плашку «Читать»
+            # в шапке: иначе процент в шапке отставал от правки.
+            html = await render_reading_now_block(request, db)
+            html += await render_reading_shortcut(request, db)
+            return HTMLResponse(html)
         if surface == "top":
             return await _reading_page_response(request, db)
         return await _reading_list_response(request, db)
@@ -221,6 +226,7 @@ async def update_reading_pages(
     item_id: int,
     pages_total: int = Form(None),
     pages_read: int = Form(None),
+    surface: str = Form(None),
 ):
     """Обновить общее число страниц и/или прочитанные страницы."""
     async with async_session() as db:
@@ -230,6 +236,12 @@ async def update_reading_pages(
         if pages_read is not None:
             item.pages_read = pages_read
         await db.commit()
+        if surface == "dashboard":
+            # Страницы правятся прямо на дашборде: возвращаем блок «Читаю сейчас»
+            # и свежую плашку «Читать», а не список страницы «Читать».
+            html = await render_reading_now_block(request, db)
+            html += await render_reading_shortcut(request, db)
+            return HTMLResponse(html)
         return await _reading_list_response(request, db)
 
 
