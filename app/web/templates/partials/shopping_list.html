@@ -13,9 +13,17 @@
             {{ icon_check() }}
         </button>
         <div class="flex-1 min-w-0">
+            {% set link = item.content|first_url %}
+            {% if link %}
+            <a href="{{ link }}" target="_blank" rel="noopener noreferrer"
+               class="font-medium text-sm text-white block break-words whitespace-normal sm:truncate hover:text-amber-400 transition"
+               title="{{ item.title }} — {{ link }}">{{ item.title }}</a>
+            <span class="text-[11px] text-gray-500">{{ link|url_host }}</span>
+            {% else %}
             <span class="font-medium text-sm text-white block break-words whitespace-normal sm:truncate" title="{{ item.title }}">
                 {{ item.title }}
             </span>
+            {% endif %}
         </div>
         <form hx-delete="/api/shopping/{{ item.id }}" hx-target="#shopping-list" hx-swap="innerHTML" class="flex-shrink-0">
             <button type="submit" class="icon-action icon-action--danger" title="Удалить">

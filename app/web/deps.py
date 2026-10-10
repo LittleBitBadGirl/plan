@@ -6,6 +6,7 @@ import re
 from statistics import mean
 from datetime import date, datetime, time, timedelta, timezone
 from typing import List, Optional
+from urllib.parse import urlparse
 
 from fastapi import Request
 from markupsafe import Markup, escape
@@ -483,8 +484,15 @@ def _today_date() -> date:
 
 templates.env.globals["today_date"] = _today_date
 
-_URL_IN_TEXT = re.compile(r"((?:https?://|www\.)[^\s<>\"']+)")
-_URL_TRAILING_PUNCT = re.compile(r"[.,;:!?)\]\}]+$")
+_URL_IN_TEXT = re.compile(r"((?:https?://|www\.)[^\s<>\"']+)", re.IGNORECASE)
+_URL_TRAILING_PUNCT = re.compile(r"[.,;:!?)\]}>»«„“”\"]+$")
+_URL_BARE = re.compile(
+    r"(?<![\w@/.-])("
+    r"(?:[a-z0-9][a-z0-9-]{0,62}\.)+"
+    r"(?:ru|com|net|org|io|kz|by|ua|shop|store|online|site|app|me|click|xyz|it|de|fr|es|tr|cn|jp|co|uk)"
+    r"(?:/[^\s<>\"'«»]*)?)",
+    re.IGNORECASE,
+)
 
 
 def _linkify(text: str) -> Markup:
@@ -513,6 +521,41 @@ def _linkify(text: str) -> Markup:
 
 
 templates.env.filters["linkify"] = _linkify
+
+
+def _first_url(text: Optional[str]) -> str:
+    """Первая ссылка в тексте — чтобы покупку можно было открыть по ссылке."""
+    if not text:
+        return ""
+    match = _URL_IN_TEXT.search(text)
+    if match:
+        url = match.group(1)
+    else:
+        bare = _URL_BARE.search(text)
+        if not bare:
+            return ""
+        url = bare.group(1)
+    trimmed = _URL_TRAILING_PUNCT.search(url)
+    if trimmed:
+        url = url[: trimmed.start()]
+    if not url:
+        return ""
+    return url if url.lower().startswith("http") else f"https://{url}"
+
+
+templates.env.filters["first_url"] = _first_url
+
+
+def _url_host(text: Optional[str]) -> str:
+    """Домен первой ссылки — подпись магазина на карточке покупки."""
+    url = _first_url(text)
+    if not url:
+        return ""
+    host = urlparse(url).netloc.lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+templates.env.filters["url_host"] = _url_host
 
 
 def _render_shopping_list(request: Request, items: list) -> str:
