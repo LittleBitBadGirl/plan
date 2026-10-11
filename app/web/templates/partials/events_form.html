@@ -63,6 +63,31 @@
                 {% endif %}
             </div>
         </div>
+        <div class="ev-field ev-field--wide">
+            <span>Билеты</span>
+            <div class="ev-tickets">
+                <input type="file" name="tickets" multiple accept=".pdf,image/*" data-ev-tickets>
+                <p class="ev-image__hint">PDF билета или фото, до 20 МБ, можно несколько — потом открывается прямо с карточки. Сюда же и перелёты: мероприятие с датой, билет внутри</p>
+                {% if form_tickets %}
+                <ul class="ev-tickets__list">
+                    {% for ticket in form_tickets %}
+                    <li class="ev-tickets__item">
+                        <a class="ev-ticket" href="/events/{{ form_event_id }}/tickets/{{ loop.index0 }}"
+                           target="_blank" rel="noopener">{{ ticket.name }}</a>
+                        <label class="ev-tickets__drop">
+                            <input type="checkbox" name="drop_tickets" value="{{ loop.index0 }}"> убрать
+                        </label>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% if form_tickets|length > 1 %}
+                <label class="ev-image__remove">
+                    <input type="checkbox" name="remove_tickets" value="1"> убрать все билеты
+                </label>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
     </div>
 
     <div class="ev-form__foot">

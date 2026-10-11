@@ -7,6 +7,7 @@
 """
 
 from sqlalchemy import (
+    JSON,
     Column,
     Date,
     DateTime,
@@ -54,6 +55,11 @@ class Event(Base):
     # тогда файл лежит в uploads/events/, а в колонке относительный путь.
     image_url = Column(String(1000), nullable=True)
     image_file = Column(String(300), nullable=True)
+    # Билеты: PDF или фото билета (хоккей, самолёт, поезд). Список словарей
+    # [{"path": "tickets/…pdf", "name": "билет.pdf"}]. Файлы лежат в ЗАКРЫТОЙ
+    # папке tickets/, а не в uploads/: там статика отдаётся без входа, а в
+    # билете ФИО, а иногда и паспорт (решение Веры 11.10.2026).
+    ticket_files = Column(JSON, nullable=True)
     location = Column(String(500), nullable=True)
     start_date = Column(Date, nullable=False, index=True)
     end_date = Column(Date, nullable=True)  # NULL = одна дата, не период

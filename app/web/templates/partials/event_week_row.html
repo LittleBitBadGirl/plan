@@ -15,6 +15,16 @@
             {% if item.period_hint %}<span class="ev-week-row__hint">{{ item.period_hint }}</span>{% endif %}
             {% if item.location %}<span class="ev-week-row__place">{{ item.location }}</span>{% endif %}
         </span>
+        {% if item.tickets %}
+        {# Билет на руках — ссылка прямо в строке недели: билет нужен в день
+           похода, а искать ради него карточку на /events некогда. #}
+        <span class="ev-week-row__tickets">
+            {% for ticket in item.tickets %}
+            <a class="ev-ticket" href="/events/{{ item.id }}/tickets/{{ loop.index0 }}"
+               target="_blank" rel="noopener">{{ ticket.name }}</a>
+            {% endfor %}
+        </span>
+        {% endif %}
     </span>
     {% set ev_compact = True %}
     {% include "partials/event_status.html" %}

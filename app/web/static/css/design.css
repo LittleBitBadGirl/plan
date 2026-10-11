@@ -2086,6 +2086,87 @@ h3,
     color: #78716c;
 }
 
+/* Билеты мероприятия: файл на карточке и в форме. PDF и фото — открываются
+   прямо в браузере (маршрут /events/{id}/tickets/{номер}, он под входом). */
+.ev-card-item__tickets {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+}
+
+.ev-card-item__tickets-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #78716c;
+}
+
+.ev-ticket {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.55rem;
+    border: 1px solid #44403c;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: #a8a29e;
+    font-size: 11px;
+    font-weight: 700;
+    text-decoration: none;
+    max-width: 22rem;
+}
+
+.ev-ticket:hover {
+    border-color: var(--accent);
+    color: #fcd34d;
+}
+
+.ev-ticket__wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+}
+
+.ev-tickets {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.ev-tickets__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.ev-tickets__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.ev-tickets__drop {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 11px;
+    color: #78716c;
+    cursor: pointer;
+}
+
+.ev-week-row__tickets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.2rem;
+}
+
 .ev-image__pasted {
     flex: 1 1 100%;
     gap: 0.5rem;

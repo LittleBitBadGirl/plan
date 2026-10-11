@@ -19,6 +19,9 @@ sys.path.insert(0, str(project_root))
 TEST_DB_PATH = tempfile.mktemp(suffix=".db")
 os.environ.setdefault("DATABASE_URL", f"sqlite+aiosqlite:///{TEST_DB_PATH}")
 os.environ.setdefault("API_TOKEN", "test-api-token")
+# Билеты мероприятий пишутся на диск: держим их во временной папке, иначе тесты
+# оставляли бы PDF-и в tickets/ рабочей копии.
+os.environ.setdefault("TICKETS_DIR", tempfile.mkdtemp(prefix="plan-tickets-"))
 
 from app.main import app
 from app.db.database import async_session, init_db, engine

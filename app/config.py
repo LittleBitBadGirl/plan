@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # Пути
     project_dir: Path = Path(__file__).parent.parent
     uploads_dir: Path = Path(__file__).parent.parent / "uploads"
+    # Билеты мероприятий: папка ЗАКРЫТАЯ — files отдаёт маршрут под входом, а не
+    # статика /uploads (в билете фамилия, иногда паспорт). Отдельная настройка
+    # нужна тестам: они подменяют её временной папкой и не сорят в репозитории.
+    tickets_dir: Path = Path(__file__).parent.parent / "tickets"
     config_dir: Path = Path(__file__).parent.parent / "config"
 
     # AI — DeepSeek (основной) + Gemini (vision) + Groq (резерв)

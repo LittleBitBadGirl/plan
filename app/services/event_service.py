@@ -27,6 +27,7 @@ from urllib.parse import quote, urljoin, urlparse
 import httpx
 from sqlalchemy import and_, func, or_, select
 
+from app.config import settings
 from app.models.event import (
     EVENT_STATUSES,
     STATUS_GOING,
@@ -272,6 +273,9 @@ def event_view(ev: Event, today: date) -> dict:
         "is_past": tracked_last < today,
         "is_now": ev.start_date <= today <= tracked_last,
         "in_week": today <= tracked_last and ev.start_date <= today + timedelta(days=WEEK_DAYS - 1),
+        # Билеты: файлы лежат в закрытой папке tickets/, отдаются маршрутом
+        # /events/{id}/tickets/{номер} — по номеру в списке открывается нужный.
+        "tickets": ticket_views(ev.ticket_files),
     }
 
 
@@ -1059,3 +1063,110 @@ async def save_image(upload) -> Optional[str]:
     name = f"{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}{suffix}"
     (uploads_dir() / name).write_bytes(content)
     return f"{UPLOAD_SUBDIR}/{name}"
+
+
+# --------------------------------------------------------------------------
+# билеты мероприятий
+# --------------------------------------------------------------------------
+#
+# Вера 11.10.2026: «в мероприятия добавить загрузку билетов и чтоб оттуда можно
+# было бы их забрать — у меня 25 числа хоккей и есть билет». Билетами же
+# закрываются и перелёты: мероприятие с датой и вложенным PDF — это и есть
+# «легко загрузить, потом легко найти».
+#
+# Папка tickets/ НЕ под /uploads: там статика отдаётся без входа (PUBLIC_PREFIXES
+# в app/auth.py), а в билете фамилия, иногда паспорт. Файлы отдаёт маршрут
+# /events/{id}/tickets/{номер} — он закрыт авторизацией, как и сама страница.
+
+TICKETS_SUBDIR = "tickets"
+TICKET_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".heic", ".pkpass"}
+MAX_TICKET_BYTES = 20 * 1024 * 1024
+
+
+def _ticket_name(relative: str) -> str:
+    """Запись из БД → имя файла внутри tickets/.
+
+    В базе лежит имя файла («20261012_190000_ab12cd34.pdf»), а сам файл — прямо
+    в папке билетов. Префикс «tickets/» тоже принимаем: первая версия писала
+    путь с ним, а файл клала без — из-за этого билет не находился.
+    """
+    value = (relative or "").strip().lstrip("/")
+    prefix = f"{TICKETS_SUBDIR}/"
+    if value.startswith(prefix):
+        value = value[len(prefix):]
+    return value
+
+
+def tickets_root() -> Path:
+    directory = settings.tickets_dir
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def safe_ticket_path(relative: str) -> Optional[Path]:
+    """Путь внутри папки билетов — защита от '..' из БД."""
+    root = tickets_root().resolve()
+    name = _ticket_name(relative)
+    if not name:
+        return None
+    candidate = (root / name).resolve()
+    if root not in candidate.parents:
+        return None
+    return candidate
+
+
+def delete_ticket(relative: Optional[str]) -> None:
+    target = safe_ticket_path(relative or "")
+    if target and target.is_file():
+        try:
+            target.unlink()
+        except OSError:
+            pass
+
+
+async def save_tickets(uploads: Iterable) -> list:
+    """Сохранить билеты в tickets/, вернуть [{"path", "name"}].
+
+    Не тот формат или пустой файл — просто пропускаем: билеты не тот случай,
+    чтобы ронять сохранение мероприятия из-за одного файла.
+    """
+    saved: list = []
+    for upload in uploads or []:
+        filename = (getattr(upload, "filename", "") or "").strip()
+        if not filename:
+            continue
+        suffix = Path(filename).suffix.lower()
+        if suffix not in TICKET_SUFFIXES:
+            continue
+        try:
+            content = await upload.read()
+        except Exception:  # noqa: BLE001 — битый аплоад не должен ронять запись
+            continue
+        if not content or len(content) > MAX_TICKET_BYTES:
+            continue
+        name = f"{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}{suffix}"
+        (tickets_root() / name).write_bytes(content)
+        saved.append({"path": name, "name": Path(filename).name[:200]})
+    return saved
+
+
+def ticket_view(entry) -> Optional[dict]:
+    """Запись билета из БД → то, что нужно шаблону: путь и подпись."""
+    if isinstance(entry, dict):
+        path = str(entry.get("path") or "").strip()
+        label = str(entry.get("name") or "").strip()
+    else:  # строка — запись старого формата, если такая когда-нибудь появится
+        path = str(entry or "").strip()
+        label = ""
+    if not path:
+        return None
+    return {"path": path, "name": label or Path(path).name}
+
+
+def ticket_views(entries) -> list:
+    views = []
+    for entry in entries or []:
+        view = ticket_view(entry)
+        if view:
+            views.append(view)
+    return views

@@ -11,6 +11,8 @@
 Поход:      GET  /events/{id}/visit-form     (мини-форма: день и время сеанса)
             POST /api/events/{id}/visit       («Иду»: сохранить бронь билета)
             GET  /events/{id}/visit.ics       (файл календаря, напоминание за сутки)
+Билеты:     GET  /events/{id}/tickets/{номер} (файл билета, только с входом)
+            POST /api/events/{id}/tickets/{номер}/delete (убрать один билет)
 Удаление:   POST /api/events/{id}/delete
 
 Ответы на изменения отдают ОДИН корневой блок (тот, в котором нажали —
@@ -20,12 +22,13 @@ hx-swap-oob, поэтому и страница, и дашборд обновл�
 
 from __future__ import annotations
 
+import mimetypes
 from datetime import date
-from typing import Optional
+from typing import List, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from sqlalchemy import select
 
 from app.db.database import async_session
@@ -131,6 +134,7 @@ def _form_context(
     mode: str = "add",
     event_id: Optional[int] = None,
     has_file: bool = False,
+    tickets: Optional[List[dict]] = None,
 ) -> dict:
     return {
         "form": values,
@@ -139,6 +143,9 @@ def _form_context(
         "form_mode": mode,
         "form_event_id": event_id,
         "form_has_file": has_file,
+        # Билеты, которые уже приклеены к мероприятию: в форме их видно списком
+        # и можно снять галочкой — иначе билет не заменить, а только добавить.
+        "form_tickets": tickets or [],
     }
 
 
@@ -232,6 +239,9 @@ async def _apply_form(
     image_url: str,
     image: Optional[UploadFile],
     remove_image: bool,
+    tickets: Optional[List[UploadFile]] = None,
+    remove_tickets: bool = False,
+    drop_tickets: Optional[List[str]] = None,
 ) -> str:
     """Перенести форму в запись. Возвращает текст ошибки или пустую строку."""
     clean_title = (title or "").strip()
@@ -284,6 +294,24 @@ async def _apply_form(
     if saved:
         evs.delete_upload(ev.image_file)
         ev.image_file = saved
+
+    # Билеты. «Убрать все билеты» снимает все файлы разом, галочки у отдельных
+    # билетов — только их (drop_tickets = номера из формы). Новый аплоад
+    # добавляется к оставшимся: билет на самолёт и билет на хоккей — разные файлы
+    # одного мероприятия, второй не должен затирать первый.
+    existing = evs.ticket_views(ev.ticket_files)
+    dropped = {
+        int(value) for value in (drop_tickets or []) if str(value).strip().isdigit()
+    }
+    if remove_tickets:
+        kept, removed = [], existing
+    else:
+        kept = [t for index, t in enumerate(existing) if index not in dropped]
+        removed = [t for index, t in enumerate(existing) if index in dropped]
+    for ticket in removed:
+        evs.delete_ticket(ticket["path"])
+    added = await evs.save_tickets(tickets or [])
+    ev.ticket_files = kept + added or None
     return ""
 
 
@@ -302,6 +330,7 @@ async def events_create(
     month: str = Form(""),
     day: str = Form(""),
     image: UploadFile = File(None),
+    tickets: List[UploadFile] = File(default=[]),
 ):
     """Создать мероприятие. Ошибка возвращается в форму, а не 500-й."""
     today = date.today()
@@ -319,10 +348,12 @@ async def events_create(
             image_url=image_url,
             image=image,
             remove_image=False,
+            tickets=tickets,
+            remove_tickets=False,
         )
         if not error:
             db.add(ev)
-            await db.commit()
+            await _commit_keeping_tickets(db, ev, before=set())
         board_ctx = await _board_context(db, today, month, day)
         week_ctx = await evs.week_block(db, today)
 
@@ -355,12 +386,19 @@ async def events_edit_form(request: Request, event_id: int):
         ev = await _load_event(db, event_id)
         values = _event_form_values(ev)
         own_file = bool(ev.image_file)
+        ticket_list = evs.ticket_views(ev.ticket_files)
     return templates.TemplateResponse(
         request,
         "partials/events_form.html",
         {
             "request": request,
-            **_form_context(values, mode="edit", event_id=event_id, has_file=own_file),
+            **_form_context(
+                values,
+                mode="edit",
+                event_id=event_id,
+                has_file=own_file,
+                tickets=ticket_list,
+            ),
         },
     )
 
@@ -382,11 +420,17 @@ async def events_update(
     month: str = Form(""),
     day: str = Form(""),
     image: UploadFile = File(None),
+    tickets: List[UploadFile] = File(default=[]),
+    remove_tickets: str = Form(""),
+    drop_tickets: List[str] = Form(default=[]),
 ):
     """Изменить мероприятие."""
     today = date.today()
     async with async_session() as db:
         ev = await _load_event(db, event_id)
+        # Что лежало до правки: по этому набору видно, какие файлы появились
+        # именно сейчас (их снимаем, если коммит не прошёл).
+        before = {ticket["path"] for ticket in evs.ticket_views(ev.ticket_files)}
         error = await _apply_form(
             ev,
             title=title,
@@ -399,9 +443,12 @@ async def events_update(
             image_url=image_url,
             image=image,
             remove_image=bool((remove_image or "").strip()),
+            tickets=tickets,
+            remove_tickets=bool((remove_tickets or "").strip()),
+            drop_tickets=drop_tickets,
         )
         if not error:
-            await db.commit()
+            await _commit_keeping_tickets(db, ev, before=before)
         board_ctx = await _board_context(db, today, month, day)
         week_ctx = await evs.week_block(db, today)
 
@@ -409,7 +456,13 @@ async def events_update(
     if error:
         values = _event_form_values(ev)
         values.update({"title": title, "start_date": start_date, "end_date": end_date})
-        form_ctx = _form_context(values, error=error, mode="edit", event_id=event_id)
+        form_ctx = _form_context(
+            values,
+            error=error,
+            mode="edit",
+            event_id=event_id,
+            tickets=evs.ticket_views(ev.ticket_files),
+        )
     response = _refresh(request, _wants_board(board), board_ctx, week_ctx, form_ctx)
     if not error:
         response.headers["HX-Trigger"] = "planner-event-saved"
@@ -602,6 +655,73 @@ async def events_visit_ics(event_id: int):
     )
 
 
+async def _commit_keeping_tickets(db, ev: Event, before: set) -> None:
+    """Коммит мероприятия; при сбое снять только что записанные файлы билетов.
+
+    Файлы кладутся на диск до коммита (иначе нечего показать в ответе), и если
+    коммит упал, база на них не ссылается — остались бы сироты.
+    """
+    try:
+        await db.commit()
+    except Exception:
+        for ticket in evs.ticket_views(ev.ticket_files):
+            if ticket["path"] not in before:
+                evs.delete_ticket(ticket["path"])
+        raise
+
+
+@router.get("/events/{event_id}/tickets/{index}")
+async def event_ticket(event_id: int, index: int):
+    """Отдать файл билета.
+
+    Билеты лежат в закрытой папке tickets/, а не в /uploads: та статика отдаётся
+    без входа (PUBLIC_PREFIXES в app/auth.py), а в билете фамилия, иногда
+    паспорт. Поэтому файл отдаём маршрутом — он под авторизацией, как страница.
+    """
+    async with async_session() as db:
+        ev = await _load_event(db, event_id)
+        tickets = evs.ticket_views(ev.ticket_files)
+    if index < 0 or index >= len(tickets):
+        raise HTTPException(status_code=404, detail="Билет не найден")
+    ticket = tickets[index]
+    path = evs.safe_ticket_path(ticket["path"])
+    if not path or not path.is_file():
+        raise HTTPException(status_code=404, detail="Файл билета не найден")
+    # inline: PDF и картинка открываются в браузере, а не скачиваются молча —
+    # билет нужен на входе, где скачанную папку искать некогда.
+    return FileResponse(
+        path,
+        media_type=mimetypes.guess_type(ticket["name"])[0] or "application/octet-stream",
+        filename=ticket["name"],
+        content_disposition_type="inline",
+    )
+
+
+@router.post("/api/events/{event_id}/tickets/{index}/delete", response_class=HTMLResponse)
+async def event_ticket_delete(
+    request: Request,
+    event_id: int,
+    index: int,
+    board: str = Form("1"),
+    month: str = Form(""),
+    day: str = Form(""),
+):
+    """Убрать один билет: файл с диска и запись из списка мероприятия."""
+    today = date.today()
+    async with async_session() as db:
+        ev = await _load_event(db, event_id)
+        tickets = evs.ticket_views(ev.ticket_files)
+        if 0 <= index < len(tickets):
+            evs.delete_ticket(tickets[index]["path"])
+            del tickets[index]
+            ev.ticket_files = tickets or None
+            await db.commit()
+        board_ctx = await _board_context(db, today, month, day)
+        week_ctx = await evs.week_block(db, today)
+
+    return _refresh(request, _wants_board(board), board_ctx, week_ctx)
+
+
 @router.post("/api/events/{event_id}/delete", response_class=HTMLResponse)
 async def events_delete(
     request: Request,
@@ -610,11 +730,15 @@ async def events_delete(
     month: str = Form(""),
     day: str = Form(""),
 ):
-    """Удалить мероприятие вместе со своей картинкой."""
+    """Удалить мероприятие вместе со своей картинкой и билетами."""
     today = date.today()
     async with async_session() as db:
         ev = await _load_event(db, event_id)
         evs.delete_upload(ev.image_file)
+        # Файлы билетов снимаем вместе с записью: иначе они остаются на диске
+        # сиротами, а их никто уже не покажет.
+        for ticket in evs.ticket_views(ev.ticket_files):
+            evs.delete_ticket(ticket["path"])
         await db.delete(ev)
         await db.commit()
         board_ctx = await _board_context(db, today, month, day)

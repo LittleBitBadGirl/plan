@@ -45,6 +45,7 @@ docs/internal/
 CONTEXT.md
 .env.bak
 uploads/
+tickets/
 __pycache__/
 
 # Local virtualenv (named .venv312) and test artifacts
