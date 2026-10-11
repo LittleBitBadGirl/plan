@@ -13,8 +13,8 @@
 Регулярные задачи (source='recurring') остаются на старой механике: они
 появляются в своём дне по due_date и в счётчик «взято из бэклога» не идут.
 """
-from datetime import date, timedelta
-from typing import Optional
+from datetime import date, datetime, time, timedelta, timezone
+from typing import Optional, Set
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import selectinload
@@ -166,6 +166,41 @@ async def count_backlog(db: AsyncSession) -> int:
             Task.item_kind == "task",
         )
     )
+    return result.scalar() or 0
+
+
+async def count_closed(
+    db: AsyncSession,
+    day: Optional[date] = None,
+    work_ids: Optional[Set[int]] = None,
+) -> int:
+    """Сколько задач закрыто в этот день — честный итог выходного дня.
+
+    Решение Веры 11.10.2026: на выходном ритуала нет, «взято на день» ничего не
+    значит (на экране сразу весь личный бэклог), поэтому «2 из 5» и «прогресс
+    2/4» рассказывали не про тот день, который она прожила: за воскресенье она
+    закрыла девять задач, а счётчик показывал две.
+
+    Считаем по ЛОКАЛЬНЫМ суткам: закрытие в 00:30 МСК не должно уезжать в
+    предыдущий день. ``work_ids`` — рабочие категории: на выходном они спрятаны с
+    экрана, и в число не идут, иначе цифра рассказывает про задачи, которых Вера
+    не видит.
+    """
+    day = day or date.today()
+    local_start = datetime.combine(day, time.min).astimezone()
+    local_end = datetime.combine(day, time.max).astimezone()
+    filters = [
+        Task.status == "выполнена",
+        Task.completed_at.isnot(None),
+        Task.completed_at >= local_start.astimezone(timezone.utc),
+        Task.completed_at <= local_end.astimezone(timezone.utc),
+        Task.item_kind == "task",
+    ]
+    if work_ids:
+        filters.append(
+            or_(Task.category_id.is_(None), Task.category_id.notin_(work_ids))
+        )
+    result = await db.execute(select(func.count(Task.id)).where(*filters))
     return result.scalar() or 0
 
 

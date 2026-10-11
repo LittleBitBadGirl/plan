@@ -7,13 +7,20 @@
 
    pool.compact — вид для самой страницы бэклога: без числа бэклога (оно
    дублировало вкладку «Задачи N») и без кнопки «Бэклог» (ссылка на ту же
-   страницу). Остаётся только прогресс дня. #}
+   страницу). Остаётся только прогресс дня.
+
+   Выходной — своя арифметика (решение Веры 11.10.2026): ритуала нет, пятёрку
+   она не набирает (на экране сразу весь личный бэклог), поэтому вместо «взято
+   N из 5» и прогресса дня — одна честная цифра «закрыто сегодня». #}
 <div id="day-pool-block"{% if oob %} hx-swap-oob="true"{% endif %}
      class="bg-dark-800 rounded-xl border border-dark-600 shadow-lg mb-4 {% if pool.compact %}px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2{% else %}p-4{% endif %}">
 {% if pool.compact %}
     {# Узкая строка вместо пустого щита с одной цифрой: подпись, прогресс
        точками и подсказка справа — так блок заполнен по всей ширине. #}
-    <span class="text-[11px] uppercase tracking-wider text-gray-500 font-bold shrink-0">Ритуал дня</span>
+    <span class="text-[11px] uppercase tracking-wider text-gray-500 font-bold shrink-0">{% if pool.weekend %}Выходной{% else %}Ритуал дня{% endif %}</span>
+    {% if pool.weekend %}
+    <span class="text-sm font-bold text-white tabular-nums shrink-0">закрыто {{ pool.closed_today }}</span>
+    {% else %}
     <span class="text-sm font-bold text-white tabular-nums shrink-0">взято {{ pool.taken }}{% if pool.taken < pool.min_day_tasks %} из {{ pool.min_day_tasks }}{% endif %}</span>
     {# Полоса прогресса тянется на всю оставшуюся ширину: блок заполнен, а не
        «два куска по краям и пустота посередине». #}
@@ -21,6 +28,7 @@
           role="progressbar" aria-valuenow="{{ pool.taken }}" aria-valuemin="0" aria-valuemax="{{ pool.min_day_tasks }}">
         <span style="display:block;height:100%;width:{{ [100, (pool.taken * 100 // pool.min_day_tasks)]|min }}%;background:#c2570a"></span>
     </span>
+    {% endif %}
     <span class="ml-auto text-xs {{ 'text-yellow-300' if pool.show_ritual and not pool.weekend else 'text-gray-500' }}">
         {%- if pool.weekend -%}Выходной: ритуала нет, работа спрятана
         {%- elif pool.taken == 0 -%}Возьми из бэклога то, что успеешь сделать сегодня
@@ -39,10 +47,16 @@
             <span class="shrink-0" style="width:1px;height:32px;background:#2a2f3a"></span>
             {% endif %}
             <div class="shrink-0">
+                {% if pool.weekend %}
+                {# Выходной: «на день из 5» тут не про этот день — показываем, сколько закрыто. #}
+                <div class="text-2xl font-bold text-amber-500 tabular-nums leading-none">{{ pool.closed_today }}</div>
+                <div class="text-[11px] uppercase tracking-wider text-gray-500 font-bold mt-1">закрыто сегодня</div>
+                {% else %}
                 <div class="text-2xl font-bold tabular-nums leading-none {{ 'text-accent' if pool.show_ritual else 'text-white' }}">{{ pool.taken }}</div>
                 <div class="text-[11px] uppercase tracking-wider text-gray-500 font-bold mt-1">
                     {%- if pool.taken < pool.min_day_tasks %}на день из {{ pool.min_day_tasks }}{% else %}на день{% endif -%}
                 </div>
+                {% endif %}
             </div>
             {% if not pool.compact %}
             <span class="shrink-0" style="width:1px;height:32px;background:#2a2f3a"></span>
@@ -52,9 +66,11 @@
             </div>
             {% endif %}
         </div>
-        {% if not pool.compact %}
+        {% if not pool.compact and not pool.weekend %}
         {# Прогресс дня: короткая полоса в свободном месте сводки. Раньше это
-           была длинная полоса во всю ширину в шапке дашборда. #}
+           была длинная полоса во всю ширину в шапке дашборда. На выходном её
+           нет: прогресс считается по взятым на день задачам, а там их не
+           набирают — полоса показывала «2 из 4» после девяти закрытых задач. #}
         <span class="day-progress">
             <span class="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Прогресс</span>
             <span class="day-progress__track">

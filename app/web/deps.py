@@ -81,6 +81,18 @@ async def work_category_ids(db: AsyncSession) -> set[int]:
     return {row[0] for row in result.all()}
 
 
+def weekend_hide_work_on(day: date, request=None) -> bool:
+    """Прячем ли рабочие задачи в этот день: выходной и нет cookie «показать».
+
+    Числа и список обязаны считаться по ОДНОМУ дню: сводка дня принимает день
+    параметром (её же зовут тесты с конкретной датой), поэтому решение о
+    скрытии работы тоже принимает день, а не берёт сегодняшний из системы.
+    """
+    if request is None:
+        return False
+    return is_weekend(day) and request.cookies.get("show_work") != "1"
+
+
 def weekend_hide_work(request=None) -> bool:
     """Прячем ли рабочие задачи прямо сейчас: выходной и нет cookie «показать».
 
@@ -88,9 +100,7 @@ def weekend_hide_work(request=None) -> bool:
     перерисовка списка после действия) — иначе в субботу список и числа
     разъезжаются с тем, что Вера видит на экране.
     """
-    if request is None:
-        return False
-    return is_weekend(date.today()) and request.cookies.get("show_work") != "1"
+    return weekend_hide_work_on(date.today(), request)
 
 
 def count_workdays_between(start: date, end: date) -> int:
@@ -1024,7 +1034,13 @@ async def append_today_stats_oob(content: str, db: AsyncSession, request=None) -
     )
     # Поздравление дня: закрыл последнюю задачу — оно обязано появиться сразу,
     # не дожидаясь перезагрузки страницы (закрытие карточки списка не рисует).
-    day_win = day_win_view(await load_today_day_state(db, hide_work))
+    # На выходном блока нет вовсе: там день не собирают по ритуалу, и «всё
+    # закрыто» относилось бы ко всему личному бэклогу (решение Веры 11.10.2026).
+    day_win = (
+        None
+        if is_weekend(date.today())
+        else day_win_view(await load_today_day_state(db, hide_work))
+    )
     return (
         content
         + today_stats_oob_html(bundle.completed, bundle.total)
@@ -1650,8 +1666,12 @@ async def get_tasks_today(db: AsyncSession, request: Request):
     taken_subs = await get_day_taken_subtasks(db, today)
     # Состояние дня уходит в шаблон: по нему список отличает «день был и всё
     # закрыто» от «дня ещё не было» (см. partials/tasks_list_split.html).
-    day_win = day_win_view(
-        await load_today_day_state(db, weekend_hide_work(request))
+    # На выходном состояния нет: список показывает весь личный бэклог, и
+    # «все задачи закрыты» тут ничего не значит.
+    day_win = (
+        None
+        if weekend
+        else day_win_view(await load_today_day_state(db, weekend_hide_work(request)))
     )
     content = template.render({
         "request": request,
@@ -1720,6 +1740,7 @@ async def build_day_pool_context(
     from app.services.day_pool_service import (
         MIN_DAY_TASKS,
         count_backlog,
+        count_closed,
         count_taken,
         counter_label,
     )
@@ -1752,6 +1773,14 @@ async def build_day_pool_context(
 
     taken = await count_taken(db, today)
     backlog_count = await count_backlog(db)
+    # Выходной: «взято на день» и «прогресс дня» здесь ни о чём — Вера не
+    # набирает пятёрку, на экране сразу весь личный бэклог. Единственная честная
+    # цифра дня — сколько закрыто (решение Веры 11.10.2026: за воскресенье она
+    # закрыла девять задач, а счётчик показывал «2 из 5» и «прогресс 2/4»).
+    closed_today = 0
+    if weekend:
+        work_ids = await work_category_ids(db) if weekend_hide_work_on(today, request) else None
+        closed_today = await count_closed(db, today, work_ids=work_ids)
     recurring_result = await db.execute(
         select(func.count(Task.id)).where(
             Task.source == "recurring",
@@ -1766,6 +1795,7 @@ async def build_day_pool_context(
         "weekend": weekend,
         "compact": compact,
         "taken": taken,
+        "closed_today": closed_today,
         "backlog_count": backlog_count,
         "recurring_count": recurring_count,
         "counter": counter_label(taken),
@@ -1797,8 +1827,12 @@ async def load_today_day_state(db: AsyncSession, hide_work: bool = False):
     return await load_day_state(db, date.today(), work_ids)
 
 
-def render_day_win_block(win: dict, oob: bool = False) -> str:
-    """Отрисовать поздравление «день без хвоста» (страница и OOB — один шаблон)."""
+def render_day_win_block(win: Optional[dict], oob: bool = False) -> str:
+    """Отрисовать поздравление «день без хвоста» (страница и OOB — один шаблон).
+
+    ``win=None`` — показывать нечего (например, выходной: дня как ритуала там
+    нет). Шаблон в этом случае оставляет блок в DOM скрытым.
+    """
     return templates.get_template("partials/day_win_block.html").render({
         "win": win,
         "oob": oob,

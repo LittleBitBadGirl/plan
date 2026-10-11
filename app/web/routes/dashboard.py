@@ -161,10 +161,15 @@ async def dashboard(request: Request):
         # Память о дне без хвоста пишется тем же коммитом: пока planned_for у
         # сегодняшних задач на месте, состояние дня честное (ночная зачистка
         # стирает его у незакрытых, и задним числом день выглядел бы закрытым).
+        # На выходном дня как ритуала нет: там на экране весь личный бэклог, и
+        # «ты закрыла все задачи на сегодня» — неправда и не достижение (Вера
+        # 11.10.2026: «может быть только если я весь бэклог закрою — лучше не
+        # показывать вообще»), поэтому ни поздравления, ни записи в аналитику.
         from app.services.day_win_service import sync_day_win
 
         day_state = await load_today_day_state(db, hide_work)
-        await sync_day_win(db, today, day_state)
+        if not is_weekend(today):
+            await sync_day_win(db, today, day_state)
         await db.commit()
 
         # Разделяем задачи: с подзадачами и standalone
@@ -263,7 +268,7 @@ async def dashboard(request: Request):
         "calendar_personal_events": calendar_personal_events,
         "calendar_sync_active": calendar_sync_active(),
         "managers_widget": managers_widget,
-        "day_win": day_win_view(day_state),
+        "day_win": None if is_weekend(today) else day_win_view(day_state),
         **events_week,
     })
 
