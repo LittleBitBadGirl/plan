@@ -828,9 +828,15 @@ async def test_month_grid_marks_every_day_of_range(client, db):
 
 @pytest.mark.asyncio
 async def test_grid_state_prefers_going(client, db):
-    """День с забронированным мероприятием помечается как «иду»."""
-    month = date(2026, 10, 1)
-    going_day = date(2026, 10, 7).isoformat()
+    """День с забронированным мероприятием помечается как «иду».
+
+    День берём от сегодняшнего, а не жёсткой датой: прошедший поход в сетке
+    показывается как состоявшийся (status='none', см. event_view), и тест с
+    прибитой датой 07.10.2026 сломался сам по себе, когда эта дата прошла.
+    """
+    going_date = TODAY + timedelta(days=1)
+    month = going_date.replace(day=1)
+    going_day = going_date.isoformat()
     await client.post("/api/events/create", data=_form(title="Пойду", start_date=going_day))
     await client.post("/api/events/create", data=_form(title="Пока без брони", start_date=going_day))
     first, second = await _events(db)
