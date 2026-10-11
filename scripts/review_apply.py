@@ -27,6 +27,7 @@ from sqlalchemy import select
 from app.db.database import async_session
 from app.models.task import Task
 from app.models.category import Category
+from app.services.category_memory_service import remember_category
 from app.config import settings
 
 
@@ -61,7 +62,11 @@ async def main(task_id: int, cat_id: int, due_raw: str, title_raw: str):
             return
 
         # Категорию ставим сразу.
+        old_category_id = t.category_id
         t.category_id = cat_id
+        # Регулярная задача: категория запоминается в шаблоне, иначе следующее
+        # вхождение снова придёт в ревью «без категории».
+        await remember_category(db, t, old_category_id)
 
         # Текст: предлагаем только если реально отличается от текущего.
         sugg_title = None

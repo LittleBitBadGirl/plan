@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, date
 from app.api.dependencies import get_db_session
 from app.services.ai_service import ai_service
 from app.models.task import Task, task_is_active
+from app.services.category_memory_service import remember_category
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
@@ -60,6 +61,8 @@ async def submit_feedback(
     
     # Обновить категорию задачи
     task.category_id = data.new_category_id
+    # Регулярная задача: категория запоминается в шаблоне — учимся на правке.
+    await remember_category(db, task, data.old_category_id)
     await db.flush()
     
     return {"message": "Спасибо! Система запомнит это."}

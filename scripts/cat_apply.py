@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.db.database import async_session
 from app.models.task import Task
 from app.models.category import Category
+from app.services.category_memory_service import remember_category
 from app.config import settings
 
 
@@ -26,7 +27,11 @@ async def main(task_id: int, cat_id: int):
         if not c:
             print("ERR no category", cat_id)
             return
+        old_category_id = t.category_id
         t.category_id = cat_id
+        # Регулярная задача: категория запоминается в шаблоне (см.
+        # app/services/category_memory_service.py).
+        await remember_category(db, t, old_category_id)
         await db.commit()
         cat_name = c.name
         title = t.title

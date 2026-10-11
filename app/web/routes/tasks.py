@@ -4,7 +4,7 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date, datetime, time, timedelta, timezone
-from typing import List, Optional
+from typing import List, Optional, cast
 import re
 import json
 
@@ -20,6 +20,7 @@ from app.config import settings
 from app.services.day_pool_service import take_to_day, return_to_backlog
 from app.services.day_win_service import sync_day_win
 from app.services.task_delete_service import delete_tasks_hard
+from app.services.category_memory_service import remember_category
 
 from app.web.deps import (
     templates,
@@ -223,7 +224,11 @@ async def task_web_edit(
         if description is not None:
             task.description = description
         if category_id is not None:
+            previous_category_id = cast("Optional[int]", task.category_id)
             task.category_id = int(category_id) if category_id else None
+            # Регулярная задача: категорию запоминаем в шаблоне, иначе следующее
+            # вхождение снова родится «без категории» и вернётся в ревью.
+            await remember_category(db, task, previous_category_id)
         if priority is not None:
             task.priority = priority
         if due_date is not None:

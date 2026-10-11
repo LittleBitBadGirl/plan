@@ -8,8 +8,11 @@ from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, C
 from aiogram.filters import Command
 from sqlalchemy import select
 
+from typing import Optional, cast
+
 from app.utils.logger import app_logger
 from app.services.ai_service import ai_service
+from app.services.category_memory_service import remember_category
 from app.db.database import async_session
 from app.models.missed import MissedMessage
 from app.models.task import Task
@@ -441,10 +444,13 @@ async def cb_cat_set(callback: CallbackQuery):
             await callback.message.edit_text("❌ Задача не найдена.")
             await callback.answer()
             return
-        old_cat = t.category_id
+        old_cat = cast("Optional[int]", t.category_id)
         t.category_id = cat_id
         t.suggested_title = None
         t.suggested_due_date = None
+        # Регулярная задача: категория уезжает в шаблон, чтобы вхождение больше
+        # не приходило в ревью на подтверждение.
+        await remember_category(db, t, old_cat)
         await db.commit()
         cat_name = await _category_name(db, cat_id)
     # Сигнал обучения: правка попадает в историю задач; крон-категоризатор

@@ -26,5 +26,8 @@ async def save_feedback(db: AsyncSession, feedback_data):
     result = await db.execute(select(Task).where(Task.id == feedback_data.task_id))
     task = result.scalar_one_or_none()
     if task:
+        previous_category_id = task.category_id
         task.category_id = feedback_data.new_category_id
+        # Регулярная задача: категорию запоминаем в шаблоне (учимся на правке).
+        await remember_category(db, task, previous_category_id)
         await db.flush()
