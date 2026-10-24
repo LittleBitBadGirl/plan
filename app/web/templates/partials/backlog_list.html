@@ -128,11 +128,17 @@
             </div>
         </div>
 
-        {% if current_subtasks %}
+        {# Строка подзадач есть у КАЖДОЙ задачи: раньше блок появлялся только там,
+           где подзадачи уже были, и добавить первую было неоткуда — Вера
+           «в бэклоге не понятно как» (24.10.2026). #}
         {% set _done = current_subtasks | selectattr("status", "equalto", "выполнена") | list | length %}
         <details class="mt-1.5">
-            <summary class="text-[11px] text-gray-500 cursor-pointer select-none">
+            <summary class="text-[11px] text-gray-500 hover:text-gray-300 cursor-pointer select-none">
+                {% if current_subtasks %}
                 подзадачи: {{ _done }} из {{ current_subtasks|length }} — в день берутся по одной
+                {% else %}
+                + подзадача
+                {% endif %}
             </summary>
             <div class="mt-1.5 pl-2 border-l border-dark-700" id="subtasks-{{ task.id }}">
                 {% with subtasks = current_subtasks, parent_id = task.id, today = _today, subtask_context = 'backlog' %}
@@ -140,7 +146,6 @@
                 {% endwith %}
             </div>
         </details>
-        {% endif %}
     </div>
     {% endfor %}
 </div>

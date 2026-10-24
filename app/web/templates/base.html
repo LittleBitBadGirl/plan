@@ -224,6 +224,24 @@
         if (!target?.id?.startsWith('subtasks-')) return;
         const input = target.querySelector('.subtask-add-input');
         if (input) input.focus();
+
+        // В бэклоге строка-раскрывашка подписана «+ подзадача», пока подзадач
+        // нет. После первой подписи она врала бы «+ подзадача» при готовом
+        // списке, поэтому счётчик правим здесь же, без перезагрузки страницы.
+        const rows = target.querySelectorAll('[id^="subtask-row-"]');
+        const done = target.querySelectorAll('[id^="subtask-row-"].line-through').length;
+        const counter = target.closest('[id^="task-"]')?.querySelector('.subtask-count');
+        if (counter) counter.textContent = rows.length ? done + '/' + rows.length : '+';
+
+        const details = target.closest('details');
+        const summary = details ? details.querySelector('summary') : null;
+        if (!summary) return;
+        if (!rows.length) {
+            summary.textContent = '+ подзадача';
+            return;
+        }
+        summary.textContent = 'подзадачи: ' + done + ' из ' + rows.length
+            + ' — в день берутся по одной';
     });
     </script>
 </body>

@@ -47,16 +47,19 @@
             </span>
             {% endif %}
 
+            {# Подпись словом: иконка с дробью 0/5 и «плюсиком» не читалась как
+               вход в подзадачи (Вера 24.10.2026). #}
             <button type="button"
                     onclick="document.getElementById('subtasks-{{ task.id }}').classList.toggle('hidden')"
                     class="text-amber-600 hover:text-amber-500 inline-flex items-center gap-1 transition-colors"
-                    title="Подзадачи">
+                    title="Открыть подзадачи и добавить новую">
                 {{ icon_subtasks() }}
+                <span class="text-[11px] font-medium">Подзадачи</span>
                 {% if current_subtasks and current_subtasks|length > 0 %}
                     {% set done = current_subtasks | selectattr("status", "equalto", "выполнена") | list | length %}
-                    <span class="font-medium">{{ done }}/{{ current_subtasks|length }}</span>
+                    <span class="subtask-count text-[11px] font-bold">{{ done }}/{{ current_subtasks|length }}</span>
                 {% else %}
-                    <span class="text-[10px] opacity-60 font-bold">+</span>
+                    <span class="subtask-count text-[11px] font-bold opacity-80">+</span>
                 {% endif %}
             </button>
         </div>
