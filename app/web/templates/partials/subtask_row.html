@@ -6,7 +6,7 @@
    иначе на дашборде она целилась бы в несуществующий список. #}
 {% set _ctx = subtask_context if subtask_context is defined else 'day' %}
 {% set _taken = sub.planned_for == _today %}
-<div id="subtask-row-{{ sub.id }}" class="flex items-start gap-2 text-sm{{ ' opacity-50 line-through text-gray-600' if sub.status == 'выполнена' else '' }} rounded px-1 py-0.5">
+<div id="subtask-row-{{ sub.id }}" data-subtask-done="{{ 1 if sub.status == 'выполнена' else 0 }}" class="flex items-start gap-2 text-sm{{ ' opacity-50 line-through text-gray-600' if sub.status == 'выполнена' else '' }} rounded px-1 py-0.5">
     {% if sub.status != 'выполнена' %}
     <form hx-post="/tasks/{{ sub.id }}/complete-subtask"
           hx-target="#subtask-row-{{ sub.id }}"
@@ -60,7 +60,7 @@
             </button>
             {% endif %}
             <button type="button"
-                    hx-delete="/tasks/{{ sub.id }}/subtask"
+                    hx-delete="/tasks/{{ sub.id }}/subtask?ctx={{ _ctx }}"
                     hx-target="#subtasks-{{ parent_id }}"
                     hx-swap="innerHTML"
                     hx-confirm="Удалить подзадачу насовсем?"
@@ -70,7 +70,7 @@
         </div>
     </div>
     {% else %}
-    <button hx-delete="/tasks/{{ sub.id }}/subtask"
+    <button hx-delete="/tasks/{{ sub.id }}/subtask?ctx={{ _ctx }}"
             hx-target="#subtasks-{{ parent_id }}"
             hx-swap="innerHTML"
             class="icon-action icon-action--danger !p-1 shrink-0"

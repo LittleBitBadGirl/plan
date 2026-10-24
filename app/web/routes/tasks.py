@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Form, HTTPException
+from fastapi import APIRouter, Request, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from sqlalchemy import select, func, delete
 from sqlalchemy.orm import selectinload
@@ -110,8 +110,13 @@ async def tasks_page(request: Request, status: Optional[str] = None):
 # ---- Web CRUD form-data (перед {task_id} роутами!) ----
 
 @router.delete("/tasks/{task_id}/subtask", response_class=HTMLResponse)
-async def delete_subtask(request: Request, task_id: int):
-    """Удалить подзадачу и вернуть обновленный список"""
+async def delete_subtask(request: Request, task_id: int, ctx: str = Query("day")):
+    """Удалить подзадачу и вернуть обновленный список.
+
+    ``ctx`` едет в query (``?ctx=backlog``) потому что кнопка удаления живёт в
+    кнопке без формы и тела запроса: без него ряд, оставшийся после удаления,
+    терял бэклоговые действия «⋯» и «взять на день».
+    """
     async with async_session() as db:
         result = await db.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
@@ -131,6 +136,7 @@ async def delete_subtask(request: Request, task_id: int):
                 "subtasks": subtasks,
                 "parent_id": parent_id,
                 "today": date.today(),
+                "subtask_context": "backlog" if ctx == "backlog" else "day",
             })
             
     return HTMLResponse("Ошибка удаления")
@@ -265,7 +271,7 @@ async def task_web_edit(
 # ---- Подзадачи (Subtasks) ----
 
 @router.get("/tasks/{task_id}/subtasks", response_class=HTMLResponse)
-async def get_subtasks_htmx(request: Request, task_id: int):
+async def get_subtasks_htmx(request: Request, task_id: int, ctx: str = Query("day")):
     """HTMX: загрузить список подзадач для родителя"""
     async with async_session() as db:
         result = await db.execute(
@@ -277,6 +283,7 @@ async def get_subtasks_htmx(request: Request, task_id: int):
         "request": request,
         "subtasks": subtasks,
         "parent_id": task_id,
+        "subtask_context": "backlog" if ctx == "backlog" else "day",
     })
 
 
@@ -286,8 +293,13 @@ async def create_subtask_htmx(
     task_id: int,
     title: str = Form(...),
     deadline: str = Form(""),
+    subtask_context: str = Form("day"),
 ):
-    """HTMX: создать подзадачу с опциональным дедлайном (DL)."""
+    """HTMX: создать подзадачу с опциональным дедлайном (DL).
+
+    Контекст («день» или «бэклог») приходит скрытым полем формы: от него зависит
+    набор действий у строки — «взять на день» и «⋯» есть только в бэклоге.
+    """
     async with async_session() as db:
         parsed_dl = _parse_due_date_form(deadline) if deadline.strip() else None
         subtask = Task(
@@ -312,6 +324,7 @@ async def create_subtask_htmx(
         "subtasks": subtasks,
         "parent_id": task_id,
         "today": date.today(),
+        "subtask_context": "backlog" if subtask_context == "backlog" else "day",
     })
 
 

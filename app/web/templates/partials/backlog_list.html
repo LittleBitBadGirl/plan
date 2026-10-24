@@ -43,9 +43,9 @@
                     {% endif %}
                     {% if current_subtasks and current_subtasks|length > 0 %}
                     {% set done = current_subtasks | selectattr("status", "equalto", "выполнена") | list | length %}
-                    <span class="inline-flex items-center gap-0.5 text-[11px] text-purple-400/90" title="Подзадачи">
+                    <span class="subtask-badge inline-flex items-center gap-0.5 text-[11px] text-purple-400/90" title="Подзадачи">
                         {{ icon_subtasks('w-3 h-3') }}
-                        <span class="font-medium">{{ done }}/{{ current_subtasks|length }}</span>
+                        <span class="subtask-count font-medium">{{ done }}/{{ current_subtasks|length }}</span>
                     </span>
                     {% endif %}
                 </div>

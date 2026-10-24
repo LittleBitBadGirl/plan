@@ -17,6 +17,9 @@
       hx-target="#subtasks-{{ parent_id }}"
       hx-swap="innerHTML"
       class="flex gap-1 mt-1">
+    {# Контекст едет в ответ: от него зависит набор действий у строки —
+       «взять на день» и «⋯» есть только в бэклоге. #}
+    <input type="hidden" name="subtask_context" value="{{ _ctx }}">
     <input type="text" name="title" placeholder="+ Подзадача..." required
            class="subtask-add-input flex-1 min-w-0 bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500/50">
 </form>

@@ -216,24 +216,43 @@
 
     {% block extra_scripts %}{% endblock %}
     <script>
+    // Подписи подзадач («+ подзадача» / «подзадачи: N из M», счётчик у кнопки)
+    // обязаны совпадать с тем, что в списке. Считать их на сервере заново —
+    // лишний рендер всей карточки, поэтому пересчитываем по DOM после каждого
+    // действия: создание, удаление и закрытие подзадачи приходят разными
+    // адресами, а цель у них одна — блок #subtasks-{parent} или его строка.
     document.body.addEventListener('htmx:afterSwap', function (evt) {
         if (!evt.detail.successful) return;
-        const path = evt.detail.pathInfo?.requestPath || '';
-        if (!/\/tasks\/\d+\/subtasks$/.test(path)) return;
+        const path = (evt.detail.pathInfo?.requestPath || '').split('?')[0];
+        if (!/\/tasks\/\d+\/(subtasks|subtask|complete-subtask)$/.test(path)) return;
         const target = evt.detail.target;
-        if (!target?.id?.startsWith('subtasks-')) return;
-        const input = target.querySelector('.subtask-add-input');
+        if (!target) return;
+        // При hx-swap="outerHTML" (закрытие подзадачи) старый узел уже вынут из
+        // документа, и closest() по нему не находит контейнер: берём свежий
+        // элемент с тем же id, который htmx вставил на его место.
+        const node = document.getElementById(target.id) || target;
+        const container = node.id?.startsWith('subtasks-')
+            ? node
+            : node.closest('[id^="subtasks-"]');
+        if (!container) return;
+
+        const rows = container.querySelectorAll('[id^="subtask-row-"]');
+        const done = container.querySelectorAll('[data-subtask-done="1"]').length;
+        const card = container.closest('[id^="task-"]');
+        const count = card ? card.querySelector('.subtask-count') : null;
+        const badge = card ? card.querySelector('.subtask-badge') : null;
+
+        if (count) {
+            count.textContent = rows.length ? done + '/' + rows.length : '+';
+            count.classList.toggle('opacity-80', !rows.length);
+        }
+        // Бейдж прогресса в бэклоге: при нуле подзадач его просто нет.
+        if (badge) badge.classList.toggle('hidden', !rows.length);
+
+        const input = container.querySelector('.subtask-add-input');
         if (input) input.focus();
 
-        // В бэклоге строка-раскрывашка подписана «+ подзадача», пока подзадач
-        // нет. После первой подписи она врала бы «+ подзадача» при готовом
-        // списке, поэтому счётчик правим здесь же, без перезагрузки страницы.
-        const rows = target.querySelectorAll('[id^="subtask-row-"]');
-        const done = target.querySelectorAll('[id^="subtask-row-"].line-through').length;
-        const counter = target.closest('[id^="task-"]')?.querySelector('.subtask-count');
-        if (counter) counter.textContent = rows.length ? done + '/' + rows.length : '+';
-
-        const details = target.closest('details');
+        const details = container.closest('details');
         const summary = details ? details.querySelector('summary') : null;
         if (!summary) return;
         if (!rows.length) {
