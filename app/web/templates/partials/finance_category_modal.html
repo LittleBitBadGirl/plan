@@ -1,0 +1,44 @@
+{# Содержимое попапа «Аналитика → категория»: шапка и список транзакций месяца.
+   Вызывается из finance.html (клик по сегменту donut или по строке легенды).
+   Стили — классы fcm-* из <style> в finance.html: бандл Tailwind статический,
+   произвольные классы вроде max-h-[75vh] в нём не собраны. #}
+<div class="fcm-head">
+    <div>
+        <h3 class="fcm-title">{{ cat_name }}</h3>
+        <p class="fcm-sub">
+            {{ month_name|capitalize }} {{ year }} · {{ count }}
+            {%- if count % 10 == 1 and count % 100 != 11 %} операция
+            {%- elif count % 10 in [2, 3, 4] and count % 100 not in [12, 13, 14] %} операции
+            {%- else %} операций{% endif %}
+            · {{ "{:,.0f}".format(total).replace(',', ' ') }} ₽
+        </p>
+    </div>
+    <button type="button" class="fcm-close" onclick="closeFinanceCatModal()" aria-label="Закрыть">×</button>
+</div>
+
+{% if items %}
+<div class="fcm-scroll">
+    <table class="fcm-table">
+        <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Подкатегория</th>
+                <th>Описание</th>
+                <th style="text-align:right">Сумма</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for it in items %}
+            <tr>
+                <td class="fcm-date">{{ it.date.strftime('%d.%m.%y') }}</td>
+                <td class="fcm-cat">{{ it.sub }}</td>
+                <td class="fcm-desc"><span title="{{ it.description }}">{{ it.description or '—' }}</span></td>
+                <td class="fcm-sum">{{ "{:,.0f}".format(it.amount).replace(',', ' ') }} ₽</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="fcm-empty">За {{ month_name }} {{ year }} расходов в этой категории нет</p>
+{% endif %}

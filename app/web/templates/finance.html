@@ -382,6 +382,58 @@
         <div class="space-y-5 lg:h-full">
             {% include "partials/finance_expense_chart.html" %}
         </div>
+
+        {# Попап «транзакции категории»: открывается кликом по сегменту donut или строке легенды,
+           содержимое приезжает с /finance/category.
+           Размеры и типографика заданы здесь, а не Tailwind-классами: CSS-бандл
+           статический, и произвольные классы вроде max-h-[75vh] в нём не собраны. #}
+        <style>
+            #finance-cat-modal { position: fixed; inset: 0; z-index: 90; }
+            #finance-cat-modal[hidden] { display: none; }
+            #finance-cat-modal .fcm-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.72); }
+            #finance-cat-modal .fcm-panel {
+                position: relative; display: flex; flex-direction: column;
+                width: min(720px, calc(100% - 2rem)); max-height: 80vh;
+                margin: 2.5rem auto; background: #1e1e27;
+                border: 1px solid rgba(54, 54, 69, 0.9); border-radius: 16px;
+                box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55); overflow: hidden;
+            }
+            #finance-cat-modal .fcm-body { display: flex; flex-direction: column; min-height: 0; }
+            #finance-cat-modal .fcm-head {
+                display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+                padding: 12px 16px; background: #242432; border-bottom: 1px solid rgba(54, 54, 69, 0.9);
+            }
+            #finance-cat-modal .fcm-title { font-size: 13px; font-weight: 600; color: #f3f4f6; margin: 0; }
+            #finance-cat-modal .fcm-sub { font-size: 11px; color: #9ca3af; margin: 2px 0 0; }
+            #finance-cat-modal .fcm-close {
+                flex: 0 0 auto; width: 28px; height: 28px; font-size: 16px; line-height: 1;
+                color: #9ca3af; background: transparent; border-radius: 8px;
+                border: 1px solid rgba(54, 54, 69, 0.9); cursor: pointer;
+            }
+            #finance-cat-modal .fcm-close:hover, #finance-cat-modal .fcm-close:focus-visible { color: #fff; border-color: #4b5563; outline: none; }
+            #finance-cat-modal .fcm-scroll { overflow-y: auto; min-height: 0; }
+            #finance-cat-modal .fcm-table { width: 100%; border-collapse: collapse; }
+            #finance-cat-modal .fcm-table th {
+                position: sticky; top: 0; background: #1e1e27; text-align: left;
+                font-size: 11px; font-weight: 500; color: #8b8fa3; padding: 8px;
+                border-bottom: 1px solid rgba(54, 54, 69, 0.9);
+            }
+            #finance-cat-modal .fcm-table td { font-size: 11px; padding: 6px 8px; border-bottom: 1px solid rgba(42, 42, 54, 0.7); }
+            #finance-cat-modal .fcm-table tr:hover td { background: rgba(42, 42, 54, 0.45); }
+            #finance-cat-modal .fcm-date { color: #9ca3af; font-family: ui-monospace, SFMono-Regular, monospace; white-space: nowrap; }
+            #finance-cat-modal .fcm-cat { color: #d1d5db; white-space: nowrap; }
+            #finance-cat-modal .fcm-desc { color: #9ca3af; width: 100%; max-width: 0; }
+            #finance-cat-modal .fcm-desc span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            #finance-cat-modal .fcm-sum { color: #fca5a5; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+            #finance-cat-modal .fcm-empty, #finance-cat-modal .fcm-loading { font-size: 11px; color: #6b7280; text-align: center; padding: 32px 16px; margin: 0; }
+            #finance-cat-modal .fcm-error { font-size: 11px; color: #f87171; text-align: center; padding: 32px 16px; margin: 0; }
+        </style>
+        <div id="finance-cat-modal" hidden role="dialog" aria-modal="true" aria-label="Транзакции категории">
+            <div class="fcm-scrim" onclick="closeFinanceCatModal()"></div>
+            <div class="fcm-panel">
+                <div id="finance-cat-modal-body" class="fcm-body"></div>
+            </div>
+        </div>
     </div>
     {% elif view == 'categories' %}
     <div class="mb-4">
@@ -462,10 +514,62 @@ document.addEventListener('alpine:init', () => {
 
     const catCanvas = document.getElementById('finance-expense-chart');
     const legendEl = document.getElementById('finance-chart-legend');
+    const modalEl = document.getElementById('finance-cat-modal');
+    const modalBody = document.getElementById('finance-cat-modal-body');
+    let modalAbort = null;          // отменяет предыдущий запрос: два быстрых клика не перетирают друг друга
+    let modalOpener = null;         // куда вернуть фокус при закрытии
+
+    window.closeFinanceCatModal = function () {
+        if (!modalEl || modalEl.hidden) return;
+        if (modalAbort) { modalAbort.abort(); modalAbort = null; }
+        modalEl.hidden = true;
+        if (modalBody) modalBody.innerHTML = '';
+        document.body.style.overflow = '';
+        if (modalOpener && typeof modalOpener.focus === 'function') modalOpener.focus();
+        modalOpener = null;
+    };
+
+    window.openFinanceCatModal = function (name, sourceEl) {
+        if (!modalEl || !modalBody || !name) return;
+        const month = sourceEl ? sourceEl.dataset.chartMonth : '';
+        const year = sourceEl ? sourceEl.dataset.chartYear : '';
+        if (modalAbort) modalAbort.abort();
+        modalAbort = new AbortController();
+        modalOpener = document.activeElement;
+        modalEl.hidden = false;
+        modalEl.setAttribute('aria-label', 'Транзакции категории: ' + name);
+        modalBody.innerHTML = '<p class="fcm-loading">Загружаю…</p>';
+        document.body.style.overflow = 'hidden';
+        const url = '/finance/category?name=' + encodeURIComponent(name)
+                  + '&month=' + encodeURIComponent(month)
+                  + '&year=' + encodeURIComponent(year);
+        fetch(url, { credentials: 'same-origin', signal: modalAbort.signal })
+            .then((r) => (r.ok ? r.text() : Promise.reject(r.status)))
+            .then((html) => {
+                if (modalEl.hidden) return;
+                modalBody.innerHTML = html;
+                const closeBtn = modalBody.querySelector('.fcm-close');
+                if (closeBtn) closeBtn.focus();
+            })
+            .catch((err) => {
+                if (err && err.name === 'AbortError') return;
+                modalBody.innerHTML = '<p class="fcm-error">Не удалось загрузить список</p>';
+            });
+    };
+
+    if (modalEl) {
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !modalEl.hidden) window.closeFinanceCatModal();
+        });
+    }
+
     if (catCanvas && legendEl) {
         const labels = JSON.parse(catCanvas.dataset.chartLabels || '[]');
         const amounts = JSON.parse(catCanvas.dataset.chartAmounts || '[]');
         const total = parseFloat(catCanvas.dataset.chartTotal || '0') || 0;
+        // кавычки обязательны: имя подставляется в атрибут data-cat, без них ломается разметка
+        const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         new Chart(catCanvas, {
             type: 'doughnut',
             data: { labels, datasets: [{ data: amounts,
@@ -473,6 +577,8 @@ document.addEventListener('alpine:init', () => {
                 borderColor: '#1a1a2e', borderWidth: 2, hoverOffset: 6 }] },
             options: {
                 responsive: true, maintainAspectRatio: true, cutout: '58%',
+                onClick: (evt, els) => { if (els && els.length) window.openFinanceCatModal(labels[els[0].index], catCanvas); },
+                onHover: (evt, els) => { catCanvas.style.cursor = (els && els.length) ? 'pointer' : 'default'; },
                 plugins: {
                     legend: { display: false },
                     tooltip: { backgroundColor: '#1e1e3a', titleColor: '#e5e7eb', bodyColor: '#9ca3af',
@@ -484,8 +590,17 @@ document.addEventListener('alpine:init', () => {
         legendEl.innerHTML = labels.map((name,i) => {
             const amount = amounts[i]||0;
             const pct = total?((amount/total)*100).toFixed(1):'0';
-            return '<li class="flex items-center justify-between gap-2 text-[10px]"><span class="flex items-center gap-2 min-w-0"><span class="w-2 h-2 rounded-full shrink-0" style="background:'+COLORS[i%COLORS.length]+'"></span><span class="text-gray-300 truncate">'+name+'</span></span><span class="text-gray-500 shrink-0 tabular-nums">'+fmt(amount)+' · '+pct+'%</span></li>';
+            return '<li><button type="button" data-cat="'+esc(name)+'" title="Показать операции"'
+                +' style="font-size:11px"'
+                +' class="w-full flex items-center justify-between gap-2 rounded-md text-left hover:bg-dark-700/40 transition-colors duration-150">'
+                +'<span class="flex items-center gap-2 min-w-0"><span class="w-2 h-2 rounded-full shrink-0" style="background:'+COLORS[i%COLORS.length]+'"></span>'
+                +'<span class="text-gray-300 truncate">'+esc(name)+'</span></span>'
+                +'<span class="text-gray-500 shrink-0 tabular-nums">'+fmt(amount)+' · '+pct+'%</span></button></li>';
         }).join('');
+        legendEl.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-cat]');
+            if (btn) window.openFinanceCatModal(btn.dataset.cat, catCanvas);
+        });
     }
 
     const dailyCanvas = document.getElementById('finance-daily-chart');

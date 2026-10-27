@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Request, Form, HTTPException
+from fastapi import APIRouter, Request, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
-from sqlalchemy import select, func, delete, Table, MetaData, Column, Integer, String, Float, Date, DateTime, ForeignKey
+from sqlalchemy import select, func, delete, Table, MetaData, Column, Integer, String, Float, Date, DateTime, ForeignKey, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date, datetime, time, timedelta
@@ -80,6 +80,32 @@ from app.models.portfolio import Portfolio
 # ID категорий-сбережений и кредитов (не считаются расходами)
 # ИИС, Подушка, Переводы между счетами, Сбережения, Цели + Ипотека (кредит, отдельная плоскость)
 SAVINGS_CATEGORY_IDS = [37, 61, 157, 144, 159, 36]
+
+# Названия месяцев для попапа «Аналитика → категория» (своя копия, чтобы не
+# тащить локальный словарь из finance_page).
+MONTH_NAMES_POPUP = {
+    1: "январь", 2: "февраль", 3: "март", 4: "апрель", 5: "май", 6: "июнь",
+    7: "июль", 8: "август", 9: "сентябрь", 10: "октябрь", 11: "ноябрь", 12: "декабрь",
+}
+
+
+def expense_group_name(tx):
+    """Группа расхода для «Аналитики»: (глобальная категория, подкатегория).
+
+    Возвращает None, если строку показывать нельзя: `category_id` указывает на
+    удалённую категорию. Сводка страницы собирается INNER JOIN с categories и
+    такие строки не видит; попап обязан считать так же, иначе его сумма разойдётся
+    с сегментом диаграммы. Бесхозные строки (`category_id IS NULL`) — это отдельная
+    группа «Без категории», её страница считает явно.
+    """
+    if tx.category_id is None:
+        return ("Без категории", "Нет категории")
+    cat = tx.category
+    if cat is None:
+        return None
+    if cat.parent is not None:
+        return (cat.parent.name, cat.name)
+    return (cat.name, cat.name)
 
 @router.get("/finance", response_class=HTMLResponse)
 async def finance_page(
@@ -711,3 +737,72 @@ async def get_goal_analytics(goal_id: int, period: str = "all"):
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         data["goal_id"] = goal_id
         return JSONResponse(data)
+
+
+@router.get("/finance/category", response_class=HTMLResponse)
+async def finance_category_transactions(
+    request: Request,
+    name: str,
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(..., ge=2000, le=2100),
+):
+    """Попап «Аналитики»: транзакции глобальной категории за месяц.
+
+    Правило группировки — то же, что у сводки страницы (`expense_group_name`):
+    расходы месяца минус сбережения, транзакция относится к глобальной категории
+    через родителя, бесхозные (`category_id IS NULL`) дают «Без категории»,
+    а строки с `category_id`, указывающим на удалённую категорию, не показываем —
+    сводка страницы их тоже не видит (INNER JOIN), иначе суммы разъедутся.
+    """
+    start_date = dt.date(year, month, 1)
+    end_date = dt.date(year + 1, 1, 1) if month == 12 else dt.date(year, month + 1, 1)
+
+    items = []
+    total = 0.0
+    async with async_session() as db:
+        res = await db.execute(
+            select(Transaction)
+            .options(selectinload(Transaction.category).selectinload(Category.parent))
+            .where(
+                Transaction.date >= start_date,
+                Transaction.date < end_date,
+                Transaction.amount < 0,
+                # NOT IN отбрасывает NULL: бесхозные строки возвращаем отдельной веткой,
+                # иначе «Без категории» из попапа пропадает.
+                or_(
+                    Transaction.category_id.is_(None),
+                    Transaction.category_id.notin_(SAVINGS_CATEGORY_IDS),
+                ),
+            )
+            .order_by(Transaction.date.desc(), Transaction.id.desc())
+        )
+        for tx in res.scalars().all():
+            group = expense_group_name(tx)
+            if group is None or group[0] != name:
+                continue
+            amount = abs(float(tx.amount))
+            total += amount
+            items.append(
+                {
+                    "date": tx.date,
+                    "sub": group[1],
+                    "description": tx.description or "",
+                    "amount": amount,
+                }
+            )
+
+    month_name = MONTH_NAMES_POPUP.get(month, "")
+    return templates.TemplateResponse(
+        request,
+        "partials/finance_category_modal.html",
+        {
+            "request": request,
+            "cat_name": name,
+            "items": items,
+            "total": total,
+            "count": len(items),
+            "month": month,
+            "year": year,
+            "month_name": month_name,
+        },
+    )

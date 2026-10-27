@@ -130,3 +130,167 @@ async def test_other_goal_ok_button_saves_amount(client, db):
         await db.execute(select(FinancialGoal).where(FinancialGoal.id == goal_id))
     ).scalar_one()
     assert saved.current_amount == 40_000
+
+
+@pytest.mark.asyncio
+async def test_finance_category_modal_lists_transactions(client, db):
+    """Попап «Аналитики»: транзакции глобальной категории за месяц, с подкатегориями."""
+    # id задаём явно: тестовая база сидится категориями, и автоинкремент может
+    # выдать 36/37/61 — id сбережений, которые роут законно отбрасывает.
+    parent = Category(id=9001, name="Попап Родитель", type="finance", is_global=True)
+    db.add(parent)
+    await db.commit()
+    await db.refresh(parent)
+    sub = Category(id=9002, name="Попап Подкат", type="finance", parent_id=parent.id, is_global=False)
+    db.add(sub)
+    await db.commit()
+    await db.refresh(sub)
+
+    db.add_all([
+        Transaction(date=date(2031, 3, 5), amount=-1200.0, description="Пятёрочка", category_id=sub.id),
+        Transaction(date=date(2031, 3, 7), amount=-300.0, description="Магнит", category_id=parent.id),
+        Transaction(date=date(2031, 3, 9), amount=-900.0, description="Чужая категория", category_id=None),
+        Transaction(date=date(2031, 4, 2), amount=-500.0, description="Следующий месяц", category_id=sub.id),
+    ])
+    await db.commit()
+
+    r = await client.get("/finance/category", params={"name": "Попап Родитель", "month": 3, "year": 2031})
+    assert r.status_code == 200
+    assert "Попап Родитель" in r.text
+    assert "Пятёрочка" in r.text and "Магнит" in r.text
+    assert "Попап Подкат" in r.text          # подкатегория видна в строке
+    assert "2 операции" in r.text            # только март и только эта категория
+    assert "1 500 ₽" in r.text               # 1200 + 300
+    assert "Чужая категория" not in r.text
+    assert "Следующий месяц" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_finance_category_modal_uncategorized(client, db):
+    """Группа «Без категории» открывается и показывает строки без category_id."""
+    db.add(Transaction(date=date(2031, 5, 4), amount=-777.0, description="Бесхозная трата", category_id=None))
+    await db.commit()
+
+    r = await client.get("/finance/category", params={"name": "Без категории", "month": 5, "year": 2031})
+    assert r.status_code == 200
+    assert "Бесхозная трата" in r.text
+    assert "Нет категории" in r.text
+
+
+@pytest.mark.asyncio
+async def test_finance_category_modal_empty_month(client, db):
+    """Пустой месяц — понятная заглушка, а не пустая таблица."""
+    r = await client.get("/finance/category", params={"name": "Попап Родитель", "month": 6, "year": 2031})
+    assert r.status_code == 200
+    assert "расходов в этой категории нет" in r.text
+    assert "За июнь 2031" in r.text          # в шапке видно, за какой месяц смотрим
+
+
+@pytest.mark.asyncio
+async def test_finance_page_has_category_modal(client, db):
+    """Страница содержит контейнер попапа и передаёт месяц/год диаграмме."""
+    db.add(Transaction(date=date(2031, 7, 3), amount=-410.0, description="Для диаграммы", category_id=None))
+    await db.commit()
+
+    r = await client.get("/finance?month=7&year=2031")
+    assert r.status_code == 200
+    assert "finance-cat-modal" in r.text
+    assert 'data-chart-month="7"' in r.text
+
+
+def test_expense_group_name_rules():
+    """Правило группировки: сирота не приклеивается к «Без категории».
+
+    Сводка страницы собирается INNER JOIN и строки с category_id на удалённую
+    категорию не видит. Если попап отнесёт их к «Без категории», его сумма
+    разойдётся с сегментом диаграммы.
+    """
+    from types import SimpleNamespace
+    from app.web.routes.finance import expense_group_name
+
+    orphan = SimpleNamespace(category_id=9999, category=None)
+    assert expense_group_name(orphan) is None
+
+    uncategorized = SimpleNamespace(category_id=None, category=None)
+    assert expense_group_name(uncategorized) == ("Без категории", "Нет категории")
+
+    parent = SimpleNamespace(name="Еда")
+    global_cat = SimpleNamespace(category_id=5, category=SimpleNamespace(name="Еда", parent=None))
+    assert expense_group_name(global_cat) == ("Еда", "Еда")
+
+    sub = SimpleNamespace(category_id=6, category=SimpleNamespace(name="Кофе", parent=parent))
+    assert expense_group_name(sub) == ("Еда", "Кофе")
+
+
+@pytest.mark.asyncio
+async def test_finance_popup_matches_chart_sum(client, db):
+    """Сумма попапа = сумма сегмента диаграммы, даже когда рядом лежит сирота."""
+    import json as _json
+    import re as _re
+
+    parent = Category(id=9101, name="Паритет Родитель", type="finance", is_global=True)
+    db.add(parent)
+    await db.commit()
+    sub = Category(id=9102, name="Паритет Подкат", type="finance", parent_id=9101, is_global=False)
+    db.add(sub)
+    await db.commit()
+
+    db.add_all([
+        Transaction(date=date(2032, 2, 3), amount=-1000.0, description="Подкат", category_id=9102),
+        Transaction(date=date(2032, 2, 4), amount=-500.0, description="Сам родитель", category_id=9101),
+        # сирота: категории с таким id нет — страница её не видит, попап тоже не должен
+        Transaction(date=date(2032, 2, 5), amount=-7000.0, description="Сирота", category_id=9999),
+        Transaction(date=date(2032, 2, 6), amount=-900.0, description="Бесхозная", category_id=None),
+    ])
+    await db.commit()
+
+    page = await client.get("/finance?month=2&year=2032")
+    assert page.status_code == 200
+    labels = _json.loads(_re.search(r"data-chart-labels='([^']*)'", page.text).group(1))
+    amounts = _json.loads(_re.search(r"data-chart-amounts='([^']*)'", page.text).group(1))
+    chart_total = dict(zip(labels, amounts))["Паритет Родитель"]
+    assert chart_total == 1500.0
+
+    popup = await client.get("/finance/category", params={"name": "Паритет Родитель", "month": 2, "year": 2032})
+    assert popup.status_code == 200
+    assert "1 500 ₽" in popup.text
+    assert "2 операции" in popup.text
+    assert "Сирота" not in popup.text
+
+
+@pytest.mark.asyncio
+async def test_finance_popup_december_boundary(client, db):
+    """Месяц 12: конец периода — 1 января следующего года, а не 12-е число."""
+    db.add(Transaction(date=date(2032, 12, 31), amount=-321.0, description="Последний день", category_id=None))
+    await db.commit()
+
+    r = await client.get("/finance/category", params={"name": "Без категории", "month": 12, "year": 2032})
+    assert r.status_code == 200
+    assert "Последний день" in r.text
+
+
+@pytest.mark.asyncio
+async def test_finance_popup_rejects_bad_month(client, db):
+    """month вне 1..12 — это 422, а не 500 с traceback."""
+    r = await client.get("/finance/category", params={"name": "Еда", "month": 13, "year": 2032})
+    assert r.status_code == 422
+    assert "Traceback" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_finance_popup_plural(client, db):
+    """Склонение в шапке: 1 операция, 2 операции, 5 операций."""
+    db.add_all([
+        Transaction(date=date(2033, 1, 2), amount=-100.0, description="Раз", category_id=None),
+        Transaction(date=date(2033, 2, 2), amount=-100.0, description="Два", category_id=None),
+        Transaction(date=date(2033, 2, 3), amount=-100.0, description="Три", category_id=None),
+        Transaction(date=date(2033, 2, 4), amount=-100.0, description="Четыре", category_id=None),
+        Transaction(date=date(2033, 2, 5), amount=-100.0, description="Пять", category_id=None),
+        Transaction(date=date(2033, 2, 6), amount=-100.0, description="Шесть", category_id=None),
+    ])
+    await db.commit()
+
+    one = await client.get("/finance/category", params={"name": "Без категории", "month": 1, "year": 2033})
+    assert "1 операция" in one.text
+    many = await client.get("/finance/category", params={"name": "Без категории", "month": 2, "year": 2033})
+    assert "5 операций" in many.text

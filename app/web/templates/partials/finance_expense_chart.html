@@ -39,7 +39,9 @@
                         aria-label="Круговая диаграмма расходов за месяц"
                         data-chart-labels='{{ category_summary | map(attribute="name") | list | tojson }}'
                         data-chart-amounts='{{ category_summary | map(attribute="amount") | list | tojson }}'
-                        data-chart-total="{{ chart_expense_total }}"></canvas>
+                        data-chart-total="{{ chart_expense_total }}"
+                        data-chart-month="{{ current_month }}"
+                        data-chart-year="{{ current_year }}"></canvas>
             </div>
             <ul id="finance-chart-legend" class="mt-4 space-y-1.5"></ul>
             {% if monthly_savings > 0 %}
