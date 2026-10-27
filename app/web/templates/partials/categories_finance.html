@@ -52,11 +52,7 @@
                                 class="text-gray-500 hover:text-white text-[11px] uppercase p-1" title="Переименовать">ред.</button>
                         <button @click="addingChild = !addingChild"
                                 class="text-yellow-500/70 hover:text-yellow-400 text-xs p-1 font-bold" title="Добавить подкатегорию">+</button>
-                        <button @click="
-                                    if(confirm('Удалить «{{ gc.name | noemoji }}»? Транзакции перейдут в Прочее.')) {
-                                        fetch('/api/categories/{{ gc.id }}/safe', {method: 'DELETE'})
-                                        .then(() => document.getElementById('fin-group-{{ gc.id }}').remove())
-                                    }"
+                        <button @click="deleteCategoryFlow({{ gc.id }})"
                                 class="text-red-500/60 hover:text-red-400 text-[11px] uppercase p-1" title="Удалить">удл.</button>
                     </div>
                 </div>
@@ -89,11 +85,7 @@
                         <div class="flex gap-1 opacity-0 group-hover/sc:opacity-100 transition-opacity">
                             <button @click="editingSub = true"
                                     class="text-gray-600 hover:text-white text-[11px] uppercase" title="Переименовать">ред.</button>
-                            <button @click="
-                                        if(confirm('Удалить «{{ sc.name | noemoji }}»? Транзакции перейдут в {{ gc.name | noemoji }}.')) {
-                                            fetch('/api/categories/{{ sc.id }}/safe', {method: 'DELETE'})
-                                            .then(() => document.getElementById('fin-sub-{{ sc.id }}').remove())
-                                        }"
+                            <button @click="deleteCategoryFlow({{ sc.id }})"
                                     class="text-red-500/50 hover:text-red-400 text-[11px] uppercase" title="Удалить">удл.</button>
                         </div>
                     </div>

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional
@@ -90,31 +91,27 @@ async def update_category(
 @router.delete("/{category_id}", response_model=MessageResponse)
 async def delete_category(
     category_id: int,
+    move_to: Optional[int] = Query(default=None, description="Куда перенести транзакции и задачи"),
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Удалить категорию.
+    """Удалить категорию, не оставляя потеряшек.
 
-    У категорий чтения сначала обнуляем связь с записями: иначе записи
-    остаются со ссылкой на несуществующую категорию и висят мёртвым грузом —
-    на странице чтения они уезжают на полку «без категории».
+    Если на категорию ссылаются транзакции, задачи или подкатегории, без
+    `move_to` ничего не удаляем: отвечаем 409 с составом использования и
+    списком кандидатов — интерфейс спрашивает, куда перенести. Раньше строка
+    удалялась молча, а записи оставались со ссылкой на несуществующую
+    категорию и выпадали из сводок.
     """
+    from app.services.category_delete_service import delete_category_with_move
+
     result = await db.execute(select(Category).where(Category.id == category_id))
     category = result.scalar_one_or_none()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    if category.type == "reading":
-        from sqlalchemy import update as sa_update
+    conflict = await delete_category_with_move(db, category, move_to)
+    if conflict:
+        return JSONResponse(status_code=409, content=conflict)
 
-        from app.models.shopping import ShoppingItem
-
-        await db.execute(
-            sa_update(ShoppingItem)
-            .where(ShoppingItem.category_id == category_id)
-            .values(category_id=None)
-        )
-
-    await db.delete(category)
-    await db.flush()
     await db.commit()
     return {"message": "Category deleted"}

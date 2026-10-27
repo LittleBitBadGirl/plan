@@ -167,41 +167,16 @@ async def create_subcategory_inline(parent_id: int, name: str = Form(...)):
     return HTMLResponse(content='<script>window.location.reload()</script>')
 
 
-@router.delete("/api/categories/{category_id}", response_class=HTMLResponse)
-async def delete_category_htmx(category_id: int):
-    """Удалить категорию (HTMX) — для категорий задач"""
-    from sqlalchemy import update as sa_update
-
-    from app.models.shopping import ShoppingItem
-
-    async with async_session() as db:
-        result = await db.execute(select(Category).where(Category.id == category_id))
-        cat = result.scalar_one_or_none()
-        if cat:
-            # Записи чтения не должны оставаться со ссылкой на удалённую
-            # категорию: связь обнуляем, они уезжают на полку «без категории».
-            if cat.type == "reading":
-                await db.execute(
-                    sa_update(ShoppingItem)
-                    .where(ShoppingItem.category_id == category_id)
-                    .values(category_id=None)
-                )
-            await db.delete(cat)
-            await db.commit()
-            return HTMLResponse(content="")
-    return HTMLResponse(status_code=404)
-
-
 @router.delete("/api/categories/{category_id}/safe")
 async def delete_finance_category_safe(category_id: int):
-    """Удалить финансовую категорию с переносом транзакций.
+    """Удалить категорию, перенеся записи в цель по умолчанию.
 
-    Подкатегория → транзакции переходят к родителю.
-    Родительская → транзакции переходят в 'Прочее' (или null).
+    Родитель/подкатегория → транзакции и задачи к родителю; корневая → в
+    «Прочее» того же типа. Оставлен для обратной совместимости: интерфейс
+    теперь спрашивает цель сам и зовёт обычный DELETE с `move_to`.
     """
     from fastapi.responses import JSONResponse
-    from sqlalchemy import update as sa_update
-    from app.models.finance import Transaction as Tx
+    from app.services.category_delete_service import default_target, delete_category_with_move
 
     async with async_session() as db:
         cat_res = await db.execute(select(Category).where(Category.id == category_id))
@@ -209,47 +184,12 @@ async def delete_finance_category_safe(category_id: int):
         if not cat:
             return JSONResponse({"error": "not found"}, status_code=404)
 
-        if cat.parent_id:
-            # Подкатегория → транзакции к родителю
-            fallback_id = cat.parent_id
-        else:
-            # Корневая → ищем "Прочее" того же типа
-            prochee_res = await db.execute(
-                select(Category).where(
-                    Category.name == "Прочее",
-                    Category.type == cat.type,
-                    Category.is_global == True,
-                    Category.id != category_id,
-                )
-            )
-            prochee = prochee_res.scalar_one_or_none()
-            fallback_id = prochee.id if prochee else None
-
-            # Все дочерние подкатегории → тоже к fallback
-            await db.execute(
-                sa_update(Category)
-                .where(Category.parent_id == category_id)
-                .values(parent_id=fallback_id)
-            )
-
-        # Переносим транзакции
-        await db.execute(
-            sa_update(Tx)
-            .where(Tx.category_id == category_id)
-            .values(category_id=fallback_id)
-        )
-
-        # Записи чтения уходят на полку «без категории»
-        if cat.type == "reading":
-            from app.models.shopping import ShoppingItem
-
-            await db.execute(
-                sa_update(ShoppingItem)
-                .where(ShoppingItem.category_id == category_id)
-                .values(category_id=None)
-            )
-
-        await db.delete(cat)
+        target = await default_target(db, cat)
+        # Нет ни родителя, ни «Прочее» — уводим записи в «без категории»,
+        # иначе старый /safe начал бы отдавать 409 там, где раньше работал.
+        conflict = await delete_category_with_move(db, cat, target, null_target=target is None)
+        if conflict:
+            return JSONResponse(conflict, status_code=409)
         await db.commit()
 
     return JSONResponse({"ok": True})
@@ -283,7 +223,7 @@ async def edit_category(category_id: int, name: str = Form(...)):
                         </span>
                         <div class="flex items-center gap-2 opacity-0 group-hover/item:opacity-100 transition-opacity">
                             <button hx-get="/categories/{category_id}/edit-form" hx-target="#cat-title-{category_id}" class="text-xs text-gray-500 hover:text-white uppercase" title="Изменить">ред.</button>
-                            <button hx-delete="/api/categories/{category_id}" hx-target="#cat-title-{category_id}" hx-swap="delete" hx-confirm="Удалить подкатегорию?" class="text-red-500 hover:text-red-400 text-xs uppercase" title="Удалить">удл.</button>
+                            <button type="button" onclick="deleteCategoryFlow({category_id})" class="text-red-500 hover:text-red-400 text-xs uppercase" title="Удалить">удл.</button>
                         </div>
                     </div>
                 """)

@@ -51,8 +51,7 @@
                             <div class="flex items-center gap-2 opacity-0 group-hover/item:opacity-100 transition-opacity">
                                 <button hx-get="/categories/{{ sc.id }}/edit-form" hx-target="#cat-title-{{ sc.id }}"
                                         class="text-xs text-gray-500 hover:text-white uppercase" title="Изменить">ред.</button>
-                                <button hx-delete="/api/categories/{{ sc.id }}" hx-target="#cat-title-{{ sc.id }}" hx-swap="delete"
-                                        hx-confirm="Удалить подкатегорию «{{ sc.name | noemoji }}»?"
+                                <button type="button" onclick="deleteCategoryFlow({{ sc.id }})"
                                         class="text-red-500 hover:text-red-400 text-xs uppercase" title="Удалить">удл.</button>
                             </div>
                         </div>
