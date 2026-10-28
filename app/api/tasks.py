@@ -250,6 +250,10 @@ async def update_task(
             task.completed_at = None
             # Задачу вернули в работу — отсчёт просрочки начинается заново.
             task.overdue_since = None
+            # И снимаем архив: закрытие его ставит, а без снятия повторно
+            # открытая задача осталась бы невидимой (все списки идут через
+            # task_is_active). Так же делает оффлайн-очередь при возврате.
+            task.is_archived = False
 
     await db.flush()
     await db.refresh(task)

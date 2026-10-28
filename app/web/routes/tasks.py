@@ -265,6 +265,9 @@ async def task_web_edit(
                 task.completed_at = None
                 # Задачу вернули в работу — отсчёт просрочки начинается заново.
                 task.overdue_since = None
+                # Закрытие ставит архив, поэтому возврат в работу его снимает:
+                # иначе задача со статусом «новая» осталась бы невидимой.
+                task.is_archived = False
         await db.commit()
 
     from fastapi.responses import RedirectResponse

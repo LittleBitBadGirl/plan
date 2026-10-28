@@ -218,6 +218,33 @@ async def test_api_put_done_closes_task_fully(client, db):
     assert await _fresh(get_today_progress) == (1, 1)
 
 
+@pytest.mark.asyncio
+async def test_api_put_reopen_unarchives_task(client, db):
+    """Закрытие через PUT, потом открытие: задача снова видна в списках."""
+    today = date.today()
+    task = Task(title="Закрыть и открыть", status="новая", source="hermes",
+                item_kind="task", planned_for=today)
+    db.add(task)
+    await db.commit()
+    task_id = task.id
+
+    assert (await client.put(f"/api/tasks/{task_id}", json={"status": "done"})).status_code == 200
+    assert (await client.put(f"/api/tasks/{task_id}", json={"status": "open"})).status_code == 200
+
+    async with async_session() as s:
+        stored = (await s.execute(select(Task).where(Task.id == task_id))).scalar_one()
+    assert stored.status == "новая"
+    assert stored.completed_at is None
+    assert stored.is_archived is False, "повторно открытая задача осталась в архиве — её не видно"
+
+    # И в списке задач API она снова есть
+    listed = await client.get("/api/tasks", params={"limit": 200})
+    assert any(t["id"] == task_id for t in listed.json())
+
+    # И прогресс дня снова считает её открытой
+    assert await _fresh(get_today_progress) == (0, 1)
+
+
 def test_migration_aliases_match_model():
     """Таблица алиасов в миграции не разъехалась со словарём модели."""
     migration = Path(__file__).resolve().parent.parent / "alembic" / "versions" / (
