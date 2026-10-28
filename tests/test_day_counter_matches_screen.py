@@ -15,13 +15,19 @@
    число: «на день» падало, а прогресс оставался прежним.
 """
 from datetime import date, datetime
+from pathlib import Path
 
 import pytest
 from sqlalchemy import select
 
 from app.db.database import async_session
-from app.models.task import Task, task_is_open
-from app.web.deps import build_day_pool_context, get_dashboard_day_stats, get_today_progress
+from app.models.task import STATUS_ALIASES, Task, task_is_open
+from app.web.deps import (
+    build_day_pool_context,
+    get_dashboard_day_stats,
+    get_today_actionable_stats,
+    get_today_progress,
+)
 
 
 async def _fresh(fn):
@@ -149,3 +155,79 @@ async def test_api_normalizes_foreign_status(client, db):
         lambda s: s.execute(select(Task.status).where(Task.id == task_id))
     )
     assert stored.scalar_one() == "новая"
+
+
+@pytest.mark.asyncio
+async def test_banner_does_not_double_count_taken_subtask(db):
+    """Родитель и его подзадача оба в дне: нагрузка считается один раз.
+
+    Баннер «Сегодня N задач» складывал карточки дня и подзадачи родителей и
+    считал взятую подзадачу дважды — это замечание критика к первому варианту
+    фикса (регрессия, а не старое поведение).
+    """
+    today = date.today()
+    parent = Task(title="Ремонт", status="новая", source="web",
+                  item_kind="task", planned_for=today)
+    db.add(parent)
+    await db.flush()
+    db.add(Task(title="Купить краску", parent_task_id=parent.id, status="новая",
+                source="web", item_kind="task", planned_for=today))
+    await db.commit()
+
+    completed, total = await _fresh(get_today_actionable_stats)
+    assert (completed, total) == (0, 1), (
+        "взятая подзадача посчитана и карточкой дня, и подзадачей родителя"
+    )
+
+
+@pytest.mark.asyncio
+async def test_postponed_root_is_not_in_day_progress(client, db):
+    """«Отложена» не висит в знаменателе прогресса и не показывается в дне."""
+    today = date.today()
+    db.add(Task(title="Отложенная на сегодня", status="отложена", source="web",
+                item_kind="task", planned_for=today))
+    await db.commit()
+
+    assert await _fresh(get_today_progress) == (0, 0)
+
+    resp = await client.get("/")
+    assert resp.status_code == 200
+    assert "Отложенная на сегодня" not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_api_put_done_closes_task_fully(client, db):
+    """PUT со статусом done закрывает задачу целиком: статус, дата, архив."""
+    today = date.today()
+    task = Task(title="Закрыть через API", status="новая", source="hermes",
+                item_kind="task", planned_for=today)
+    db.add(task)
+    await db.commit()
+    task_id = task.id
+
+    resp = await client.put(f"/api/tasks/{task_id}", json={"status": "done"})
+    assert resp.status_code == 200
+
+    async with async_session() as s:
+        stored = (await s.execute(select(Task).where(Task.id == task_id))).scalar_one()
+    assert stored.status == "выполнена"
+    assert stored.completed_at is not None, "выполнена без даты закрытия — невидимая задача дня"
+    assert stored.is_archived is True
+
+    # И прогресс считает её закрытой, а не висящей в остатке
+    assert await _fresh(get_today_progress) == (1, 1)
+
+
+def test_migration_aliases_match_model():
+    """Таблица алиасов в миграции не разъехалась со словарём модели."""
+    migration = Path(__file__).resolve().parent.parent / "alembic" / "versions" / (
+        "030_normalize_task_status.py"
+    )
+    text = migration.read_text(encoding="utf-8")
+    for source, target in STATUS_ALIASES.items():
+        if source == target:
+            continue  # в миграции только чужие слова: канонические не трогаем
+        assert f'"{source}": "{target}"' in text, (
+            f"миграция 030 потеряла алиас {source} → {target}"
+        )
+

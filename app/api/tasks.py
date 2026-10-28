@@ -230,8 +230,26 @@ async def update_task(
         raise HTTPException(status_code=404, detail="Task not found")
 
     update_data = task_data.model_dump(exclude_unset=True)
+    new_status = update_data.get("status")
     for key, value in update_data.items():
         setattr(task, key, value)
+
+    if new_status is not None:
+        # Перевод статуса через API обязан закрывать те же поля, что и веб-ручка.
+        # Иначе «выполнена» без completed_at остаётся в знаменателе дня и при
+        # этом пропадает из списка — ровно тот баг, из-за которого счётчик врал.
+        if new_status == "выполнена" and not task.completed_at:
+            task.completed_at = datetime.utcnow()
+            task.overdue_since = None
+            task.item_kind = "task"
+            if task.parent_task_id:
+                task.is_archived = False
+            else:
+                task.is_archived = True
+        elif new_status != "выполнена":
+            task.completed_at = None
+            # Задачу вернули в работу — отсчёт просрочки начинается заново.
+            task.overdue_since = None
 
     await db.flush()
     await db.refresh(task)

@@ -876,6 +876,11 @@ async def get_dashboard_day_stats(
     for root in roots_today:
         if root.id in parents_with_subs:
             continue
+        # «Отложена» в дне не показывается (список идёт через task_is_open),
+        # значит и в знаменателе её быть не должно: иначе остаток прогресса
+        # снова врёт на 1 — задача посчитана, а карточки нет.
+        if root.status == "отложена":
+            continue
         standalone_total += 1
         if root.status == "выполнена" and _completed_on_day(root.completed_at, today):
             standalone_completed += 1
@@ -892,9 +897,12 @@ async def get_dashboard_day_stats(
     ]
     if hide_work:
         day_subs_filters.append(not_work_task_filter())
-    day_subs_rows = await db.execute(select(Task.status).where(*day_subs_filters))
-    day_subs = [status for (status,) in day_subs_rows.all()]
-    day_subs_completed = sum(1 for status in day_subs if status == "выполнена")
+    day_subs_rows = await db.execute(
+        select(Task.id, Task.status).where(*day_subs_filters)
+    )
+    day_subs = list(day_subs_rows.all())
+    day_subs_ids = {sub_id for sub_id, _status in day_subs}
+    day_subs_completed = sum(1 for _id, status in day_subs if status == "выполнена")
 
     recurring_completed = sum(
         1 for rt in recurring_all if (rt.title, rt.category_id) in completed_keys
@@ -931,6 +939,11 @@ async def get_dashboard_day_stats(
     actionable_subs: list[Task] = []
     for root in roots_with_sub:
         for sub in subs_by_parent.get(root.id, []):
+            # Взятая на день подзадача уже посчитана карточкой дня (day_subs).
+            # Без этой проверки она входила в нагрузку дважды: и как карточка
+            # дня, и как подзадача родителя — баннер «Сегодня N задач» врал.
+            if sub.id in day_subs_ids:
+                continue
             if _is_actionable_subtask(sub, today):
                 actionable_subs.append(sub)
 
