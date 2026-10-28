@@ -255,6 +255,10 @@ async def task_web_edit(
             # Форму можно прислать руками: чужое слово (`open`, `done`) — в
             # словарь приложения, иначе задача выпадет из списков дня и бэклога.
             status = normalize_status(status) or "новая"
+            # Переоткрытие — это переход из закрытого статуса. Иначе правка
+            # удалённой задачи (DELETE ставит архив, не трогая статус) вернула
+            # бы её в списки.
+            was_completed = task.status == "выполнена"
             task.status = status
             if status == "выполнена" and not task.completed_at:
                 task.completed_at = datetime.utcnow()
@@ -265,9 +269,11 @@ async def task_web_edit(
                 task.completed_at = None
                 # Задачу вернули в работу — отсчёт просрочки начинается заново.
                 task.overdue_since = None
-                # Закрытие ставит архив, поэтому возврат в работу его снимает:
-                # иначе задача со статусом «новая» осталась бы невидимой.
-                task.is_archived = False
+                if was_completed:
+                    # Закрытие ставит архив, поэтому настоящее переоткрытие его
+                    # снимает: иначе задача со статусом «новая» осталась бы
+                    # невидимой.
+                    task.is_archived = False
         await db.commit()
 
     from fastapi.responses import RedirectResponse

@@ -245,6 +245,26 @@ async def test_api_put_reopen_unarchives_task(client, db):
     assert await _fresh(get_today_progress) == (0, 1)
 
 
+@pytest.mark.asyncio
+async def test_api_put_does_not_resurrect_deleted_task(client, db):
+    """Удалённая задача не возвращается из архива обычной правкой статуса."""
+    today = date.today()
+    task = Task(title="Удалить и не воскрешать", status="новая", source="web",
+                item_kind="task", planned_for=today)
+    db.add(task)
+    await db.commit()
+    task_id = task.id
+
+    assert (await client.delete(f"/api/tasks/{task_id}")).status_code == 200
+    # Правка с тем же открытым статусом — не повод вынимать из архива
+    assert (await client.put(f"/api/tasks/{task_id}", json={"title": "Переименована", "status": "новая"})).status_code == 200
+
+    async with async_session() as s:
+        stored = (await s.execute(select(Task).where(Task.id == task_id))).scalar_one()
+    assert stored.is_archived is True, "удалённая задача вернулась в списки от правки"
+    assert stored.completed_at is None
+
+
 def test_migration_aliases_match_model():
     """Таблица алиасов в миграции не разъехалась со словарём модели."""
     migration = Path(__file__).resolve().parent.parent / "alembic" / "versions" / (
@@ -257,4 +277,5 @@ def test_migration_aliases_match_model():
         assert f'"{source}": "{target}"' in text, (
             f"миграция 030 потеряла алиас {source} → {target}"
         )
+
 

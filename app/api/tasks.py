@@ -231,6 +231,10 @@ async def update_task(
 
     update_data = task_data.model_dump(exclude_unset=True)
     new_status = update_data.get("status")
+    # Переоткрытие — это ПЕРЕХОД из закрытого статуса, а не любая передача
+    # открытого. Удалённая задача (DELETE ставит архив, не трогая статус) иначе
+    # возвращалась бы в списки от обычной правки с тем же статусом.
+    was_completed = task.status == "выполнена"
     for key, value in update_data.items():
         setattr(task, key, value)
 
@@ -250,10 +254,11 @@ async def update_task(
             task.completed_at = None
             # Задачу вернули в работу — отсчёт просрочки начинается заново.
             task.overdue_since = None
-            # И снимаем архив: закрытие его ставит, а без снятия повторно
-            # открытая задача осталась бы невидимой (все списки идут через
-            # task_is_active). Так же делает оффлайн-очередь при возврате.
-            task.is_archived = False
+            if was_completed:
+                # Настоящее переоткрытие: снимаем архив, иначе задача со
+                # статусом «новая» осталась бы невидимой (все списки идут через
+                # task_is_active). Так же делает оффлайн-очередь при возврате.
+                task.is_archived = False
 
     await db.flush()
     await db.refresh(task)
