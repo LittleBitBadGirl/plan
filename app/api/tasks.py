@@ -6,7 +6,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.api.dependencies import get_db_session, verify_token
-from app.models.task import Task, task_is_active
+from app.models.task import Task, normalize_status, task_is_active
 from app.models.category import Category
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"], dependencies=[Depends(verify_token)])
@@ -94,6 +94,16 @@ class TaskUpdate(BaseModel):
     deadline: Optional[date] = None
     size: Optional[str] = None  # L / XL / None (пустая строка = сброс)
 
+    @field_validator("status", mode="before")
+    @classmethod
+    def _normalize_status(cls, value):
+        """Чужое слово в статусе (`open`, `done`) — в словарь приложения.
+
+        Так в базе однажды появился статус `open`: задача попала в счётчик дня,
+        но пропала из списка (список фильтрует по известным статусам).
+        """
+        return normalize_status(value)
+
 
 @router.get("", response_model=list[TaskResponse])
 async def list_tasks(
@@ -110,7 +120,7 @@ async def list_tasks(
     query = select(Task).where(task_is_active())
 
     if status:
-        query = query.where(Task.status == status)
+        query = query.where(Task.status == normalize_status(status))
     if category_id:
         query = query.where(Task.category_id == category_id)
     if parent_id is not None:

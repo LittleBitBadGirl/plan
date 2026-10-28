@@ -7,11 +7,16 @@
 """
 from datetime import date
 
+import pytest
+
 from app.models.category import Category
 from app.models.recurring import RecurringTask
 from app.models.task import Task
 from app.services.category_memory_service import remember_category
 from app.services.categorize_pending_service import load_pending_tasks
+
+# Без маркера pytest-asyncio (strict) не запускает async-тесты.
+pytestmark = pytest.mark.asyncio
 
 
 async def _category(db, name: str) -> Category:

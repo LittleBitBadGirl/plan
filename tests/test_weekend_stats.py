@@ -10,6 +10,8 @@
 from datetime import date, datetime, time, timedelta, timezone
 from types import SimpleNamespace
 
+import pytest
+
 from app.models.category import Category
 from app.models.task import Task
 from app.services.day_pool_service import count_closed
@@ -18,6 +20,10 @@ from app.web.deps import (
     render_day_pool_block,
     render_day_win_block,
 )
+
+# Без маркера pytest-asyncio (strict) не запускает async-тесты: файл молча
+# висел «17 failed» и ничего не проверял.
+pytestmark = pytest.mark.asyncio
 
 SUNDAY = date(2026, 10, 11)
 SATURDAY = date(2026, 10, 10)

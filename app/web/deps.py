@@ -16,7 +16,12 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import async_session
-from app.models.task import Task, task_is_active
+from app.models.task import (
+    Task,
+    task_counts_for_day,
+    task_is_active,
+    task_is_open,
+)
 from app.models.category import Category
 from app.services.day_win_service import day_win_view
 from app.services.postpones_service import WORK_CATEGORY_NAMES
@@ -875,11 +880,27 @@ async def get_dashboard_day_stats(
         if root.status == "выполнена" and _completed_on_day(root.completed_at, today):
             standalone_completed += 1
 
+    # Подзадачи, взятые на день, — такие же карточки в дне, как корневые задачи,
+    # и обязаны попадать в полоску «Прогресс». Раньше их там не было вовсе: Вера
+    # возвращала взятую подзадачу в бэклог, карточка исчезала, а счётчик
+    # оставался прежним — «убрала 1, а счётчик не уменьшается».
+    day_subs_filters = [
+        Task.planned_for == today,
+        Task.parent_task_id.isnot(None),
+        Task.item_kind == "task",
+        task_counts_for_day(),
+    ]
+    if hide_work:
+        day_subs_filters.append(not_work_task_filter())
+    day_subs_rows = await db.execute(select(Task.status).where(*day_subs_filters))
+    day_subs = [status for (status,) in day_subs_rows.all()]
+    day_subs_completed = sum(1 for status in day_subs if status == "выполнена")
+
     recurring_completed = sum(
         1 for rt in recurring_all if (rt.title, rt.category_id) in completed_keys
     )
-    completed = standalone_completed + recurring_completed
-    total = standalone_total + len(recurring_all)
+    completed = standalone_completed + recurring_completed + day_subs_completed
+    total = standalone_total + len(recurring_all) + len(day_subs)
 
     parent_total = 0
     parent_done = 0
@@ -933,7 +954,8 @@ async def get_dashboard_day_stats(
 
 
 async def get_today_progress(db: AsyncSession) -> tuple[int, int]:
-    """Прогресс дня для STANDALONE-задач (без подзадач) + регулярные."""
+    """Прогресс дня: корневые задачи (без родителей с подзадачами), взятые на
+    день подзадачи и регулярные — ровно карточки, которые видны в дне."""
     bundle = await get_dashboard_day_stats(db)
     return bundle.completed, bundle.total
 
@@ -1633,7 +1655,7 @@ async def get_tasks_today(db: AsyncSession, request: Request):
     filters = [
         Task.planned_for == today,
         task_is_active(),
-        Task.status.in_(["новая", "в_работе"]),
+        task_is_open(),
         Task.parent_task_id == None,
         Task.source.is_distinct_from("recurring"),
         Task.item_kind == "task",
@@ -1699,7 +1721,7 @@ async def get_day_taken_subtasks(db: AsyncSession, today: Optional[date] = None)
             Task.planned_for == today,
             Task.parent_task_id.isnot(None),
             Task.item_kind == "task",
-            Task.status != "выполнена",
+            task_is_open(),
         )
         .order_by(Task.id.asc())
     )

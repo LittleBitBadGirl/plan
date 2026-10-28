@@ -9,7 +9,7 @@ import re
 import json
 
 from app.db.database import async_session
-from app.models.task import Task, task_is_active
+from app.models.task import Task, task_is_active, task_is_open
 from app.models.category import Category
 from app.models.recurring import RecurringTask
 from app.models.shopping import ShoppingItem
@@ -128,7 +128,7 @@ async def dashboard(request: Request):
         base_task_filters = [
             day_scope,
             task_is_active(),
-            Task.status.in_(["новая", "в_работе"]),
+            task_is_open(),
             Task.parent_task_id == None,
             Task.source.is_distinct_from("recurring"),
             Task.item_kind == "task",

@@ -21,7 +21,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.category import Category
-from app.models.task import Task, task_is_active
+from app.models.task import Task, task_counts_for_day, task_is_active, task_is_open
 from app.services.postpones_service import WORK_CATEGORY_NAMES, apply_backlog_return
 
 # Минимум, который Вера набирает утром. Это порог ритуала, а не лимит дня.
@@ -29,8 +29,12 @@ MIN_DAY_TASKS = 5
 
 
 def open_task_filter():
-    """Задача, с которой ещё можно что-то делать (не архив, не закрыта)."""
-    return and_(task_is_active(), Task.status.in_(["новая", "в_работе"]))
+    """Задача, с которой ещё можно что-то делать (не архив, не закрыта).
+
+    Открытость берётся из `task_is_open()`: чужие и пустые статусы (их пишут
+    интеграции мимо ORM) не должны прятать задачу из бэклога и дня.
+    """
+    return and_(task_is_active(), task_is_open())
 
 
 def is_regular():
@@ -143,6 +147,7 @@ async def count_taken(db: AsyncSession, day: Optional[date] = None) -> int:
         select(func.count(Task.id)).where(
             Task.planned_for == today,
             Task.item_kind == "task",
+            task_counts_for_day(),
         )
     )
     return result.scalar() or 0

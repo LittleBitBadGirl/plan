@@ -9,7 +9,7 @@ import re
 import json
 
 from app.db.database import async_session
-from app.models.task import Task, task_is_active
+from app.models.task import Task, normalize_status, task_is_active
 from app.models.category import Category
 from app.models.recurring import RecurringTask
 from app.models.shopping import ShoppingItem
@@ -182,7 +182,7 @@ async def task_web_create(
             priority=priority,
             due_date=_parse_due_date_form(due_date),
             deadline=_parse_due_date_form(deadline),
-            status=status,
+            status=normalize_status(status) or "новая",
             is_milestone=is_milestone,
             impact_notes=impact_notes,
             size=size if size in ("L", "XL") else None,
@@ -252,6 +252,9 @@ async def task_web_edit(
             task.planned_for = date.today() if where == "today" else None
 
         if status is not None:
+            # Форму можно прислать руками: чужое слово (`open`, `done`) — в
+            # словарь приложения, иначе задача выпадет из списков дня и бэклога.
+            status = normalize_status(status) or "новая"
             task.status = status
             if status == "выполнена" and not task.completed_at:
                 task.completed_at = datetime.utcnow()
